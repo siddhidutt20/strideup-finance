@@ -111,26 +111,44 @@ export async function ingestDocument({ filename, mime, buffer, source = "upload"
   const hash = sha256(buffer);
   const dedupKey = `doc:${hash}`;
 
+  const entry = await get(
+    `SELECT id, entry_date, amount_minor, currency, description, review_status
+       FROM fin_entries WHERE dedup_key = ?`,
+    [dedupKey]
+  );
   const seen = await get(
     "SELECT id FROM fin_documents WHERE source = ? AND content_hash = ?",
     [source, hash]
   );
-  if (seen) {
-    const entry = await get(
-      `SELECT id, entry_date, amount_minor, currency, description, review_status
-         FROM fin_entries WHERE dedup_key = ?`,
-      [dedupKey]
-    );
+
+  // Only a document that actually produced a ledger row counts as a
+  // duplicate. One that failed to parse — no API key, no credit, an outage —
+  // is retried, because re-uploading it is exactly how someone asks for
+  // another attempt. Reporting "already recorded" there would strand the
+  // document forever.
+  if (seen && entry) {
     return { duplicate: true, documentId: Number(seen.id), entry };
   }
 
   const b64 = buffer.toString("base64");
-  const docRs = await run(
-    `INSERT INTO fin_documents (source, filename, mime, byte_size, content_hash, data)
-     VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
-    [source, filename, mime, buffer.length, hash, b64]
-  );
-  const documentId = lastId(docRs);
+  let documentId;
+  if (seen) {
+    documentId = Number(seen.id);
+    await run(
+      `UPDATE fin_documents
+          SET filename = ?, mime = ?, byte_size = ?, data = ?,
+              parse_error = NULL, received_at = now()
+        WHERE id = ?`,
+      [filename, mime, buffer.length, b64, documentId]
+    );
+  } else {
+    const docRs = await run(
+      `INSERT INTO fin_documents (source, filename, mime, byte_size, content_hash, data)
+       VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
+      [source, filename, mime, buffer.length, hash, b64]
+    );
+    documentId = lastId(docRs);
+  }
 
   let ex;
   try {

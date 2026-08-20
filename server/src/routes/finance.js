@@ -132,6 +132,28 @@ financeRouter.post(
       return res.status(201).json(result);
     } catch (err) {
       if (err.code === "AI_DISABLED") return res.status(503).json({ error: err.message });
+      // Name the actual problem — a wrong key, an empty balance and a rate
+      // limit all used to surface as the same generic failure.
+      if (err.code === "ANTHROPIC_ERROR") {
+        const detail = err.detail || "";
+        let hint;
+        if (err.status === 401 || err.status === 403) {
+          hint =
+            "That Anthropic API key was rejected. Check it was pasted in full " +
+            "(it starts with sk-ant-) and redeploy.";
+        } else if (/credit balance|insufficient|too low|quota/i.test(detail)) {
+          hint =
+            "Your Anthropic account has no credit left. Top up at " +
+            "console.anthropic.com/settings/billing, then try again.";
+        } else if (err.status === 429) {
+          hint = "Anthropic is rate limiting right now — wait a moment and try again.";
+        } else if (err.status >= 500) {
+          hint = "Anthropic is having trouble at their end. Try again shortly.";
+        } else {
+          hint = `Claude could not read this document (API returned ${err.status}).`;
+        }
+        return res.status(502).json({ error: hint, detail });
+      }
       if (err.code === "BAD_EXTRACTION" || err.code === "BAD_MIME") {
         return res.status(422).json({ error: err.message, detail: err.detail });
       }

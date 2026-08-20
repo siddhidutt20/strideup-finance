@@ -18,7 +18,13 @@ async function callClaude(content, maxTokens = 1500) {
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`Anthropic ${res.status}: ${body.slice(0, 300)}`);
+    // Tagged so the route can turn this into something the reader can act on
+    // rather than a generic failure.
+    const err = new Error(`Anthropic API returned ${res.status}`);
+    err.code = "ANTHROPIC_ERROR";
+    err.status = res.status;
+    err.detail = body.slice(0, 400);
+    throw err;
   }
   const data = await res.json();
   return (data.content || [])
