@@ -1,5 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,300&display=swap');
+
 *,*::before,*::after{box-sizing:border-box}
 html,body,#root{height:100%}
-body{margin:0;font-family:'Inter',system-ui,-apple-system,sans-serif;
-  background:#F7F5FC;color:#1c1430;-webkit-font-smoothing:antialiased}
+html{scroll-behavior:smooth}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}
+  *{animation-duration:.01ms !important;transition-duration:.01ms !important}}
+body{margin:0;font-family:'Instrument Sans',system-ui,-apple-system,sans-serif;
+  background:#F7F6FA;color:#171326;-webkit-font-smoothing:antialiased;
+  font-feature-settings:"ss01";}

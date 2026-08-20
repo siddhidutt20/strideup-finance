@@ -42,6 +42,7 @@ export const api = {
   finCategories: () => request("GET", "/finance/categories"),
   finEntries: (q = "") => request("GET", `/finance/entries${q}`),
   finUpload: (b) => request("POST", "/finance/documents", b),
+  finDeleteEntry: (id) => request("DELETE", `/finance/entries/${id}`),
   finPatchEntry: (id, b) => request("PATCH", `/finance/entries/${id}`, b),
   finAddEntry: (b) => request("POST", "/finance/entries", b),
   finImportGhl: (csv) => request("POST", "/finance/import/ghl", { csv }),

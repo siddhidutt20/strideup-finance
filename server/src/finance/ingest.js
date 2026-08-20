@@ -107,7 +107,7 @@ export async function upsertEntry(e) {
 // ── Document → ledger row ────────────────────────────────────
 // The content hash is the document's identity, so the same receipt is one
 // expense whether it arrives by upload, by Drive, or twice by both.
-export async function ingestDocument({ filename, mime, buffer, source = "upload" }) {
+export async function ingestDocument({ filename, mime, buffer, source = "upload", replace = false }) {
   const hash = sha256(buffer);
   const dedupKey = `doc:${hash}`;
 
@@ -126,8 +126,14 @@ export async function ingestDocument({ filename, mime, buffer, source = "upload"
   // is retried, because re-uploading it is exactly how someone asks for
   // another attempt. Reporting "already recorded" there would strand the
   // document forever.
-  if (seen && entry) {
+  if (seen && entry && !replace) {
     return { duplicate: true, documentId: Number(seen.id), entry };
+  }
+  // Replacing means the reader deliberately asked for another attempt at a
+  // document already on the books — drop the old row so the new reading
+  // stands on its own rather than colliding with it.
+  if (seen && entry && replace) {
+    await run("DELETE FROM fin_entries WHERE id = ?", [entry.id]);
   }
 
   const b64 = buffer.toString("base64");

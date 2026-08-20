@@ -84,6 +84,9 @@ const uploadSchema = z.object({
   filename: z.string().trim().min(1).max(200),
   mime: z.string().trim().min(1).max(100),
   data: z.string().min(1).max((MAX_BYTES * 4) / 3 + 4096),
+  // Set when the reader has been told this document is already recorded and
+  // has chosen to replace it.
+  replace: z.boolean().optional(),
 });
 
 financeRouter.post(
@@ -121,11 +124,14 @@ financeRouter.post(
     }
 
     try {
-      const result = await ingestDocument({ filename, mime, buffer, source: "upload" });
+      const result = await ingestDocument({
+        filename, mime, buffer, source: "upload",
+        replace: parsed.data.replace === true,
+      });
       if (result.duplicate) {
         return res.status(200).json({
           duplicate: true,
-          message: "Already recorded — this exact document was uploaded before.",
+          message: "You have already uploaded this file.",
           entry: result.entry,
         });
       }
@@ -279,6 +285,36 @@ financeRouter.patch(
       await learnRule(entry.counterparty, Number(finalCategory), entry.counterparty_id);
     }
 
+    res.json({ ok: true });
+  })
+);
+
+// ── Remove something recorded by mistake ─────────────────────
+// The source document goes with it: a ledger row and the file it came from
+// are one fact, and leaving the file behind would make re-uploading it look
+// like a duplicate of something no longer there.
+financeRouter.delete(
+  "/entries/:id",
+  ah(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: "Bad id" });
+    const entry = await get(
+      "SELECT id, document_id, period FROM fin_entries WHERE id = ?",
+      [id]
+    );
+    if (!entry) return res.status(404).json({ error: "That entry no longer exists." });
+
+    const closed = await get("SELECT status FROM fin_periods WHERE period = ?", [entry.period]);
+    if (closed?.status === "closed") {
+      return res.status(409).json({
+        error: "That month is closed. Reopen it first if you really want to remove this.",
+      });
+    }
+
+    await run("DELETE FROM fin_entries WHERE id = ?", [id]);
+    if (entry.document_id) {
+      await run("DELETE FROM fin_documents WHERE id = ?", [entry.document_id]);
+    }
     res.json({ ok: true });
   })
 );

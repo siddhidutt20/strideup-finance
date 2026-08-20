@@ -74,7 +74,8 @@ const LOGIN_CSS = `
   padding:34px 30px;box-shadow:0 30px 80px -30px rgba(20,8,40,.7);display:flex;flex-direction:column}
 .lg-eyebrow{font-size:11.5px;font-weight:800;letter-spacing:2.2px;text-transform:uppercase;
   color:#9333EA;margin:0 0 6px}
-.lg-title{font-weight:800;font-size:30px;letter-spacing:-1px;margin:0 0 8px;color:#1c1430}
+.lg-title{font-family:'Newsreader',Georgia,serif;font-weight:400;font-size:40px;
+  letter-spacing:-.02em;line-height:1;margin:0 0 10px;color:#171326}
 .lg-sub{font-size:14px;line-height:1.55;color:#6b6188;margin:0 0 20px}
 .lg-label{font-size:12.5px;font-weight:700;color:#5c5277;margin:14px 0 6px}
 .lg-input{width:100%;padding:13px 15px;border-radius:12px;border:1px solid #E7DAF5;background:#faf9ff;
@@ -84,7 +85,7 @@ const LOGIN_CSS = `
   font-size:13.5px;padding:10px 13px;border-radius:11px}
 .lg-cta{margin-top:22px;width:100%;padding:15px;border:none;border-radius:13px;cursor:pointer;
   font-family:inherit;font-weight:800;font-size:15px;color:#fff;
-  background:linear-gradient(90deg,#6500C1,#0FA3C7);transition:.16s}
+  background:linear-gradient(90deg,#5B21B6,#0FA3C7);transition:.16s}
 .lg-cta:hover:not(:disabled){filter:brightness(1.08)}
 .lg-cta:disabled{opacity:.45;cursor:not-allowed}
 .lg-note{margin:18px 0 0;font-size:11.5px;line-height:1.6;color:#8a80a8;text-align:center}
