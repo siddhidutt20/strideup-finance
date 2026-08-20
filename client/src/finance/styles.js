@@ -114,6 +114,11 @@ export const FIN_CSS = `
 .fin-link{color:var(--fin-accent);font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap}
 .fin-link:hover{text-decoration:underline}
 .fin-link.asbtn{background:none;border:none;font-family:inherit;cursor:pointer;padding:0}
+.fin-scope{display:inline-flex;align-items:center;gap:4px}
+.fin-scope button{border:1px solid var(--fin-line);background:#fff;font-family:inherit;
+  font-size:12px;font-weight:600;color:var(--fin-muted);padding:5px 10px;border-radius:8px;cursor:pointer}
+.fin-scope button.on{color:var(--fin-accent);border-color:#D9CBF3;background:#F5F0FD}
+.fin-scope .fin-link{margin-left:10px}
 .fin-dash{color:#D6D1E2}
 .fin-total{margin:14px 0 0;font-size:13.5px;font-weight:600;text-align:right;
   font-variant-numeric:tabular-nums}
@@ -186,9 +191,12 @@ export const FIN_CSS = `
 .fe-amt{white-space:nowrap}
 .fe-fx{display:flex;align-items:center;justify-content:flex-end;gap:7px;margin-top:3px}
 .fe-fx em{font-style:normal;color:var(--fin-faint);font-size:11.5px;font-variant-numeric:tabular-nums}
-.fe-cur{font:inherit;font-size:10.5px;font-weight:600;letter-spacing:.04em;padding:2px 4px;
-  border-radius:6px;border:1px solid var(--fin-line);background:#fff;color:var(--fin-muted)}
-.fe-cur:hover{border-color:var(--fin-faint);color:var(--fin-ink)}
+.fe-cur{font:inherit;font-size:10.5px;font-weight:600;letter-spacing:.04em;padding:2px 3px;
+  border-radius:6px;border:1px solid transparent;background:transparent;color:#B9B3C8;
+  appearance:none;-webkit-appearance:none;text-align:right;cursor:pointer;transition:.14s}
+.fin-table tbody tr:hover .fe-cur{color:var(--fin-muted);border-color:var(--fin-line);background:#fff}
+.fe-cur:hover,.fe-cur:focus{color:var(--fin-ink) !important;border-color:var(--fin-faint) !important;
+  background:#fff !important}
 .fin-amtrow{display:flex;gap:6px}
 .fin-amtrow input{flex:1;min-width:0}
 .fin-amtrow select{width:auto;flex:none;font-size:13px;padding:9px 6px}

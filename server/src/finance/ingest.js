@@ -135,7 +135,9 @@ export async function upsertEntry(e) {
 // ── Document → ledger row ────────────────────────────────────
 // The content hash is the document's identity, so the same receipt is one
 // expense whether it arrives by upload, by Drive, or twice by both.
-export async function ingestDocument({ filename, mime, buffer, source = "upload", replace = false }) {
+export async function ingestDocument({
+  filename, mime, buffer, source = "upload", replace = false, kind = "expense",
+}) {
   const hash = sha256(buffer);
   const dedupKey = `doc:${hash}`;
 
@@ -186,7 +188,7 @@ export async function ingestDocument({ filename, mime, buffer, source = "upload"
 
   let ex;
   try {
-    ex = await extractDocument({ mime, data: b64 });
+    ex = await extractDocument({ mime, data: b64, kind });
   } catch (err) {
     await run("UPDATE fin_documents SET parse_error = ? WHERE id = ?", [
       String(err.message).slice(0, 400),
@@ -210,7 +212,10 @@ export async function ingestDocument({ filename, mime, buffer, source = "upload"
   const counterpartyId =
     rule?.set_counterparty_id != null
       ? Number(rule.set_counterparty_id)
-      : await findOrCreateCounterparty(ex.vendor_name);
+      : await findOrCreateCounterparty(
+          ex.vendor_name,
+          kind === "revenue" ? "customer" : "supplier"
+        );
 
   const amountMinor = toMinor(ex.total, ex.currency);
   const fx = await convertToBase(amountMinor, ex.currency, ex.issue_date);
@@ -225,8 +230,12 @@ export async function ingestDocument({ filename, mime, buffer, source = "upload"
 
   const result = await upsertEntry({
     entryDate: ex.issue_date,
-    // A credit note is money coming back from a supplier.
-    direction: ex.document_type === "credit_note" ? "in" : "out",
+    // A credit note reverses whichever way the money normally goes: a refund
+    // from a supplier comes in, a credit against a customer goes out.
+    direction:
+      ex.document_type === "credit_note"
+        ? (kind === "revenue" ? "out" : "in")
+        : (kind === "revenue" ? "in" : "out"),
     amountMinor,
     currency: ex.currency,
     fxRate: fx.fxRate,

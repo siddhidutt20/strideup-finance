@@ -5,7 +5,8 @@ import {
   fmtAmount, monthLabel, readFile, shiftMonth, thisMonth, useMoney, ZERO_DECIMAL,
 } from "./finance/format.js";
 import {
-  OverviewView, RevenueView, ExpensesView, CashflowView, PnlView, LedgerView, ToolsView,
+  OverviewView, RevenueView, ExpensesView, CashflowView, PnlView, LedgerView,
+  ToolsView, ManualEntry,
 } from "./finance/views.jsx";
 
 // ── StrideUp finances ────────────────────────────────────────
@@ -34,6 +35,7 @@ export default function FinanceDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [feed, setFeed] = useState([]);
+  const [ledgerScope, setLedgerScope] = useState("month");
   const [busy, setBusy] = useState(false);
 
   const money = useMoney(data?.baseCurrency || "USD");
@@ -44,7 +46,7 @@ export default function FinanceDashboard() {
       try {
         const [ov, en, cats] = await Promise.all([
           api.finOverview(p),
-          api.finEntries(`?period=${p}`),
+          api.finEntries(ledgerScope === "all" ? "?limit=500" : `?period=${p}`),
           categories.length ? Promise.resolve({ categories }) : api.finCategories(),
         ]);
         setData(ov);
@@ -57,10 +59,10 @@ export default function FinanceDashboard() {
         setLoading(false);
       }
     },
-    [period, categories]
+    [period, categories, ledgerScope]
   );
 
-  useEffect(() => { load(period); /* eslint-disable-next-line */ }, [period]);
+  useEffect(() => { load(period); /* eslint-disable-next-line */ }, [period, ledgerScope]);
 
   // Statements are fetched only when a statement view is opened, so the
   // dashboard does not pay for four of them nobody asked to see.
@@ -82,26 +84,27 @@ export default function FinanceDashboard() {
 
   // ── Upload: one call per document, sequentially, so progress is legible
   // and one failure never takes the rest of the batch down with it.
-  async function sendOne(file, { id, dataB64, replace = false }) {
+  async function sendOne(file, { id, dataB64, replace = false, kind = "expense" }) {
     const b64 = dataB64 ?? (await readFile(file));
     setFeed((f) => f.map((x) => (x.id === id ? { ...x, state: "reading-doc" } : x)));
     const res = await api.finUpload({
       filename: file.name,
       mime: file.type || "application/octet-stream",
       data: b64,
+      kind,
       ...(replace ? { replace: true } : {}),
     });
     setFeed((f) =>
       f.map((x) =>
         x.id === id
           ? { ...x, state: res.duplicate ? "duplicate" : "done", result: res,
-              retry: res.duplicate ? { file, dataB64: b64 } : null }
+              retry: res.duplicate ? { file, dataB64: b64, kind } : null }
           : x
       )
     );
   }
 
-  async function handleFiles(files) {
+  async function handleFiles(files, kind = "expense") {
     const list = [...files];
     if (!list.length) return;
     setBusy(true);
@@ -109,7 +112,7 @@ export default function FinanceDashboard() {
       const id = `${file.name}-${Date.now()}-${Math.random()}`;
       setFeed((f) => [{ id, name: file.name, state: "reading" }, ...f].slice(0, 10));
       try {
-        await sendOne(file, { id });
+        await sendOne(file, { id, kind });
       } catch (err) {
         setFeed((f) => f.map((x) => (x.id === id ? { ...x, state: "error", message: err.message } : x)));
       }
@@ -123,7 +126,10 @@ export default function FinanceDashboard() {
     setBusy(true);
     setFeed((f) => f.map((x) => (x.id === item.id ? { ...x, state: "reading-doc" } : x)));
     try {
-      await sendOne(item.retry.file, { id: item.id, dataB64: item.retry.dataB64, replace: true });
+      await sendOne(item.retry.file, {
+        id: item.id, dataB64: item.retry.dataB64, replace: true,
+        kind: item.retry.kind || "expense",
+      });
     } catch (err) {
       setFeed((f) => f.map((x) => (x.id === item.id ? { ...x, state: "error", message: err.message } : x)));
     }
@@ -172,9 +178,28 @@ export default function FinanceDashboard() {
     );
   }
 
-  const [, , heading, blurb] = VIEWS.find((v) => v[0] === view);
+  const [, , heading, blurbBase] = VIEWS.find((v) => v[0] === view);
+  const blurb =
+    view === "ledger" && ledgerScope === "all"
+      ? "Every entry recorded, across all months"
+      : blurbBase;
   const waiting = NEEDS_STATEMENTS.has(view) && statements?.period !== period;
-  const showUpload = view === "overview" || view === "ledger";
+  // Adding things belongs where you are looking at them: a sales invoice on
+  // Revenue, a bill on Expenses.
+  const UPLOAD_VIEWS = { overview: "expense", revenue: "revenue", expenses: "expense", ledger: "expense" };
+  const uploadKind = UPLOAD_VIEWS[view];
+  const showUpload = !!uploadKind;
+  const MANUAL = {
+    revenue: { defaultDirection: "in", preferKinds: ["revenue", "capital"],
+               title: "Record revenue by hand", sub: "A payment that never had a document",
+               descPlaceholder: "Coaching programme — August cohort",
+               whoPlaceholder: "Customer name…", whoLabel: "Customer" },
+    expenses: { defaultDirection: "out", preferKinds: ["cogs", "opex", "capex", "tax"],
+                title: "Record an expense by hand", sub: "A cost that never had a document",
+                descPlaceholder: "Figma team seats",
+                whoPlaceholder: "Supplier name…", whoLabel: "Supplier" },
+    ledger: { defaultDirection: "out" },
+  };
   const isEmpty = (data?.summary?.entryCount ?? 0) === 0 && !data?.receivables?.total;
 
   return (
@@ -204,7 +229,11 @@ export default function FinanceDashboard() {
       <header className="fin-viewhead">
         <div>
           <h1>{heading}</h1>
-          <p>{blurb} {monthLabel(period)}.</p>
+          <p>
+            {view === "ledger" && ledgerScope === "all"
+              ? `${blurb}.`
+              : `${blurb} ${monthLabel(period)}.`}
+          </p>
         </div>
       </header>
 
@@ -217,8 +246,14 @@ export default function FinanceDashboard() {
       )}
 
       {showUpload && (
-        <UploadZone onFiles={handleFiles} busy={busy} feed={feed} money={money}
-                    onReplace={replaceFile} onDismiss={dismiss} />
+        <UploadZone kind={uploadKind} onFiles={handleFiles} busy={busy} feed={feed}
+                    money={money} onReplace={replaceFile} onDismiss={dismiss} />
+      )}
+
+      {MANUAL[view] && !waiting && (
+        <ManualEntry key={view} categories={categories}
+                     currency={data?.baseCurrency || "USD"}
+                     onAdded={() => load(period)} {...MANUAL[view]} />
       )}
 
       {view === "overview" && isEmpty ? (
@@ -251,8 +286,8 @@ export default function FinanceDashboard() {
           {view === "ledger" && (
             <LedgerView entries={entries} categories={categories} money={money}
                         baseCurrency={data?.baseCurrency || "USD"} period={period}
-                        onFix={fixEntry} onRemove={removeEntry} onCurrency={fixCurrency}
-                        onAdded={() => load(period)} />
+                        scope={ledgerScope} onScope={setLedgerScope}
+                        onFix={fixEntry} onRemove={removeEntry} onCurrency={fixCurrency} />
           )}
           {view === "tools" && (
             <ToolsView period={period} closed={data?.periodClosed} onDone={() => load(period)} />
@@ -263,7 +298,19 @@ export default function FinanceDashboard() {
   );
 }
 
-function UploadZone({ onFiles, busy, feed, money, onReplace, onDismiss }) {
+const DROP_COPY = {
+  revenue: {
+    title: "Drop sales invoices and receipts here",
+    body: "Invoices you issued, or receipts for money you received. Read and added to revenue automatically.",
+  },
+  expense: {
+    title: "Drop invoices and receipts here",
+    body: "Bills and receipts for things you paid for. Read, categorised, and added to the month automatically.",
+  },
+};
+
+function UploadZone({ kind = "expense", onFiles, busy, feed, money, onReplace, onDismiss }) {
+  const copy = DROP_COPY[kind];
   const [over, setOver] = useState(false);
   const input = useRef(null);
   return (
@@ -271,18 +318,18 @@ function UploadZone({ onFiles, busy, feed, money, onReplace, onDismiss }) {
       className={`fin-drop${over ? " over" : ""}${busy ? " busy" : ""}`}
       onDragOver={(e) => { e.preventDefault(); setOver(true); }}
       onDragLeave={() => setOver(false)}
-      onDrop={(e) => { e.preventDefault(); setOver(false); onFiles(e.dataTransfer.files); }}
+      onDrop={(e) => { e.preventDefault(); setOver(false); onFiles(e.dataTransfer.files, kind); }}
     >
       <input ref={input} type="file" multiple
              accept="application/pdf,image/png,image/jpeg,image/webp,image/gif"
-             onChange={(e) => { onFiles(e.target.files); e.target.value = ""; }} hidden />
+             onChange={(e) => { onFiles(e.target.files, kind); e.target.value = ""; }} hidden />
       <div className="fin-drop-main">
         <div className="fin-drop-icon" aria-hidden="true">＋</div>
         <div>
-          <strong>{busy ? "Reading…" : "Drop invoices and receipts here"}</strong>
+          <strong>{busy ? "Reading…" : copy.title}</strong>
           <p>
-            PDF or a photo. They are read, categorised, and added to the month
-            automatically. <button type="button" onClick={() => input.current?.click()}>
+            {copy.body}{" "}
+            <button type="button" onClick={() => input.current?.click()}>
               or choose files
             </button>
           </p>

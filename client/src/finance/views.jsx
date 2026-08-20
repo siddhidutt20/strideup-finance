@@ -218,15 +218,22 @@ export function PnlView({ st, money, period }) {
 
 // ── Ledger ───────────────────────────────────────────────────
 export function LedgerView({
-  entries, categories, money, baseCurrency, period,
-  onFix, onRemove, onCurrency, onAdded,
+  entries, categories, money, baseCurrency, period, scope, onScope,
+  onFix, onRemove, onCurrency,
 }) {
   return (
     <>
-      <ManualEntry categories={categories} currency={baseCurrency} onAdded={onAdded} />
-      <Panel title={`Ledger — ${monthLabel(period)}`}
+      <Panel title={scope === "all" ? "Ledger — everything" : `Ledger — ${monthLabel(period)}`}
              sub={`${entries.length} ${entries.length === 1 ? "entry" : "entries"}`}
-             action={<a className="fin-link" href={api.finExportUrl()}>Export CSV</a>}>
+             action={
+               <span className="fin-scope">
+                 <button className={scope === "month" ? "on" : ""}
+                         onClick={() => onScope("month")}>{monthLabel(period, true)}</button>
+                 <button className={scope === "all" ? "on" : ""}
+                         onClick={() => onScope("all")}>All months</button>
+                 <a className="fin-link" href={api.finExportUrl()}>Export CSV</a>
+               </span>
+             }>
         <LedgerTable entries={entries} categories={categories} money={money}
                      baseCurrency={baseCurrency} onFix={onFix}
                      onRemove={onRemove} onCurrency={onCurrency} />
@@ -304,12 +311,17 @@ function LedgerTable({ entries, categories, money, baseCurrency, onFix, onRemove
 
 // Not everything arrives as a document: money you put in, a bank charge, a
 // payment settled by transfer. This is how those get on the books.
-function ManualEntry({ categories, currency, onAdded }) {
+export function ManualEntry({
+  categories, currency, onAdded,
+  defaultDirection = "out", preferKinds, title, sub,
+  descPlaceholder = "Founder equity injection", whoPlaceholder = "Founder, bank, supplier…",
+  whoLabel = "Who",
+}) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const [form, setForm] = useState({
-    entryDate: today(), direction: "out", amount: "",
+    entryDate: today(), direction: defaultDirection, amount: "",
     currency, categoryId: "", description: "", counterparty: "",
   });
 
@@ -317,7 +329,12 @@ function ManualEntry({ categories, currency, onAdded }) {
   const ready = form.amount && Number(form.amount) > 0 && form.categoryId && form.description.trim();
 
   const grouped = useMemo(() => {
-    const order = ["revenue", "capital", "cogs", "opex", "capex", "tax", "transfer"];
+    // Whichever kinds this section is about come first, so the category you
+    // want is the one already in view.
+    const base = ["revenue", "capital", "cogs", "opex", "capex", "tax", "transfer"];
+    const order = preferKinds
+      ? [...preferKinds, ...base.filter((k) => !preferKinds.includes(k))]
+      : base;
     const names = {
       revenue: "Revenue", capital: "Capital", cogs: "Cost of sales",
       opex: "Operating expenses", capex: "Capital expenditure",
@@ -326,7 +343,7 @@ function ManualEntry({ categories, currency, onAdded }) {
     return order
       .map((kind) => ({ kind, label: names[kind], items: categories.filter((c) => c.kind === kind) }))
       .filter((g) => g.items.length);
-  }, [categories]);
+  }, [categories, preferKinds]);
 
   async function submit(e) {
     e.preventDefault();
@@ -356,8 +373,8 @@ function ManualEntry({ categories, currency, onAdded }) {
     <section className="fin-panel">
       <div className="fin-panel-head">
         <div>
-          <h2>Add an entry by hand</h2>
-          <span>Capital, transfers, anything without a document</span>
+          <h2>{title || "Add an entry by hand"}</h2>
+          <span>{sub || "Capital, transfers, anything without a document"}</span>
         </div>
         <button className="fin-link asbtn" onClick={() => setOpen((o) => !o)}>
           {open ? "Hide" : "Write one"}
@@ -404,12 +421,12 @@ function ManualEntry({ categories, currency, onAdded }) {
           <label className="wide">
             <span>Description</span>
             <input value={form.description} onChange={set("description")}
-                   placeholder="Founder equity injection" maxLength={300} required />
+                   placeholder={descPlaceholder} maxLength={300} required />
           </label>
           <label className="wide">
-            <span>Who <em>optional</em></span>
+            <span>{whoLabel} <em>optional</em></span>
             <input value={form.counterparty} onChange={set("counterparty")}
-                   placeholder="Founder, bank, supplier…" maxLength={160} />
+                   placeholder={whoPlaceholder} maxLength={160} />
           </label>
           <div className="fin-form-foot">
             <button className="fin-btn" disabled={!ready || busy}>

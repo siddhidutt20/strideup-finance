@@ -62,13 +62,25 @@ const extraction = z.object({
   confidence: z.number().min(0).max(1).catch(0),
 });
 
-function buildPrompt(categoryNames) {
-  return `You are reading a business expense document for a company's books.
+// The same document shape means opposite things depending on which way the
+// money went: a bill you received is an expense, an invoice you issued is
+// revenue. Telling the reader which it is up front stops it guessing.
+function buildPrompt(categoryNames, kind) {
+  const framing =
+    kind === "revenue"
+      ? `You are reading a SALES document a company ISSUED to a customer — an
+invoice it sent out, or a receipt for money it received. The company is the
+one being PAID here.`
+      : `You are reading a business EXPENSE document a company RECEIVED — a
+bill, an invoice from a supplier, or a receipt for something it bought. The
+company is the one PAYING here.`;
+
+  return `${framing}
 
 Extract the following and reply with ONLY a JSON object, no prose and no code fences:
 
 {
-  "vendor_name": "the supplier/merchant name as printed",
+  "vendor_name": "${kind === "revenue" ? "the CUSTOMER being billed" : "the supplier/merchant name as printed"}",
   "document_type": "invoice | receipt | credit_note | statement | other",
   "issue_date": "YYYY-MM-DD — the document date, not today's date",
   "currency": "ISO-4217 code, e.g. USD, GBP, EUR, INR",
@@ -86,8 +98,8 @@ ${categoryNames.map((n) => `- ${n}`).join("\n")}
 
 Rules:
 - Amounts are plain numbers: no currency symbols, no thousands separators.
-- "total" is what the business paid or owes. If the document shows a total
-  including tax, use that.
+- "total" is ${kind === "revenue" ? "what the customer owes or paid" : "what the business paid or owes"}.
+  If the document shows a total including tax, use that.
 - If the document is a credit note or refund, still report a positive total —
   the direction is handled elsewhere.
 - Set confidence below 0.6 if the image is unclear, the total is ambiguous,
@@ -95,7 +107,7 @@ Rules:
 - Never invent a category that is not in the list above.`;
 }
 
-export async function extractDocument({ mime, data }) {
+export async function extractDocument({ mime, data, kind = "expense" }) {
   if (!aiEnabled()) {
     const err = new Error(
       "Document reading needs an Anthropic API key. Set ANTHROPIC_API_KEY to enable it."
@@ -103,21 +115,25 @@ export async function extractDocument({ mime, data }) {
     err.code = "AI_DISABLED";
     throw err;
   }
-  const kind = ACCEPTED_MIME[mime];
-  if (!kind) {
+  const mediaKind = ACCEPTED_MIME[mime];
+  if (!mediaKind) {
     const err = new Error(`Unsupported file type: ${mime}`);
     err.code = "BAD_MIME";
     throw err;
   }
 
+  // Offer only the categories that make sense for the direction of the money,
+  // so a sales invoice cannot come back filed under Office supplies.
+  const kinds =
+    kind === "revenue" ? "('revenue')" : "('cogs','opex','capex','tax')";
   const cats = await all(
-    "SELECT name FROM fin_categories WHERE kind IN ('cogs','opex','capex','tax') ORDER BY sort"
+    `SELECT name FROM fin_categories WHERE kind IN ${kinds} ORDER BY sort`
   );
   const names = cats.map((c) => c.name);
 
   const raw = await askClaudeDocumentJSON(
-    { kind, mime, data },
-    buildPrompt(names),
+    { kind: mediaKind, mime, data },
+    buildPrompt(names, kind),
     1500
   );
 

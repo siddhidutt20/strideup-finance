@@ -19,11 +19,11 @@ onboarding portal, which lives in a separate repository.
 | | |
 |---|---|
 | **Overview** | How the month is going, at a glance — the figures and the graphs, nothing to read |
-| **Revenue** | Where it came from: by month, by category, by customer, and what is still outstanding |
-| **Expenses** | Where it went: by month, by category, by supplier |
+| **Revenue** | Where it came from: by month, by category, by customer, and what is still outstanding. Sales documents are uploaded and revenue written by hand here |
+| **Expenses** | Where it went: by month, by category, by supplier. Bills are uploaded and costs written by hand here |
 | **Cash flow** | Opening position, what moved, closing position — with capital on its own line, because a funding round is not a good trading month |
 | **P&L** | A proper statement: revenue, cost of sales, gross profit, operating expenses, operating profit, tax, net |
-| **Ledger** | Every entry, with inline fixes, deletion, and a form for anything that never had a document |
+| **Ledger** | Every entry for the month, or across every month, with inline fixes and deletion |
 | **Import & close** | GoHighLevel exports, and settling the month |
 
 Statements are fetched only when their section is opened, so the dashboard
@@ -39,7 +39,10 @@ so every import is idempotent and every job is safely retryable.
 
 - **Reading documents.** One Claude call per file, answering into a fixed JSON
   shape, with the live chart of accounts in the prompt so it picks a real
-  category rather than inventing one. Everything it returns is validated before
+  category rather than inventing one. The reader is told which way the money
+  went — a bill you received is an expense, an invoice you issued is revenue —
+  and is offered only the categories that fit that direction, so a sales
+  invoice cannot come back filed under Office supplies. Everything it returns is validated before
   it can reach the ledger. Uploads are checked against their real magic bytes
   first, so a mislabelled file never costs an API call.
 - **Rules before AI.** A vendor seen once is categorised deterministically from

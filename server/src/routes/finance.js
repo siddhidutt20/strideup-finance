@@ -131,6 +131,8 @@ const uploadSchema = z.object({
   // Set when the reader has been told this document is already recorded and
   // has chosen to replace it.
   replace: z.boolean().optional(),
+  // Which way the money went — a bill received, or an invoice issued.
+  kind: z.enum(["expense", "revenue"]).optional(),
 });
 
 financeRouter.post(
@@ -171,6 +173,7 @@ financeRouter.post(
       const result = await ingestDocument({
         filename, mime, buffer, source: "upload",
         replace: parsed.data.replace === true,
+        kind: parsed.data.kind || "expense",
       });
       if (result.duplicate) {
         return res.status(200).json({
