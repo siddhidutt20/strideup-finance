@@ -8,7 +8,32 @@ dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 const isProd = process.env.NODE_ENV === "production";
 const isServerless = !!(process.env.VERCEL || process.env.AWS_REGION);
 const rawSecret = process.env.SESSION_SECRET || "";
-const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL || "";
+// Vercel's storage integrations name the connection string differently
+// depending on the integration and on any custom prefix chosen in the connect
+// dialog — DATABASE_URL, POSTGRES_URL, STORAGE_URL and others all occur. Try
+// the known names, then fall back to any variable that actually holds a
+// Postgres URL, so a prefix chosen in the dashboard cannot silently leave the
+// app with no database.
+function findDatabaseUrl() {
+  const named = [
+    "DATABASE_URL",
+    "POSTGRES_URL",
+    "STORAGE_URL",
+    "NEON_DATABASE_URL",
+    "DATABASE_URL_UNPOOLED",
+    "POSTGRES_URL_NON_POOLING",
+  ];
+  for (const key of named) {
+    if (process.env[key]) return process.env[key];
+  }
+  const guess = Object.entries(process.env).find(
+    ([key, value]) =>
+      /^postgres(ql)?:\/\//.test(value || "") && !/PRISMA/i.test(key)
+  );
+  return guess ? guess[1] : "";
+}
+
+const databaseUrl = findDatabaseUrl();
 
 // Collected rather than thrown: a crash at import time on a serverless host
 // produces an opaque 500 with no body. The API reports these instead.
@@ -20,7 +45,7 @@ if (isProd && rawSecret.length < 32) {
 }
 if (isServerless && !databaseUrl) {
   configErrors.push(
-    "No database connection found — add the Neon Postgres integration in Vercel (Storage → Create Database → Neon). It sets DATABASE_URL automatically."
+    "No database connection found — add a Postgres database in Vercel (Storage → Create Database → Neon) and connect it to this project. Any of DATABASE_URL, POSTGRES_URL or STORAGE_URL will do."
   );
 }
 if (isProd && !process.env.OWNER_PASSWORD) {
