@@ -1,0 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+*,*::before,*::after{box-sizing:border-box}
+html,body,#root{height:100%}
+body{margin:0;font-family:'Inter',system-ui,-apple-system,sans-serif;
+  background:#F7F5FC;color:#1c1430;-webkit-font-smoothing:antialiased}

@@ -1,0 +1,52 @@
+// Cookies (session + CSRF) ride along automatically. For mutating requests we
+// echo the CSRF cookie back in a header — the double-submit pattern.
+
+function getCookie(name) {
+  const m = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]*)"));
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+async function request(method, path, body) {
+  const headers = { "Content-Type": "application/json" };
+  if (method !== "GET") {
+    const csrf = getCookie("sf_csrf");
+    if (csrf) headers["X-CSRF-Token"] = csrf;
+  }
+  const res = await fetch(`/api${path}`, {
+    method,
+    headers,
+    credentials: "include",
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  let data = null;
+  try {
+    data = await res.json();
+  } catch {
+    /* no body */
+  }
+  if (!res.ok) {
+    const err = new Error(data?.error || `Request failed (${res.status})`);
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
+export const api = {
+  me: () => request("GET", "/auth/me"),
+  login: (b) => request("POST", "/auth/login", b),
+  logout: () => request("POST", "/auth/logout", {}),
+
+  finOverview: (period) =>
+    request("GET", `/finance/overview${period ? `?period=${period}` : ""}`),
+  finCategories: () => request("GET", "/finance/categories"),
+  finEntries: (q = "") => request("GET", `/finance/entries${q}`),
+  finUpload: (b) => request("POST", "/finance/documents", b),
+  finPatchEntry: (id, b) => request("PATCH", `/finance/entries/${id}`, b),
+  finAddEntry: (b) => request("POST", "/finance/entries", b),
+  finImportGhl: (csv) => request("POST", "/finance/import/ghl", { csv }),
+  finClosePeriod: (period, reopen) =>
+    request("POST", "/finance/periods/close", { period, reopen }),
+  finDocUrl: (id) => `/api/finance/documents/${id}`,
+  finExportUrl: () => "/api/finance/export.csv",
+};
