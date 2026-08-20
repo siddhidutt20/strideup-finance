@@ -20,6 +20,26 @@ const monthLabel = (p, short = false) => {
   return `${short ? MONTHS[m - 1].slice(0, 3) : MONTHS[m - 1]} ${y}`;
 };
 
+// Currencies without minor units — 1000 JPY is 1000, not 100000.
+const ZERO_DECIMAL = new Set(["JPY","KRW","VND","CLP","ISK","XAF","XOF"]);
+const majorOf = (minor, currency) =>
+  Number(minor || 0) / (ZERO_DECIMAL.has(currency) ? 1 : 100);
+
+// Common currencies, plus whatever a document actually turned out to be.
+const CURRENCIES = ["USD","EUR","GBP","INR","AUD","CAD","SGD","AED","CHF","JPY"];
+
+// Format an amount in its own currency, not the dashboard's.
+function fmtAmount(currency, minor) {
+  const major = majorOf(minor, currency);
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency", currency, minimumFractionDigits: ZERO_DECIMAL.has(currency) ? 0 : 2,
+    }).format(major);
+  } catch {
+    return `${major.toFixed(2)} ${currency}`;
+  }
+}
+
 function useMoney(currency) {
   return useMemo(() => {
     const opts = { style: "currency", currency };
@@ -159,6 +179,17 @@ export default function FinanceDashboard() {
     load(period);
   }
 
+  // Correcting a misread currency re-converts the amount, so the month's
+  // totals move with it.
+  async function fixCurrency(id, currency) {
+    try {
+      await api.finPatchEntry(id, { currency });
+      load(period);
+    } catch (err) {
+      setError(err.message || "Could not change that currency.");
+    }
+  }
+
   async function removeEntry(entry) {
     const what = entry.description || entry.counterparty || "this entry";
     const amount = money.exact(entry.amount_minor);
@@ -291,7 +322,8 @@ export default function FinanceDashboard() {
         action={<a className="fin-link" href={api.finExportUrl()}>Export CSV</a>}
       >
         <LedgerTable entries={entries} categories={categories} money={money}
-                     onFix={fixEntry} onRemove={removeEntry} />
+                     baseCurrency={data?.baseCurrency || "USD"}
+                     onFix={fixEntry} onRemove={removeEntry} onCurrency={fixCurrency} />
       </Panel>
 
       <Tools period={period} closed={data?.periodClosed} onDone={() => load(period)} />
@@ -382,7 +414,13 @@ function UploadZone({ onFiles, busy, feed, money, onReplace, onDismiss }) {
               )}
               {f.state === "done" && f.result?.extraction && (
                 <span className="ff-ok">
-                  {money.exact(Math.round(f.result.extraction.total * 100))}
+                  {fmtAmount(
+                    f.result.currency || f.result.extraction.currency,
+                    Math.round(
+                      f.result.extraction.total *
+                        (ZERO_DECIMAL.has(f.result.currency || f.result.extraction.currency) ? 1 : 100)
+                    )
+                  )}
                   {" · "}{f.result.categoryName || "uncategorised"}
                   {f.result.matchedRule && " · known vendor"}
                   {f.result.needsReview && " · needs a look"}
@@ -405,7 +443,7 @@ function ManualEntry({ categories, currency, onAdded }) {
   const [msg, setMsg] = useState(null);
   const [form, setForm] = useState({
     entryDate: today(), direction: "out", amount: "",
-    categoryId: "", description: "", counterparty: "",
+    currency, categoryId: "", description: "", counterparty: "",
   });
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -432,7 +470,7 @@ function ManualEntry({ categories, currency, onAdded }) {
         entryDate: form.entryDate,
         direction: form.direction,
         amount: Number(form.amount),
-        currency,
+        currency: form.currency,
         categoryId: Number(form.categoryId),
         description: form.description.trim(),
         ...(form.counterparty.trim() ? { counterparty: form.counterparty.trim() } : {}),
@@ -473,9 +511,16 @@ function ManualEntry({ categories, currency, onAdded }) {
             </select>
           </label>
           <label>
-            <span>Amount ({currency})</span>
-            <input type="number" step="0.01" min="0.01" inputMode="decimal"
-                   value={form.amount} onChange={set("amount")} placeholder="0.00" required />
+            <span>Amount</span>
+            <div className="fin-amtrow">
+              <input type="number" step="0.01" min="0.01" inputMode="decimal"
+                     value={form.amount} onChange={set("amount")} placeholder="0.00" required />
+              <select value={form.currency} onChange={set("currency")} aria-label="Currency">
+                {[...new Set([currency, ...CURRENCIES])].map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
           </label>
           <label className="wide">
             <span>Category</span>
@@ -647,7 +692,7 @@ function CapitalList({ capital, money }) {
   );
 }
 
-function LedgerTable({ entries, categories, money, onFix, onRemove }) {
+function LedgerTable({ entries, categories, money, baseCurrency, onFix, onRemove, onCurrency }) {
   if (!entries.length) return <p className="fin-none">No entries for this month yet.</p>;
   return (
     <div className="fin-tablewrap">
@@ -679,8 +724,22 @@ function LedgerTable({ entries, categories, money, onFix, onRemove }) {
                     {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </td>
-                <td className={`r nowrap ${e.direction === "in" ? "amt-in" : "amt-out"}`}>
-                  {e.direction === "in" ? "+" : "−"}{money.exact(e.amount_minor)}
+                <td className="r nowrap fe-amt">
+                  <span className={e.direction === "in" ? "amt-in" : "amt-out"}>
+                    {e.direction === "in" ? "+" : "−"}{fmtAmount(e.currency, e.amount_minor)}
+                  </span>
+                  <span className="fe-fx">
+                    <select className="fe-cur" value={e.currency}
+                            title="Currency on the document"
+                            onChange={(ev) => onCurrency(e.id, ev.target.value)}>
+                      {[...new Set([e.currency, baseCurrency, ...CURRENCIES])].map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                    {e.currency !== baseCurrency && (
+                      <em>≈ {money.exact(e.base_amount_minor)}</em>
+                    )}
+                  </span>
                 </td>
                 <td>
                   {e.document_id
@@ -954,6 +1013,15 @@ const FIN_CSS = `
 .fe-cp{display:block;color:var(--fin-faint);font-size:11.5px;margin-top:1px}
 .fe-why{display:block;color:var(--fin-warn);font-size:11.5px;margin-top:3px}
 .fe-note{display:block;color:var(--fin-faint);font-size:11.5px;margin-top:3px;font-style:italic}
+.fe-amt{white-space:nowrap}
+.fe-fx{display:flex;align-items:center;justify-content:flex-end;gap:7px;margin-top:3px}
+.fe-fx em{font-style:normal;color:var(--fin-faint);font-size:11.5px;font-variant-numeric:tabular-nums}
+.fe-cur{font:inherit;font-size:10.5px;font-weight:600;letter-spacing:.04em;padding:2px 4px;
+  border-radius:6px;border:1px solid var(--fin-line);background:#fff;color:var(--fin-muted)}
+.fe-cur:hover{border-color:var(--fin-faint);color:var(--fin-ink)}
+.fin-amtrow{display:flex;gap:6px}
+.fin-amtrow input{flex:1;min-width:0}
+.fin-amtrow select{width:auto;flex:none;font-size:13px;padding:9px 6px}
 .amt-in{color:#0A7E96;font-weight:600;font-variant-numeric:tabular-nums}
 .amt-out{color:var(--fin-ink);font-variant-numeric:tabular-nums}
 .fe-sel{font:inherit;font-size:12.5px;padding:5px 8px;border-radius:8px;

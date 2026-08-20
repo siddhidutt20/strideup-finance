@@ -109,6 +109,17 @@ export const FIN_SCHEMA = [
 
   // Month snapshots. Not a locking ceremony — it stops a figure you have
   // already acted on from silently changing when a late document arrives.
+  // Rates are cached per day so a month's worth of foreign invoices costs one
+  // lookup, and so a figure never silently changes because a rate moved.
+  `CREATE TABLE IF NOT EXISTS fin_fx_rates (
+     rate_date  date NOT NULL,
+     base       char(3) NOT NULL,
+     quote      char(3) NOT NULL,
+     rate       numeric(20,10) NOT NULL,
+     fetched_at timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (rate_date, base, quote)
+   )`,
+
   `CREATE TABLE IF NOT EXISTS fin_periods (
      period    date PRIMARY KEY,
      status    text NOT NULL DEFAULT 'open',

@@ -7,7 +7,7 @@ import { aiLimiter } from "../security.js";
 import { config } from "../config.js";
 import { ah, isoDate } from "../util.js";
 import { ACCEPTED_MIME, sniffMime, toMinor } from "../finance/extract.js";
-import { ingestDocument, learnRule, resolvePeriod, findOrCreateCounterparty } from "../finance/ingest.js";
+import { ingestDocument, learnRule, resolvePeriod, findOrCreateCounterparty, convertToBase } from "../finance/ingest.js";
 import { importGhlCsv } from "../finance/ghl.js";
 import {
   monthStart, periodSummary, categoryBreakdown, trend, cashPosition,
@@ -72,6 +72,7 @@ financeRouter.get(
   "/categories",
   ah(async (req, res) => {
     res.json({
+      baseCurrency: config.finance.baseCurrency,
       categories: await all(
         "SELECT id, name, kind, pnl_line FROM fin_categories ORDER BY sort, name"
       ),
@@ -230,6 +231,9 @@ const patchSchema = z.object({
   description: z.string().trim().max(300).optional(),
   entryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   amount: z.number().finite().positive().optional(),
+  // Correcting a misread currency is the common case — the amount is right
+  // and only the symbol was wrong.
+  currency: z.string().trim().length(3).optional(),
   direction: z.enum(["in", "out"]).optional(),
   reviewStatus: z.enum(["approved", "rejected", "needs_review"]).optional(),
 });
@@ -261,10 +265,18 @@ financeRouter.patch(
       sets.push("entry_date = ?", "period = ?");
       args.push(b.entryDate, period);
     }
-    if (b.amount !== undefined) {
-      const minor = toMinor(b.amount, entry.currency);
-      sets.push("amount_minor = ?", "base_amount_minor = ?");
-      args.push(minor, minor);
+    // Amount, currency and date all feed the converted figure, so any of them
+    // changing means re-converting — otherwise the total silently keeps the
+    // old rate.
+    if (b.amount !== undefined || b.currency !== undefined || b.entryDate !== undefined) {
+      const currency = (b.currency || entry.currency).toUpperCase();
+      const when = b.entryDate || isoDate(entry.entry_date);
+      const minor =
+        b.amount !== undefined ? toMinor(b.amount, currency) : Number(entry.amount_minor);
+      const fx = await convertToBase(minor, currency, when);
+      sets.push("amount_minor = ?", "currency = ?", "fx_rate = ?", "base_amount_minor = ?");
+      args.push(minor, currency, fx.fxRate, fx.baseAmountMinor);
+      if (fx.note) { sets.push("review_status = 'needs_review'", "review_reason = ?"); args.push(fx.note); }
     }
     if (b.reviewStatus !== undefined) {
       sets.push("review_status = ?");
@@ -341,15 +353,16 @@ financeRouter.post(
     const currency = (b.currency || config.finance.baseCurrency).toUpperCase();
     const minor = toMinor(b.amount, currency);
     const { period } = await resolvePeriod(b.entryDate);
+    const fx = await convertToBase(minor, currency, b.entryDate);
 
     const rs = await run(
       `INSERT INTO fin_entries
-         (entry_date, direction, amount_minor, currency, base_amount_minor,
+         (entry_date, direction, amount_minor, currency, fx_rate, base_amount_minor,
           counterparty_id, category_id, description, dedup_key, confidence,
           review_status, period)
-       VALUES (?,?,?,?,?,?,?,?,?,1,'approved',?) RETURNING id`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,1,'approved',?) RETURNING id`,
       [
-        b.entryDate, b.direction, minor, currency, minor,
+        b.entryDate, b.direction, minor, currency, fx.fxRate, fx.baseAmountMinor,
         b.counterparty ? await findOrCreateCounterparty(b.counterparty) : null,
         b.categoryId, b.description,
         `manual:${crypto.randomUUID()}`, period,

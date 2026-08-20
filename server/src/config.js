@@ -84,6 +84,12 @@ export const config = {
     baseCurrency: (process.env.FINANCE_BASE_CURRENCY || "USD")
       .trim().toUpperCase().slice(0, 3),
     confidenceFloor: Number(process.env.FINANCE_CONFIDENCE_FLOOR || 0.85),
+    // Daily reference rates, keyless and free. {date}, {from} and {to} are
+    // substituted. Overridable so the source can be swapped without a code
+    // change; a failure here never blocks an import.
+    fxUrl:
+      process.env.FINANCE_FX_URL ||
+      "https://api.frankfurter.dev/v1/{date}?base={from}&symbols={to}",
   },
 
   sessionMaxAgeMs: 7 * 24 * 60 * 60 * 1000,

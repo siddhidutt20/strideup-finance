@@ -40,6 +40,14 @@ so every import is idempotent and every job is safely retryable.
   same dedup key live webhooks would, so overlap is a no-op.
 - **Capital** — equity, loans, draws — flows through cash but is excluded from
   burn, which is what keeps runway honest.
+- **Foreign currency.** An amount is stored twice: as written on the document,
+  and converted to `FINANCE_BASE_CURRENCY` at that day's rate. Only the
+  converted figure is ever summed, so a ₹20,000 invoice cannot land in a
+  dollar total as 20,000. Rates are cached per day, so a past month's figures
+  never drift. If a rate cannot be fetched the entry is still recorded, in its
+  own currency and flagged — an unconverted amount you can see beats a
+  document that vanished. A currency the reader misread can be corrected from
+  the ledger, which re-converts on the spot.
 - **Month snapshots.** Closing a month means a late document dated inside it
   posts to the open month as an adjustment, instead of changing a figure you
   have already used.

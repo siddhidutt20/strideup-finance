@@ -1,6 +1,8 @@
 import crypto from "node:crypto";
 import { all, get, run, lastId } from "../db.js";
-import { extractDocument, reviewReason, toMinor } from "./extract.js";
+import { config } from "../config.js";
+import { extractDocument, reviewReason, toMinor, fromMinor } from "./extract.js";
+import { getRate } from "./fx.js";
 
 // ── The normaliser ───────────────────────────────────────────
 // Everything that becomes a ledger row goes through here, whatever the
@@ -21,6 +23,32 @@ export function vendorKey(name) {
 }
 
 export const periodOf = (isoDate) => `${String(isoDate).slice(0, 7)}-01`;
+
+// ── Everything on the dashboard is in one currency ───────────
+// An amount is stored twice: as written on the document, and converted to the
+// base currency. Only the converted figure is ever summed, so a foreign
+// invoice cannot quietly inflate a total by its face value.
+export async function convertToBase(amountMinor, currency, date) {
+  const base = config.finance.baseCurrency;
+  if (!currency || currency === base) {
+    return { fxRate: 1, baseAmountMinor: amountMinor, note: null };
+  }
+  const rate = await getRate(currency, base, date);
+  if (!rate) {
+    // Recorded rather than dropped, but flagged — an unconverted amount you
+    // can see beats a document that vanished.
+    return {
+      fxRate: 1,
+      baseAmountMinor: amountMinor,
+      note: `could not convert ${currency} to ${base} — counted at face value, please check`,
+    };
+  }
+  return {
+    fxRate: rate,
+    baseAmountMinor: toMinor(fromMinor(amountMinor, currency) * rate, base),
+    note: null,
+  };
+}
 
 // If the month a document belongs to has been closed, the entry is posted to
 // the open month as an adjustment instead of rewriting settled history.
@@ -184,22 +212,25 @@ export async function ingestDocument({ filename, mime, buffer, source = "upload"
       ? Number(rule.set_counterparty_id)
       : await findOrCreateCounterparty(ex.vendor_name);
 
+  const amountMinor = toMinor(ex.total, ex.currency);
+  const fx = await convertToBase(amountMinor, ex.currency, ex.issue_date);
+
   // A reason to look at this row by hand. An adjusted period is noted on the
   // row but is not itself a review item — nothing about it is uncertain.
   const reason =
     reviewReason(ex, !!rule) ?? (categoryId ? null : "no matching category");
   const { period, adjusted } = await resolvePeriod(ex.issue_date);
   const note = adjusted ? `posted to ${period} — ${periodOf(ex.issue_date)} is closed` : null;
-  const storedReason = [reason, note].filter(Boolean).join("; ") || null;
+  const storedReason = [reason, fx.note, note].filter(Boolean).join("; ") || null;
 
-  const amountMinor = toMinor(ex.total, ex.currency);
   const result = await upsertEntry({
     entryDate: ex.issue_date,
     // A credit note is money coming back from a supplier.
     direction: ex.document_type === "credit_note" ? "in" : "out",
     amountMinor,
     currency: ex.currency,
-    baseAmountMinor: amountMinor,
+    fxRate: fx.fxRate,
+    baseAmountMinor: fx.baseAmountMinor,
     counterpartyId,
     categoryId,
     description: ex.summary || ex.vendor_name,
@@ -207,7 +238,7 @@ export async function ingestDocument({ filename, mime, buffer, source = "upload"
     documentId,
     dedupKey,
     confidence: ex.confidence,
-    reviewStatus: reason ? "needs_review" : "auto",
+    reviewStatus: reason || fx.note ? "needs_review" : "auto",
     reviewReason: storedReason,
     period,
   });
@@ -224,7 +255,9 @@ export async function ingestDocument({ filename, mime, buffer, source = "upload"
     extraction: ex,
     categoryName,
     matchedRule: !!rule,
-    needsReview: !!reason,
+    currency: ex.currency,
+    fxRate: fx.fxRate,
+    needsReview: !!(reason || fx.note),
     reviewReason: storedReason,
     adjustedPeriod: adjusted ? period : null,
   };
