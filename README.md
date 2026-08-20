@@ -14,6 +14,21 @@ onboarding portal, which lives in a separate repository.
 | **Server** | Express — auth, ingestion, reconciliation, a server-side Anthropic proxy |
 | **Database** | Postgres (Neon in production; embedded pglite locally, zero setup) |
 
+## The sections
+
+| | |
+|---|---|
+| **Overview** | How the month is going, at a glance — the figures and the graphs, nothing to read |
+| **Revenue** | Where it came from: by month, by category, by customer, and what is still outstanding |
+| **Expenses** | Where it went: by month, by category, by supplier |
+| **Cash flow** | Opening position, what moved, closing position — with capital on its own line, because a funding round is not a good trading month |
+| **P&L** | A proper statement: revenue, cost of sales, gross profit, operating expenses, operating profit, tax, net |
+| **Ledger** | Every entry, with inline fixes, deletion, and a form for anything that never had a document |
+| **Import & close** | GoHighLevel exports, and settling the month |
+
+Statements are fetched only when their section is opened, so the dashboard
+never pays for four of them nobody asked to see.
+
 ## How it works
 
 Every financial fact — an uploaded document, a GoHighLevel payment, a manual

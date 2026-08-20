@@ -212,3 +212,105 @@ export async function reviewCount() {
   );
   return Number(r?.n ?? 0);
 }
+
+// ── Statements ───────────────────────────────────────────────
+// The dashboard answers "how is this month going". These answer the
+// questions you ask afterwards: where the money came from, where it went,
+// what it added up to, and what actually moved through the bank.
+
+const SIGNED_E = SIGNED;
+
+// A profit and loss statement, in the order an accountant reads one:
+// revenue, cost of sales, gross profit, operating expenses, operating
+// profit, tax, net.
+export async function profitAndLoss(period) {
+  const rows = await all(
+    `SELECT COALESCE(c.name, 'Uncategorised') AS name,
+            ${KIND} AS kind,
+            ${SIGNED_E} AS net
+       FROM fin_entries e
+       LEFT JOIN fin_categories c ON c.id = e.category_id
+      WHERE e.review_status <> 'rejected' AND e.period = ?
+      GROUP BY 1, 2
+      ORDER BY ABS(${SIGNED_E}) DESC`,
+    [period]
+  );
+
+  const section = (kind, flip) => {
+    const lines = rows
+      .filter((r) => r.kind === kind)
+      .map((r) => ({ name: r.name, amount: flip ? -Number(r.net) : Number(r.net) }))
+      .filter((l) => l.amount !== 0);
+    return { lines, total: lines.reduce((s, l) => s + l.amount, 0) };
+  };
+
+  const revenue = section("revenue", false);
+  const cogs = section("cogs", true);
+  const opex = section("opex", true);
+  const tax = section("tax", true);
+
+  const grossProfit = revenue.total - cogs.total;
+  const operatingProfit = grossProfit - opex.total;
+  return {
+    period,
+    revenue, cogs, opex, tax,
+    grossProfit,
+    grossMarginPct: revenue.total > 0 ? (grossProfit / revenue.total) * 100 : null,
+    operatingProfit,
+    netProfit: operatingProfit - tax.total,
+  };
+}
+
+// Cash flow, direct method. Opening is everything recorded before this month;
+// capital is shown on its own line because it is not trading income and
+// folding it in would make a funding round look like a good month.
+export async function cashflow(period) {
+  const before = await get(
+    `SELECT COALESCE(${SIGNED_E}, 0) AS net
+       FROM fin_entries e
+       LEFT JOIN fin_categories c ON c.id = e.category_id
+      WHERE e.review_status <> 'rejected' AND e.period < ?
+        AND COALESCE(c.kind, 'opex') <> 'transfer'`,
+    [period]
+  );
+  const rows = await all(
+    `SELECT ${KIND} AS kind, ${SIGNED_E} AS net
+       FROM fin_entries e
+       LEFT JOIN fin_categories c ON c.id = e.category_id
+      WHERE e.review_status <> 'rejected' AND e.period = ?
+      GROUP BY 1`,
+    [period]
+  );
+  const by = {};
+  for (const r of rows) by[r.kind] = Number(r.net);
+
+  const opening = Number(before?.net ?? 0);
+  const operatingIn = by.revenue ?? 0;
+  const operatingOut = -((by.cogs ?? 0) + (by.opex ?? 0) + (by.tax ?? 0));
+  const capital = by.capital ?? 0;
+  const capex = -(by.capex ?? 0);
+  const movement = operatingIn - operatingOut - capex + capital;
+
+  return {
+    period, opening, operatingIn, operatingOut, capex, capital,
+    movement, closing: opening + movement,
+  };
+}
+
+// Who the money came from, and who it went to.
+export async function byCounterparty(period, direction, limit = 12) {
+  return (
+    await all(
+      `SELECT COALESCE(p.name, 'Unattributed') AS name,
+              SUM(e.base_amount_minor) AS total,
+              COUNT(*) AS n
+         FROM fin_entries e
+         LEFT JOIN fin_counterparties p ON p.id = e.counterparty_id
+        WHERE e.review_status <> 'rejected' AND e.period = ? AND e.direction = ?
+        GROUP BY 1
+        ORDER BY 2 DESC
+        LIMIT ${Number(limit)}`,
+      [period, direction]
+    )
+  ).map((r) => ({ name: r.name, amount: Number(r.total), count: Number(r.n) }));
+}

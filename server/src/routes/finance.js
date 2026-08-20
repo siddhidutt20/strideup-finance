@@ -12,6 +12,7 @@ import { importGhlCsv } from "../finance/ghl.js";
 import {
   monthStart, periodSummary, categoryBreakdown, trend, cashPosition,
   burnAndRunway, receivables, capitalPosition, reviewCount,
+  profitAndLoss, cashflow, byCounterparty,
 } from "../finance/metrics.js";
 
 export const financeRouter = express.Router();
@@ -64,6 +65,48 @@ financeRouter.get(
       capital,
       needsReview,
       aiEnabled: config.anthropic.enabled,
+    });
+  })
+);
+
+// ── The statement views ──────────────────────────────────────
+// Fetched on demand rather than folded into /overview, so opening the
+// dashboard does not pay for four statements nobody asked to see.
+financeRouter.get(
+  "/statements",
+  ah(async (req, res) => {
+    const period = periodParam.safeParse(req.query.period).success
+      ? req.query.period
+      : monthStart();
+
+    const [pnl, flow, revenueBy, expenseBy, breakdown, series, ar, capital] =
+      await Promise.all([
+        profitAndLoss(period),
+        cashflow(period),
+        byCounterparty(period, "in"),
+        byCounterparty(period, "out"),
+        categoryBreakdown(period),
+        trend(13, monthStart()),
+        receivables(),
+        capitalPosition(),
+      ]);
+
+    res.json({
+      period,
+      baseCurrency: config.finance.baseCurrency,
+      pnl,
+      cashflow: flow,
+      revenue: {
+        byCategory: breakdown.filter((r) => r.direction === "in"),
+        byCustomer: revenueBy,
+        receivables: ar,
+      },
+      expenses: {
+        byCategory: breakdown.filter((r) => r.direction === "out"),
+        byVendor: expenseBy,
+      },
+      trend: series,
+      capital,
     });
   })
 );

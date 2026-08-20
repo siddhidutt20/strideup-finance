@@ -40,6 +40,8 @@ export const api = {
   finOverview: (period) =>
     request("GET", `/finance/overview${period ? `?period=${period}` : ""}`),
   finCategories: () => request("GET", "/finance/categories"),
+  finStatements: (period) =>
+    request("GET", `/finance/statements${period ? `?period=${period}` : ""}`),
   finEntries: (q = "") => request("GET", `/finance/entries${q}`),
   finUpload: (b) => request("POST", "/finance/documents", b),
   finDeleteEntry: (id) => request("DELETE", `/finance/entries/${id}`),
