@@ -14,7 +14,7 @@ import {
   monthStart, periodSummary, categoryBreakdown, trend, cashPosition,
   burnAndRunway, receivables, capitalPosition, reviewCount,
   profitAndLoss, cashflow, byCounterparty, forecast, activeCommitments, dueSoon,
-  contractSchedule, occurrencesIn,
+  contractSchedule, occurrencesIn, commitmentsForMonth, paymentMap, committedRunUp,
 } from "../finance/metrics.js";
 
 export const financeRouter = express.Router();
@@ -100,6 +100,8 @@ financeRouter.get(
       : monthStart();
 
     const { choice, list } = resolveEntities(req.query.entity);
+    const asOf = isoDate(new Date());
+    const ahead = period > monthStart();
 
     const byEntity = {};
     for (const ent of list) {
@@ -114,11 +116,40 @@ financeRouter.get(
           receivables(new Date(), ent),
           capitalPosition(ent),
         ]);
+      // What is already agreed to move in this month, as distinct from what
+      // has been recorded. A month still ahead carries its opening balance
+      // forward correctly but would otherwise claim nothing will move in it —
+      // which is false whenever a contract or a rent falls due inside it.
+      const commitments = await activeCommitments(ent);
+      const settled = await paymentMap(ent);
+      const c = commitmentsForMonth(commitments, period, ahead ? null : asOf, settled);
+      // Everything already agreed between now and the start of this month, so
+      // a month several ahead opens where the committed path actually leaves
+      // it rather than at today's recorded figure.
+      const runUp = ahead
+        ? committedRunUp(commitments, settled, monthStart(), period, asOf)
+        : 0;
+      // A month that has already begun opened where it opened; only a month
+      // still ahead has an opening that has to be projected. Either way the
+      // closing figure builds on what the month has actually done so far.
+      const openingProjected = ahead ? flow.opening + runUp : flow.opening;
+      const closingBase = ahead ? openingProjected : flow.closing;
+
       byEntity[ent] = {
         entity: ent,
         label: ENTITY_LABEL[ent],
         pnl,
         cashflow: flow,
+        committed: {
+          in: c.committedIn,
+          out: c.committedOut,
+          movement: c.committedIn - c.committedOut,
+          runUp,
+          openingProjected,
+          projectedClosing: closingBase + c.committedIn - c.committedOut,
+          items: c.items,
+          ahead,
+        },
         revenue: {
           byCategory: breakdown.filter((r) => r.direction === "in"),
           byCustomer: revenueBy,

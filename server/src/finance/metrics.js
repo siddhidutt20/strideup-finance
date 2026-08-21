@@ -820,3 +820,23 @@ export async function contractSchedule(entity, monthsBack = 2, monthsAhead = 9, 
   return { entity, asOf, period: thisPeriod, periods, rows, tally,
            arrears: { in: arrearsIn, out: arrearsOut } };
 }
+
+// Committed movement accumulated across whole months, from `fromPeriod`
+// inclusive to `toPeriod` exclusive. This is what makes a month several ahead
+// open at the right figure: without it, November would open at whatever is
+// recorded today, as though September's contract payment had never arrived.
+//
+// The first month counts only what is still to come inside it — anything
+// earlier in that month has either already been recorded or is genuinely
+// missed, and either way is not still on its way.
+export function committedRunUp(commitments, settled, fromPeriod, toPeriod, asOf) {
+  let total = 0;
+  let p = fromPeriod;
+  let guard = 0;
+  while (p < toPeriod && guard++ < 240) {
+    const m = commitmentsForMonth(commitments, p, p === fromPeriod ? asOf : null, settled);
+    total += m.committedIn - m.committedOut;
+    p = addMonths(p, 1);
+  }
+  return total;
+}

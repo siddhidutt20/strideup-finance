@@ -134,6 +134,15 @@ export function ExpensesView({ st, trend, money, period }) {
 // income — folding it in would make a funding round look like a good month.
 export function CashflowView({ st, money, period }) {
   const cf = st.cashflow;
+  const c = st.committed;
+  // A month still ahead has a real opening balance and no movements yet. Left
+  // there it reads as "nothing will happen", which is wrong whenever a
+  // contract or a rent falls due inside it. What is agreed is shown, kept
+  // visibly separate from what has been recorded.
+  const ahead = c?.ahead && (c.in > 0 || c.out > 0);
+  const nothingRecorded =
+    c?.ahead && cf.operatingIn === 0 && cf.operatingOut === 0 &&
+    cf.capex === 0 && cf.capital === 0;
   const row = (label, sub, amount, tone) => (
     <div className="cf-row" key={label}>
       <span>{label}{sub && <span className="cf-sub">{sub}</span>}</span>
@@ -150,21 +159,68 @@ export function CashflowView({ st, money, period }) {
           <span>Opening position<span className="cf-sub">everything recorded before this month</span></span>
           <span>{money.exact(cf.opening)}</span>
         </div>
-        {row("Received from customers", "revenue recorded this month", cf.operatingIn, "cf-in")}
-        {row("Paid out", "cost of sales, operating expenses and tax", cf.operatingOut, "cf-out")}
-        {cf.capex !== 0 && row("Equipment and capital spend", null, cf.capex, "cf-out")}
-        {cf.capital !== 0 &&
-          row("Capital", "equity, loans and draws — not trading income",
-              cf.capital, cf.capital >= 0 ? "cf-in" : "cf-out")}
-        <div className="cf-row cf-close">
-          <span>Closing position<span className="cf-sub">
-            {cf.movement >= 0 ? "up" : "down"} {money.exact(Math.abs(cf.movement))} over the month
-          </span></span>
-          <span>{money.exact(cf.closing)}</span>
-        </div>
+        {/* A month with nothing recorded in it does not need three rows of
+            zeroes and a closing line that repeats the opening. */}
+        {!nothingRecorded && (
+          <>
+            {row("Received from customers", "revenue recorded this month", cf.operatingIn, "cf-in")}
+            {row("Paid out", "cost of sales, operating expenses and tax", cf.operatingOut, "cf-out")}
+            {cf.capex !== 0 && row("Equipment and capital spend", null, cf.capex, "cf-out")}
+            {cf.capital !== 0 &&
+              row("Capital", "equity, loans and draws — not trading income",
+                  cf.capital, cf.capital >= 0 ? "cf-in" : "cf-out")}
+            <div className="cf-row cf-close">
+              <span>Closing position<span className="cf-sub">
+                {cf.movement >= 0 ? "up" : "down"} {money.exact(Math.abs(cf.movement))} over the month
+              </span></span>
+              <span>{money.exact(cf.closing)}</span>
+            </div>
+          </>
+        )}
+        {nothingRecorded && (
+          <p className="cf-none">Nothing recorded in {monthLabel(period)} yet.</p>
+        )}
+
+        {ahead && (
+          <div className="cf-committed">
+            <p className="cf-cmthead">Already agreed</p>
+            {c.runUp !== 0 && row(
+              "Committed before this month",
+              "agreed to land between now and then",
+              Math.abs(c.runUp), c.runUp >= 0 ? "cf-in" : "cf-out")}
+            {c.runUp !== 0 && (
+              <div className="cf-row cf-open">
+                <span>Projected opening<span className="cf-sub">
+                  if everything agreed up to then lands
+                </span></span>
+                <span>{money.exact(c.openingProjected)}</span>
+              </div>
+            )}
+            {c.in > 0 && row("Committed to arrive", `${c.items.filter((i) => i.direction === "in").length} scheduled`, c.in, "cf-in")}
+            {c.out > 0 && row("Committed to go out", `${c.items.filter((i) => i.direction === "out").length} scheduled`, c.out, "cf-out")}
+            <div className="cf-row cf-close">
+              <span>Projected position<span className="cf-sub">
+                if everything agreed lands as scheduled
+              </span></span>
+              <span>{money.exact(c.projectedClosing)}</span>
+            </div>
+          </div>
+        )}
+
         <p className="st-note">
-          These are the figures you have recorded, not a bank statement. Connect a
-          bank feed and this becomes a reconciled position rather than a tally.
+          {ahead ? (
+            <>
+              {monthLabel(period)} has not happened yet. The opening position is
+              carried forward from what is recorded up to now; the committed figures
+              are amounts already agreed, not money that has arrived. Recording one as
+              arrived, on the Contracts page, is what moves it into the figures above.
+            </>
+          ) : (
+            <>
+              These are the figures you have recorded, not a bank statement. Connect a
+              bank feed and this becomes a reconciled position rather than a tally.
+            </>
+          )}
         </p>
       </Panel>
       <Panel narrow title="Capital" sub="Equity, loans and draws to date">

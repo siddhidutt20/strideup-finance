@@ -569,3 +569,14 @@ export const FUTURE_CSS = `
 .fin-future-go{margin:0!important}
 .fin-help.warn{color:var(--fin-warn)}
 `;
+
+export const CASHFLOW_AHEAD_CSS = `
+.cf-committed{margin-top:14px;padding-top:12px;border-top:1px dashed var(--fin-line)}
+.cf-cmthead{margin:0 0 4px;font-size:10.5px;font-weight:700;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--fin-faint)}
+.cf-committed .cf-row.cf-close{border-top:1px solid var(--fin-line);margin-top:6px}
+`;
+
+export const CF_NONE_CSS = `
+.cf-none{margin:10px 0 2px;font-size:13px;color:var(--fin-faint);font-style:italic}
+`;
