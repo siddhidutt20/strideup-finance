@@ -763,13 +763,65 @@ financeRouter.patch(
         status: z.enum(["active", "ended"]).optional(),
         endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
         categoryId: z.number().int().positive().nullish(),
+        // A schedule read off a contract is the reader's answer, and the
+        // reader can be wrong about any part of it. All of it is correctable.
+        amount: z.number().positive().max(1e12).optional(),
+        currency: z.string().trim().length(3).optional(),
+        description: z.string().trim().min(1).max(200).optional(),
+        counterparty: z.string().trim().max(120).nullish(),
+        frequency: z.enum(["once", "weekly", "monthly", "quarterly", "annual"]).optional(),
+        startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
       })
       .safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "Nothing to change." });
-    const { status, endDate, categoryId } = parsed.data;
+    const { status, endDate, categoryId, amount, currency, description,
+            counterparty, frequency, startDate } = parsed.data;
 
-    const existing = await get("SELECT id, entity FROM fin_commitments WHERE id = ?", [id]);
+    const existing = await get(
+      "SELECT id, entity, currency, start_date, end_date FROM fin_commitments WHERE id = ?",
+      [id]
+    );
     if (!existing) return res.status(404).json({ error: "That commitment is gone." });
+
+    // The amount is stored as written and again in base currency, because
+    // base_amount_minor is the only column any total is summed from. Changing
+    // one without the other is how a corrected figure fails to reach a total.
+    if (amount !== undefined || currency !== undefined) {
+      const cur = (currency || existing.currency || config.finance.baseCurrency).toUpperCase();
+      const when = startDate || isoDate(existing.start_date);
+      const minor = amount !== undefined
+        ? toMinor(amount, cur)
+        : Number((await get("SELECT amount_minor FROM fin_commitments WHERE id = ?", [id]))
+                 ?.amount_minor ?? 0);
+      const fx = await convertToBase(minor, cur, when);
+      await run(
+        `UPDATE fin_commitments
+            SET amount_minor = ?, currency = ?, fx_rate = ?, base_amount_minor = ?
+          WHERE id = ?`,
+        [minor, cur, fx.fxRate, fx.baseAmountMinor, id]
+      );
+    }
+    if (description !== undefined) {
+      await run("UPDATE fin_commitments SET description = ? WHERE id = ?", [description, id]);
+    }
+    if (counterparty !== undefined) {
+      await run("UPDATE fin_commitments SET counterparty_id = ? WHERE id = ?", [
+        counterparty ? await findOrCreateCounterparty(counterparty) : null, id,
+      ]);
+    }
+    if (frequency !== undefined) {
+      await run("UPDATE fin_commitments SET frequency = ? WHERE id = ?", [frequency, id]);
+    }
+    if (startDate !== undefined) {
+      const end = endDate !== undefined ? endDate : (existing.end_date && isoDate(existing.end_date));
+      if (end && end < startDate) {
+        return res.status(400).json({ error: "That start date is after the agreement ends." });
+      }
+      await run(
+        "UPDATE fin_commitments SET start_date = ?, day_of_month = ? WHERE id = ?",
+        [startDate, Number(startDate.slice(8, 10)), id]
+      );
+    }
 
     if (status) await run("UPDATE fin_commitments SET status = ? WHERE id = ?", [status, id]);
     if (endDate !== undefined) {

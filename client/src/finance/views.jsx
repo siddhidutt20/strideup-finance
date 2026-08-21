@@ -125,12 +125,12 @@ export function PnlView({ st, money, period }) {
 // ── Ledger ───────────────────────────────────────────────────
 export function LedgerView({
   entries, categories, money, baseCurrency, period, scope, onScope, showEntity,
-  onFix, onRemove, onCurrency, onAmount,
+  onFix, onRemove, onCurrency, onAmount, commitments, onSchedule,
 }) {
   return (
     <>
       <Panel title={scope === "all" ? "Ledger — everything" : `Ledger — ${monthLabel(period)}`}
-             sub={`${entries.length} ${entries.length === 1 ? "entry" : "entries"}`}
+             sub={`${entries.length} ${entries.length === 1 ? "entry" : "entries"} recorded`}
              action={
                <span className="fin-scope">
                  <button className={scope === "month" ? "on" : ""}
@@ -144,7 +144,181 @@ export function LedgerView({
                      baseCurrency={baseCurrency} showEntity={showEntity} onFix={onFix}
                      onRemove={onRemove} onCurrency={onCurrency} onAmount={onAmount} />
       </Panel>
+
+      <ScheduledFromContracts commitments={commitments} categories={categories}
+                              money={money} onSchedule={onSchedule}
+                              showEntity={showEntity} />
     </>
+  );
+}
+
+// ── What a contract said would happen ────────────────────────
+// Kept below the ledger and outside it, because it is a different kind of
+// claim: the ledger is money that moved, and this is money that was agreed to
+// move. Adding a scheduled payment to the ledger would put a contract's whole
+// value into a month that has not happened, which is the fault this app was
+// built to stop.
+//
+// It is here rather than only on the schedule page because this is where you
+// come when a figure is wrong, and every part of what the reader answered —
+// the amount, the date, the rhythm, the party, the heading — is editable in
+// place. One edit reaches the forecast, the cash flow, the projected months,
+// vendor management and the schedule at once, because all of them are built
+// from these rows and nothing else.
+const FREQS = [["once", "One-off"], ["weekly", "Weekly"], ["monthly", "Monthly"],
+               ["quarterly", "Quarterly"], ["annual", "Annual"]];
+
+function ScheduledFromContracts({ commitments, categories, money, onSchedule, showEntity }) {
+  const rows = commitments ?? [];
+  return (
+    <Panel title="Scheduled from contracts and commitments"
+           sub={`${rows.length} agreed payment${rows.length === 1 ? "" : "s"} — not recorded, and not counted in any total above`}>
+      {rows.length === 0 ? (
+        <p className="fc-none">
+          Nothing is scheduled. Upload a contract on Vendor Management, or add a
+          commitment on the Forecast page, and its payments appear here.
+        </p>
+      ) : (
+        <>
+          <div className="fin-tablewrap">
+            <table className="fin-table lg-sched">
+              <thead>
+                <tr>
+                  {showEntity && <th>Books</th>}
+                  <th>What</th><th>Who</th><th>Heading</th><th>How often</th>
+                  <th>First due</th><th>Until</th>
+                  <th className="num">Each time</th><th />
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((k) => (
+                  <ScheduleRow key={k.id} k={k} categories={categories} money={money}
+                               onSchedule={onSchedule} showEntity={showEntity} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="fc-note">
+            These are agreements, not entries. Change one here and the forecast,
+            the cash flow, the projected months, vendor management and the payment
+            schedule all move with it — they are built from these rows. A payment
+            only reaches the ledger above when you mark it paid.
+          </p>
+        </>
+      )}
+    </Panel>
+  );
+}
+
+function ScheduleRow({ k, categories, money, onSchedule, showEntity }) {
+  const [edit, setEdit] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const start = edit ?? {
+    description: k.description ?? "",
+    counterparty: k.counterparty ?? "",
+    categoryId: k.categoryId ?? "",
+    frequency: k.frequency,
+    startDate: k.startDate,
+    endDate: k.endDate ?? "",
+    amount: String(majorOf(k.amountMinor, k.currency)),
+  };
+  const set = (f) => (e) => setEdit({ ...start, [f]: e.target.value });
+
+  const usable = categories.filter(
+    (c) => (c.entity === "both" || c.entity === k.entity) &&
+           (k.direction === "in" ? c.kind === "revenue" || c.kind === "capital"
+                                 : c.kind !== "revenue")
+  );
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await onSchedule.update(k.id, {
+        description: start.description.trim() || k.description,
+        counterparty: start.counterparty.trim() || null,
+        categoryId: start.categoryId ? Number(start.categoryId) : null,
+        frequency: start.frequency,
+        startDate: start.startDate,
+        endDate: start.endDate || null,
+        amount: Number(start.amount),
+        currency: k.currency,
+      });
+      setEdit(null);
+    } finally { setBusy(false); }
+  };
+
+  if (!edit) {
+    return (
+      <tr className={k.duplicateOf ? "fc-dupe" : undefined}>
+        {showEntity && <td className="lg-ent">{ENTITY_LABEL[k.entity]}</td>}
+        <td>
+          <span className={`fc-dir ${k.direction}`}>{k.direction === "in" ? "In" : "Out"}</span>
+          {k.description}
+          {k.duplicateOf && <span className="fc-dupetag">same payment as another row</span>}
+        </td>
+        <td className="fc-who">{k.counterparty || "—"}</td>
+        <td>{k.categoryName || <span className="fin-dash">uncategorised</span>}</td>
+        <td>{FREQS.find(([v]) => v === k.frequency)?.[1] ?? k.frequency}</td>
+        <td className="fc-date">{k.startDate}</td>
+        <td className="fc-date">{k.endDate || <span className="fc-open">open-ended</span>}</td>
+        <td className={`num fin-fig ${k.direction === "in" ? "fe-in" : "fe-out"}`}>
+          {k.direction === "in" ? "+" : "−"}{money.exact(k.baseAmountMinor)}
+        </td>
+        <td className="lg-acts">
+          <button className="vm-rec" onClick={() => setEdit(start)}>Edit</button>
+          <button className="vm-rec danger" onClick={() => onSchedule.remove(k)}>Delete</button>
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <tr className="lg-editing">
+      <td colSpan={showEntity ? 9 : 8}>
+        <div className="lg-editgrid">
+          <label><span>What</span>
+            <input value={start.description} onChange={set("description")} maxLength={200} /></label>
+          <label><span>Who</span>
+            <input value={start.counterparty} onChange={set("counterparty")} maxLength={120} /></label>
+          <label><span>Heading</span>
+            <select value={start.categoryId} onChange={set("categoryId")}>
+              <option value="">Uncategorised</option>
+              {SPEND_GROUPS.map((g) => {
+                const items = usable.filter((c) => c.spendGroup === g);
+                return items.length ? (
+                  <optgroup key={g} label={g}>
+                    {items.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </optgroup>
+                ) : null;
+              })}
+              {usable.some((c) => !c.spendGroup) && (
+                <optgroup label="Everything else">
+                  {usable.filter((c) => !c.spendGroup)
+                         .map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </optgroup>
+              )}
+            </select></label>
+          <label><span>How often</span>
+            <select value={start.frequency} onChange={set("frequency")}>
+              {FREQS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select></label>
+          <label><span>First due</span>
+            <input type="date" value={start.startDate} onChange={set("startDate")} /></label>
+          <label><span>Until</span>
+            <input type="date" value={start.endDate} onChange={set("endDate")} /></label>
+          <label><span>Each time ({k.currency})</span>
+            <input type="number" step="0.01" min="0.01" value={start.amount}
+                   onChange={set("amount")} /></label>
+          <div className="lg-editacts">
+            <button className="fin-btn" disabled={busy} onClick={save}>
+              {busy ? "Saving…" : "Save"}
+            </button>
+            <button className="fin-btn ghost" disabled={busy}
+                    onClick={() => setEdit(null)}>Cancel</button>
+          </div>
+        </div>
+      </td>
+    </tr>
   );
 }
 

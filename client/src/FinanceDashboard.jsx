@@ -67,6 +67,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
   const [vendors, setVendors] = useState(null);
   const [cash, setCash] = useState(null);
   const [dash, setDash] = useState(null);
+  const [dashFailed, setDashFailed] = useState(false);
   const [sides, setSides] = useState(null);
   const [invoices, setInvoices] = useState(null);
   const [paying, setPaying] = useState(null);
@@ -120,33 +121,40 @@ export default function FinanceDashboard({ owner, onLogout }) {
 
   // Forecast data is fetched only when its section is open — three more calls
   // on every dashboard load would be paid by everyone to serve one view.
+  // Nine calls, each feeding a different page. They used to be awaited
+  // together and assigned together, so one failing call left every one of them
+  // unassigned — a single 500 on the vendor list blanked the Overview, which
+  // does not use the vendor list at all. Each result is now settled and
+  // applied on its own; what fails is named, and what worked still lands.
   const loadForecast = useCallback(async () => {
-    try {
-      const [fc, cm, dd, sc, vn, cs] = await Promise.all([
-        api.finForecast(entity, 6),
-        api.finCommitments(entity),
-        api.finDue(entity, 30),
-        api.finSchedule(entity, period),
-        api.finVendors(entity),
-        api.finCash(entity, 3),
-      ]);
-      setDash(await api.finDashboard(entity, period));
-      const [rin, rout, inv] = await Promise.all([
-        api.finSide("in", entity, period),
-        api.finSide("out", entity, period),
-        api.finInvoices(entity),
-      ]);
-      setSides({ in: rin, out: rout });
-      setInvoices(inv);
-      setForecast(fc); setCommitments(cm); setDue(dd);
-      setSchedule(sc); setVendors(vn); setCash(cs);
-    } catch (err) {
-      setError(err.message || "Could not load the forecast.");
-    }
+    const jobs = [
+      ["the projection", () => api.finForecast(entity, 6), setForecast],
+      ["commitments", () => api.finCommitments(entity), setCommitments],
+      ["what is due", () => api.finDue(entity, 30), setDue],
+      ["the payment schedule", () => api.finSchedule(entity, period), setSchedule],
+      ["vendor management", () => api.finVendors(entity), setVendors],
+      ["the cash dashboard", () => api.finCash(entity, 3), setCash],
+      ["the overview", () => api.finDashboard(entity, period),
+       (v) => { setDash(v); setDashFailed(false); }],
+      ["revenue", () => api.finSide("in", entity, period), (v) => setSides((s) => ({ ...s, in: v }))],
+      ["expenses", () => api.finSide("out", entity, period), (v) => setSides((s) => ({ ...s, out: v }))],
+      ["invoices", () => api.finInvoices(entity), setInvoices],
+    ];
+    const results = await Promise.allSettled(jobs.map(([, run]) => run()));
+    const broken = [];
+    results.forEach((r, i) => {
+      if (r.status === "fulfilled") { jobs[i][2](r.value); return; }
+      broken.push(`${jobs[i][0]} (${r.reason?.message || "failed"})`);
+      if (jobs[i][0] === "the overview") setDashFailed(true);
+    });
+    setError(broken.length
+      ? `Could not load ${broken.join(", ")}. Everything else on this page is current.`
+      : "");
   }, [entity, period]);
 
   useEffect(() => {
-    if (!["forecast", "contracts", "vendors", "cashflow", "revenue", "expenses", "overview"].includes(view)
+    if (!["forecast", "contracts", "vendors", "cashflow", "revenue", "expenses",
+          "overview", "ledger"].includes(view)
         && period <= thisMonth()) return;
     loadForecast();
   }, [view, entity, period, loadForecast]);
@@ -225,6 +233,33 @@ export default function FinanceDashboard({ owner, onLogout }) {
   }
 
   const dismiss = (id) => setFeed((f) => f.filter((x) => x.id !== id));
+
+  // Every commitment across whichever books are in view, for the schedule
+  // section under the ledger.
+  const scheduledRows = useMemo(() => {
+    if (!commitments?.byEntity) return null;
+    return entityList.flatMap((e) => commitments.byEntity[e]?.commitments ?? []);
+  }, [commitments, entityList]);
+
+  // Correcting what the reader made of a contract. Everything downstream is
+  // built from these rows, so one save reaches all of it — which is why both
+  // handlers reload the forecast set rather than patching state in place.
+  const scheduleActions = useMemo(() => ({
+    update: async (id, body) => {
+      try { await api.updateCommitment(id, body); await loadForecast(); }
+      catch (err) { setError(err.message || "Could not save that change."); throw err; }
+    },
+    remove: async (k) => {
+      const what = k.counterparty || k.description || "this payment";
+      if (!window.confirm(
+        `Delete the scheduled payment "${k.description}" to ${what}?\n\n` +
+        `It stops appearing in the forecast, the cash flow and the schedule. ` +
+        `Anything already recorded as paid stays in the ledger.`
+      )) return;
+      try { await api.deleteCommitment(k.id); await loadForecast(); }
+      catch (err) { setError(err.message || "Could not delete that."); }
+    },
+  }), [loadForecast]);
 
   async function fixEntry(id, categoryId) {
     await api.finPatchEntry(id, { categoryId: Number(categoryId) });
@@ -313,7 +348,9 @@ export default function FinanceDashboard({ owner, onLogout }) {
      (statements?.period !== period || statements?.entity !== entity)) ||
     // The overview is now month-scoped too, so a month's figures are never
     // shown under another month's heading while the new ones are in flight.
-    (view === "overview" && (!dash || dash.period !== period));
+    // `dashFailed` breaks the wait: a spinner that will never resolve is
+    // indistinguishable from a page that is simply broken.
+    (view === "overview" && !dashFailed && (!dash || dash.period !== period));
   // Adding things belongs where you are looking at them: a sales invoice on
   // Revenue, a bill on Expenses.
 
@@ -437,6 +474,12 @@ export default function FinanceDashboard({ owner, onLogout }) {
         <div className="fin-boot"><div className="fin-spinner" /></div>
       ) : (
         <>
+          {view === "overview" && dashFailed && (!dash || dash.period !== period) && (
+            <div className="fin-warn">
+              The overview could not be built for {monthLabel(period)}. The message
+              above says which part failed; every other page is unaffected.
+            </div>
+          )}
           {view === "overview" && dash && dash.period === period &&
             (dash.entities ?? [entity]).map((ent) => (
             <EntityBlock key={`ov-${ent}`} show={(dash.entities ?? []).length > 1}
@@ -526,7 +569,8 @@ export default function FinanceDashboard({ owner, onLogout }) {
                         showEntity={entityList.length > 1}
                         scope={ledgerScope} onScope={setLedgerScope}
                         onFix={fixEntry} onRemove={removeEntry} onCurrency={fixCurrency}
-                        onAmount={fixAmount} />
+                        onAmount={fixAmount}
+                        commitments={scheduledRows} onSchedule={scheduleActions} />
           )}
           {view === "forecast" && (forecast && commitments ? (
             <div className={entityList.length > 1 ? "" : ""}>

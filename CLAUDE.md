@@ -124,6 +124,17 @@ that table. There is no second store, so there is nothing to reconcile between.
 | `client/src/finance/pieces.jsx` | Panels, KPI tiles, charts, ranked lists |
 | `client/src/finance/styles.js` | All CSS |
 
+## Scheduled is not recorded
+
+The ledger is money that moved. A contract's payments have not moved, so they
+are never written to `fin_entries` — a signed agreement worth 100,000 is not
+100,000 of revenue on the day it is signed. They live in `fin_commitments` and
+appear under the ledger in their own section, editable in place and excluded
+from every total on the page. Marking one paid is what moves it into the
+ledger. Everything downstream — the forecast, the cash flow, the projected
+months, vendor management, the schedule — is built from those rows, so one edit
+reaches all of them.
+
 ## Checking the numbers
 
 `scripts/audit.mjs` runs 158 cross-page reconciliations against a running
@@ -220,6 +231,14 @@ different files per case.
   legible, and inside an `overflow-x:auto` wrapper that is meant to scroll. As
   a grid item, `.fin` grew to 736px on a 390px phone instead. `min-width:0` was
   not enough; `width:100%` with `box-sizing:border-box` is what pins it.
+- **One `Promise.all` for nine unrelated calls.** A 500 on the vendor list left
+  every other result unassigned, so the Overview — which does not use the
+  vendor list — rendered nothing at all, forever. They are `allSettled` now:
+  each result is applied on its own and what failed is named on screen. Any
+  view gated on data it does not itself fetch needs a way out of the wait.
+- **`ARRAY_AGG` of a bigint comes back differently per driver.** pglite returns
+  a JS array, another driver the literal string `{20,23}`, and `.map` threw on
+  the second. Aggregate as text (`STRING_AGG(id::text, ',')`) and split it.
 - **A panel's width, not the window's.** The same donut appears at four
   different widths across the pages, and a viewport breakpoint cannot know
   which. `.fin-panel` declares `container-name: fin-panel`, and the pieces

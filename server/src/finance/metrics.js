@@ -1047,7 +1047,7 @@ export async function contractLibrary(entity) {
             MIN(k.direction) AS direction, MIN(k.entity) AS entity,
             MIN(p.name) AS counterparty, MIN(c.name) AS category_name,
             MIN(c.id) AS category_id,
-            ARRAY_AGG(k.id) AS commitment_ids,
+            STRING_AGG(k.id::text, ',') AS commitment_ids,
             BOOL_OR(k.review_status = 'needs_review') AS flagged
        FROM fin_commitments k
        JOIN fin_documents d ON d.id = k.document_id
@@ -1080,8 +1080,12 @@ export async function contractLibrary(entity) {
       categoryName: r.category_name,
       categoryId: r.category_id == null ? null : Number(r.category_id),
       // Every payment under one agreement is the same kind of spend, so the
-      // heading moves for all of them at once or not at all.
-      commitmentIds: (r.commitment_ids ?? []).map(Number),
+      // heading moves for all of them at once or not at all. Aggregated as
+      // text rather than as an array: a bigint[] comes back from one driver as
+      // a JS array and from another as the literal string "{20,23}", and the
+      // second one threw where the first did not.
+      commitmentIds: String(r.commitment_ids ?? "")
+        .split(",").map(Number).filter(Number.isFinite),
       flagged: r.flagged === true,
     });
   }

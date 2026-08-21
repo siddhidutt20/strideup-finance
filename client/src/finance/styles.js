@@ -629,6 +629,21 @@ export const VENDORS_CSS = `
 .vm-right b{font-size:13.5px;font-weight:600;font-variant-numeric:tabular-nums}
 .vm-right em{font-style:normal;font-size:11px;color:var(--fin-faint)}
 .vm-late{color:var(--fin-neg)!important;font-weight:600}
+/* The schedule under the ledger. Editing happens in the row itself, so the
+   row becomes a form rather than opening a dialog somewhere else. */
+.lg-sched{min-width:820px}
+.lg-sched .lg-ent{font-size:11.5px;color:var(--fin-muted)}
+.lg-acts{white-space:nowrap;display:flex;gap:6px}
+.lg-editing td{background:var(--fin-sunk)}
+.lg-editgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+  gap:10px 12px;align-items:end;padding:4px 0}
+.lg-editgrid label{display:flex;flex-direction:column;gap:4px;min-width:0}
+.lg-editgrid span{font-size:11px;font-weight:600;color:var(--fin-muted)}
+.lg-editgrid input,.lg-editgrid select{font-family:inherit;font-size:13px;
+  padding:7px 9px;border:1px solid var(--fin-line);border-radius:8px;
+  background:var(--fin-surface);color:var(--fin-ink);min-width:0;width:100%;
+  box-sizing:border-box}
+.lg-editacts{display:flex;gap:8px;align-items:end}
 .fc-dupe{background:color-mix(in srgb, var(--fin-out) 5%, transparent)}
 .fc-dupetag{display:inline-block;margin-left:8px;padding:2px 7px;border-radius:6px;
   font-size:10.5px;font-weight:600;letter-spacing:.01em;
