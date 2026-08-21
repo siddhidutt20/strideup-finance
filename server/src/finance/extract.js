@@ -102,7 +102,11 @@ const extraction = z.object({
 // revenue. Telling the reader which it is up front stops it guessing.
 function buildPrompt(grouped, kind) {
   const hints = config.finance.entityHints;
-  const list = (rows) => rows.map((r) => `- ${r.name}`).join("\n");
+  // The heading each category is read under, so the choice is made on what the
+  // money buys rather than on what the supplier is called.
+  const list = (rows) =>
+    rows.map((r) => `- ${r.name}${r.spend_group ? `  (reported under ${r.spend_group})` : ""}`)
+        .join("\n");
   const framing =
     kind === "contract"
       ? `You are reading a CONTRACT or AGREEMENT. It may run in either
@@ -193,6 +197,14 @@ entity_confidence rather than picking one confidently.
 Category list — pick the single best fit and copy it verbatim. The category
 you pick and the entity you pick must agree with each other.
 
+File by WHAT THE MONEY BUYS, not by who is being paid or how they are engaged.
+A freelancer, agency or consultant hired to run campaigns, ads, social, content
+or brand work is "Marketing & advertising" — being a contractor is how they are
+engaged, not what the spend is for. The contractor categories are for people
+whose work has no more specific home. The same test applies throughout: a
+developer contracted to build the product is a technology cost, a recruiter is
+a payroll cost, a lawyer is a professional fee.
+
 StrideUp categories:
 ${list(grouped.strideup)}
 
@@ -237,7 +249,7 @@ export async function extractDocument({ mime, data, kind = "expense" }) {
     : kind === "revenue" ? "('revenue')"
     : "('cogs','opex','capex','tax')";
   const cats = await all(
-    `SELECT name, entity FROM fin_categories WHERE kind IN ${kinds} ORDER BY sort`
+    `SELECT name, entity, spend_group FROM fin_categories WHERE kind IN ${kinds} ORDER BY sort`
   );
   const grouped = {
     strideup: cats.filter((c) => c.entity === "strideup"),

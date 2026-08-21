@@ -106,6 +106,16 @@ for (const ent of ["strideup","personal"]) {
   check("spend headings sum to the month's expenses",
         dash.expensesByCategory.reduce((t, c) => t + c.total, 0), dash.expenseTotal);
 
+  // Every supplier and customer row has to carry a real figure, and they have
+  // to add up to the month. A row rendering as $0.00 when money moved is the
+  // fault this catches.
+  for (const [label, sd] of [["revenue", sin], ["expenses", sout]]) {
+    const bad = sd.parties.filter((p) => !Number.isFinite(p.total) || !Number.isFinite(p.share));
+    check(`${label} by party: every row has a figure`, bad.length, 0);
+    check(`${label} by party sums to the month`,
+          sd.parties.reduce((t, p) => t + (p.total || 0), 0), sd.thisMonth);
+  }
+
   // Receivables ageing must sum to the total.
   const b=dash.receivables.buckets;
   check("receivable buckets sum to total",

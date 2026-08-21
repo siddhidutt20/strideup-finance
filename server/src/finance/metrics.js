@@ -1046,6 +1046,8 @@ export async function contractLibrary(entity) {
             SUM(k.base_amount_minor) AS total,
             MIN(k.direction) AS direction, MIN(k.entity) AS entity,
             MIN(p.name) AS counterparty, MIN(c.name) AS category_name,
+            MIN(c.id) AS category_id,
+            ARRAY_AGG(k.id) AS commitment_ids,
             BOOL_OR(k.review_status = 'needs_review') AS flagged
        FROM fin_commitments k
        JOIN fin_documents d ON d.id = k.document_id
@@ -1076,6 +1078,10 @@ export async function contractLibrary(entity) {
       entity: r.entity,
       counterparty: r.counterparty,
       categoryName: r.category_name,
+      categoryId: r.category_id == null ? null : Number(r.category_id),
+      // Every payment under one agreement is the same kind of spend, so the
+      // heading moves for all of them at once or not at all.
+      commitmentIds: (r.commitment_ids ?? []).map(Number),
       flagged: r.flagged === true,
     });
   }
@@ -1385,9 +1391,12 @@ export async function sideDetail(entity, period, direction, today = new Date()) 
       ...c, share: categoryTotal ? c.total / categoryTotal : 0,
     })),
     categoryTotal,
+    // byCounterparty calls the figure `amount`. Reading `p.total` here gave
+    // every supplier NaN, which the page rendered as $0.00 with a blank share
+    // — a month of real payments shown as nothing paid to anyone.
     parties: byParty.map((p) => ({
-      ...p, total: Number(p.total),
-      share: categoryTotal ? Number(p.total) / categoryTotal : 0,
+      ...p, total: p.amount,
+      share: categoryTotal ? p.amount / categoryTotal : 0,
     })),
     trend: series.map((m) => ({
       period: m.period, value: isIn ? m.revenue : m.expenses,

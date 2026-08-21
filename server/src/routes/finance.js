@@ -746,17 +746,36 @@ financeRouter.patch(
       .object({
         status: z.enum(["active", "ended"]).optional(),
         endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
+        categoryId: z.number().int().positive().nullish(),
       })
       .safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "Nothing to change." });
-    const { status, endDate } = parsed.data;
+    const { status, endDate, categoryId } = parsed.data;
 
-    const existing = await get("SELECT id FROM fin_commitments WHERE id = ?", [id]);
+    const existing = await get("SELECT id, entity FROM fin_commitments WHERE id = ?", [id]);
     if (!existing) return res.status(404).json({ error: "That commitment is gone." });
 
     if (status) await run("UPDATE fin_commitments SET status = ? WHERE id = ?", [status, id]);
     if (endDate !== undefined) {
       await run("UPDATE fin_commitments SET end_date = ? WHERE id = ?", [endDate || null, id]);
+    }
+    // A contract the reader filed under the wrong heading is a judgement call
+    // it got wrong, not a fact to be preserved. Only the heading moves: the
+    // amounts, the dates and everything already recorded against it stand.
+    if (categoryId !== undefined) {
+      if (categoryId !== null) {
+        const cat = await get(
+          "SELECT id, entity FROM fin_categories WHERE id = ?", [categoryId]
+        );
+        if (!cat) return res.status(400).json({ error: "No such category." });
+        if (cat.entity !== "both" && cat.entity !== existing.entity) {
+          return res.status(400).json({
+            error: `That category belongs to the ${cat.entity} books, and this ` +
+                   `agreement is on the ${existing.entity} ones.`,
+          });
+        }
+      }
+      await run("UPDATE fin_commitments SET category_id = ? WHERE id = ?", [categoryId, id]);
     }
     res.json({ ok: true, id });
   })

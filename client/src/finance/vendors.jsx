@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Panel } from "./pieces.jsx";
 import { segment as seg } from "./spend.jsx";
 import { api } from "../api.js";
-import { monthLabel, ENTITY_LABEL } from "./format.js";
+import { monthLabel, ENTITY_LABEL, SPEND_GROUPS } from "./format.js";
 
 // ── Vendor management ────────────────────────────────────────
 // A vendor here is any party you have a schedule with, in either direction.
@@ -130,7 +130,51 @@ function Expiring({ vendors, money }) {
 }
 
 // ── The contract folder ──────────────────────────────────────
-function Library({ library, money, showEntity, onReread, rereading }) {
+// The reader files a contract by what it reads on the page, and sometimes it
+// reads it wrong — a freelance marketer's retainer filed as contractor fees.
+// Changing the heading changes nothing else: the amounts, the dates and every
+// payment already recorded against the agreement stand.
+function CategoryPick({ contract, categories, onChange }) {
+  const [busy, setBusy] = useState(false);
+  const usable = categories.filter(
+    (c) => (c.entity === "both" || c.entity === contract.entity) &&
+           (contract.direction === "in"
+             ? c.kind === "revenue" || c.kind === "capital"
+             : c.kind !== "revenue")
+  );
+  const save = async (id) => {
+    setBusy(true);
+    try {
+      await Promise.all(contract.commitmentIds.map(
+        (k) => api.updateCommitment(k, { categoryId: id ? Number(id) : null })
+      ));
+      onChange?.();
+    } finally { setBusy(false); }
+  };
+  return (
+    <select className="vm-cat" disabled={busy} value={contract.categoryId ?? ""}
+            aria-label={`Category for ${contract.counterparty || contract.filename}`}
+            onChange={(e) => save(e.target.value)}>
+      <option value="">Uncategorised</option>
+      {SPEND_GROUPS.map((g) => {
+        const items = usable.filter((c) => c.spendGroup === g);
+        return items.length ? (
+          <optgroup key={g} label={g}>
+            {items.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </optgroup>
+        ) : null;
+      })}
+      {usable.some((c) => !c.spendGroup) && (
+        <optgroup label="Everything else">
+          {usable.filter((c) => !c.spendGroup)
+                 .map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </optgroup>
+      )}
+    </select>
+  );
+}
+
+function Library({ library, money, showEntity, onReread, rereading, categories, onChange }) {
   if (!library.count) {
     return (
       <p className="fc-none">
@@ -161,6 +205,7 @@ function Library({ library, money, showEntity, onReread, rereading }) {
                     {c.flagged && " · needs a look"}
                   </em>
                 </span>
+                <CategoryPick contract={c} categories={categories} onChange={onChange} />
                 <b className={`fin-fig ${c.direction === "in" ? "fe-in" : "fe-out"}`}>
                   {money.round(c.total)}
                 </b>
@@ -178,7 +223,7 @@ function Library({ library, money, showEntity, onReread, rereading }) {
   );
 }
 
-export function VendorsView({ vm, money, entity, onUpload, onRecord, busy, showEntity, onChange }) {
+export function VendorsView({ vm, money, entity, categories, onUpload, onRecord, busy, showEntity, onChange }) {
   const t = vm.totals;
   const [rereading, setRereading] = useState(null);
   const [note, setNote] = useState("");
@@ -336,6 +381,7 @@ export function VendorsView({ vm, money, entity, onUpload, onRecord, busy, showE
       <Panel title="Contract folder" sub="Every agreement on file, by the month its payments begin">
         {note && <p className="fin-ok">{note}</p>}
         <Library library={vm.library} money={money} showEntity={showEntity}
+                 categories={categories} onChange={onChange}
                  onReread={reread} rereading={rereading} />
       </Panel>
     </>

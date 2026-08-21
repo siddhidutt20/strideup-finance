@@ -617,6 +617,10 @@ export const VENDORS_CSS = `
 .vm-right b{font-size:13.5px;font-weight:600;font-variant-numeric:tabular-nums}
 .vm-right em{font-style:normal;font-size:11px;color:var(--fin-faint)}
 .vm-late{color:var(--fin-neg)!important;font-weight:600}
+.vm-cat{flex:none;max-width:190px;border:1px solid var(--fin-line);
+  background:var(--fin-surface);font-family:inherit;font-size:11.5px;
+  color:var(--fin-muted);padding:5px 8px;border-radius:8px;cursor:pointer}
+@media(max-width:700px){.vm-cat{max-width:100%;width:100%;order:5}}
 .vm-rec{flex:none;border:1px solid var(--fin-line);background:var(--fin-surface);
   font-family:inherit;font-size:11.5px;font-weight:600;color:var(--fin-muted);
   padding:5px 10px;border-radius:8px;cursor:pointer}
