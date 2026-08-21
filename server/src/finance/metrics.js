@@ -1109,6 +1109,9 @@ export async function cashDashboard(entity, months = 3, today = new Date()) {
     // Monthly net under each case: negative is money coming in, not going out.
     scenarios,
     available: !!scenarios,
+    // How many complete months it takes before best and worst mean anything.
+    minimumMonths: MIN_HISTORY,
+    monthsOfHistory: est?.monthsUsed ?? 0,
   };
 
   // ── Where the projection crosses zero ────────────────────

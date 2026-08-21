@@ -402,27 +402,43 @@ export function CashView({ ch, money, period, onGo }) {
 
         <Panel title="Runway"
                sub={r.burning ? "How long the position lasts" : "Monthly net under each case"}>
+          {/* A dash means one of two different things, and a panel of three
+              dashes above a note explaining only one of them is why this read
+              as broken. Each box now says which applies to it. */}
           <div className="ch-runway">
+            {/* Current is measured, not estimated, so it never lacks history —
+               a zero burn is the reason it is blank, and it says so. */}
             {[["Worst", r.worst, r.scenarios?.worst],
-              ["Current", r.current, r.burning ? r.monthlyBurn : null],
+              ["Current", r.current, r.monthlyBurn],
               ["Best", r.best, r.scenarios?.best]].map(([label, months, net]) => (
               <div key={label}>
                 <span>{label}</span>
                 <strong className="fin-fig">
-                  {months != null ? runwayText(r, months) : net == null ? "—" : "no burn"}
+                  {months != null ? runwayText(r, months) : "—"}
                 </strong>
-                {net != null && (
-                  <em className={net > 0 ? "fe-out" : "fe-in"}>
-                    {net > 0 ? "−" : "+"}{money.round(Math.abs(net))}/mo
-                  </em>
-                )}
+                <em className={net != null && net > 0 ? "fe-out" : net != null ? "fe-in" : ""}>
+                  {months != null
+                    ? `${money.round(Math.abs(net ?? r.monthlyBurn))} a month out`
+                    : net == null
+                      ? `needs ${r.minimumMonths ?? 3} complete months`
+                      : net > 0
+                        ? `−${money.round(net)} a month`
+                        : net === 0
+                          ? "nothing being burned"
+                          : `+${money.round(Math.abs(net))} a month — not burning`}
+                </em>
               </div>
             ))}
           </div>
           <p className="fc-note">
-            {r.burning
-              ? "Best and worst are the quartiles of what recent months actually did — not multipliers on a guess."
-              : "Recorded months are net positive, so nothing is being burned and there is no runway to run out of. The monthly figures are what each case would do."}
+            {!r.available
+              ? `Best and worst come from the spread of recent complete months, and ` +
+                `there are not yet ${r.minimumMonths ?? 3} of them. Rather than fill ` +
+                `the gap with a guess, they stay blank until there is something to ` +
+                `measure.`
+              : r.burning
+                ? "Best and worst are the quartiles of what recent months actually did — not multipliers on a guess."
+                : "Recorded months are net positive, so nothing is being burned and there is no runway to run out of. The monthly figures are what each case would do."}
           </p>
         </Panel>
       </div>

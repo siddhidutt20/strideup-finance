@@ -530,6 +530,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
                 <VendorsView vm={vendors.byEntity[ent]} money={money} entity={ent}
                              showEntity={(vendors.entities ?? []).length > 1}
                              onRecord={(u) => { setView("contracts"); }}
+                             onChange={() => { loadForecast(); load(period); }}
                              busy={busy} />
               </EntityBlock>
             ))

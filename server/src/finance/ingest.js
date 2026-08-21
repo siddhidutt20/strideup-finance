@@ -268,6 +268,7 @@ export async function ingestDocument({
   if (ex.document_type === "contract" && (ex.payment_plan?.length || ex.installments?.length)) {
     return await ingestContract({
       ex, documentId, entity, counterpartyId, categoryId, categoryName, kind, filename,
+      replace,
     });
   }
 
@@ -339,10 +340,36 @@ export async function ingestDocument({
 // re-reading the same contract cannot produce a second copy of its schedule.
 async function ingestContract({
   ex, documentId, entity, counterpartyId, categoryId, categoryName, kind, filename,
+  replace = false,
 }) {
   const direction = ex.direction ?? (kind === "revenue" ? "in" : "out");
   const doc = await get("SELECT content_hash FROM fin_documents WHERE id = ?", [documentId]);
   const hash = doc?.content_hash ?? String(documentId);
+
+  // Re-reading a contract deliberately means "read it again and use that",
+  // which is the only way to fix a schedule read badly the first time — an
+  // earlier version of this turned a twelve-month agreement into twelve
+  // separate one-off commitments. Without this the dedup key makes the second
+  // reading a no-op and the bad schedule is permanent.
+  //
+  // Only untouched commitments go. One with a payment recorded against it has
+  // a ledger entry behind it, and removing it would strand that entry.
+  let replaced = 0, kept = 0;
+  if (replace) {
+    const existing = await all(
+      `SELECT k.id,
+              (SELECT COUNT(*) FROM fin_commitment_payments p
+                WHERE p.commitment_id = k.id) AS payments
+         FROM fin_commitments k
+        WHERE k.source = 'contract' AND k.dedup_key LIKE ?`,
+      [`doc:${hash}:%`]
+    );
+    for (const row of existing) {
+      if (Number(row.payments) > 0) { kept += 1; continue; }
+      await run("DELETE FROM fin_commitments WHERE id = ?", [row.id]);
+      replaced += 1;
+    }
+  }
 
   const plan = buildPlan(ex);
 
@@ -439,6 +466,7 @@ async function ingestContract({
     contractStart: ex.contract_start,
     contractEnd: ex.contract_end,
     commitments: created,
+    replaced, kept,
     duplicate: created.length === 0,
     reviewReason: reason,
     confidence: ex.confidence,

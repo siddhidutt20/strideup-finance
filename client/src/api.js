@@ -74,6 +74,7 @@ export const api = {
     request("GET", `/finance/cash?entity=${entity}&months=${months}`),
   finVendors: (entity) => request("GET", `/finance/vendors?entity=${entity}`),
   vendorExportUrl: (entity) => `/api/finance/vendors/export.csv?entity=${entity}`,
+  rereadDoc: (id, b) => request("POST", `/finance/documents/${id}/reread`, b || {}),
   finDocUrl: (id) => `/api/finance/documents/${id}`,
   finExportUrl: () => "/api/finance/export.csv",
 };

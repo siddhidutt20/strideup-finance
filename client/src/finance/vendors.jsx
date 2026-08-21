@@ -130,7 +130,7 @@ function Expiring({ vendors, money }) {
 }
 
 // ── The contract folder ──────────────────────────────────────
-function Library({ library, money, showEntity }) {
+function Library({ library, money, showEntity, onReread, rereading }) {
   if (!library.count) {
     return (
       <p className="fc-none">
@@ -164,6 +164,11 @@ function Library({ library, money, showEntity }) {
                 <b className={`fin-fig ${c.direction === "in" ? "fe-in" : "fe-out"}`}>
                   {money.round(c.total)}
                 </b>
+                <button className="vm-rec" disabled={rereading === c.documentId}
+                        title="Read this contract again and rebuild its schedule"
+                        onClick={() => onReread(c)}>
+                  {rereading === c.documentId ? "Reading…" : "Read again"}
+                </button>
               </li>
             ))}
           </ul>
@@ -173,8 +178,28 @@ function Library({ library, money, showEntity }) {
   );
 }
 
-export function VendorsView({ vm, money, entity, onUpload, onRecord, busy, showEntity }) {
+export function VendorsView({ vm, money, entity, onUpload, onRecord, busy, showEntity, onChange }) {
   const t = vm.totals;
+  const [rereading, setRereading] = useState(null);
+  const [note, setNote] = useState("");
+
+  // Reading a contract again is how a schedule that came out wrong gets
+  // fixed — the document is already stored, so nothing needs re-uploading.
+  const reread = async (c) => {
+    setRereading(c.documentId); setNote("");
+    try {
+      const r = await api.rereadDoc(c.documentId, { kind: "contract", entityHint: c.entity });
+      const made = r.commitments?.length ?? 0;
+      setNote(r.contract
+        ? `${c.filename}: ${made} commitment${made === 1 ? "" : "s"} now` +
+          (r.replaced ? `, ${r.replaced} replaced` : "") +
+          (r.kept ? `, ${r.kept} kept because payments are recorded against them` : "")
+        : `${c.filename}: that did not read as a contract this time.`);
+      onChange?.();
+    } catch (err) {
+      setNote(err.message || "Could not read that again.");
+    } finally { setRereading(null); }
+  };
   const [q, setQ] = useState("");
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -309,7 +334,9 @@ export function VendorsView({ vm, money, entity, onUpload, onRecord, busy, showE
       </Panel>
 
       <Panel title="Contract folder" sub="Every agreement on file, by the month its payments begin">
-        <Library library={vm.library} money={money} showEntity={showEntity} />
+        {note && <p className="fin-ok">{note}</p>}
+        <Library library={vm.library} money={money} showEntity={showEntity}
+                 onReread={reread} rereading={rereading} />
       </Panel>
     </>
   );

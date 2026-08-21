@@ -251,7 +251,8 @@ financeRouter.post(
           duplicate: true,
           contract: result.contract === true,
           message: result.contract
-            ? "That contract's schedule is already recorded."
+            ? "That contract's schedule is already recorded. Choose Replace to " +
+              "read it again — useful if the schedule came out wrong."
             : "You have already uploaded this file.",
           entry: result.entry,
         });
@@ -1267,5 +1268,43 @@ financeRouter.get(
       entity: choice, entities: list, byEntity,
       baseCurrency: config.finance.baseCurrency,
     });
+  })
+);
+
+// ── Re-read a contract already on file ───────────────────────
+// The document is already stored, so this needs no upload: it reads the bytes
+// again and rebuilds the schedule from them. The reason it exists is that an
+// extraction improved after a contract was first read leaves a bad schedule
+// behind, and the dedup key makes re-uploading a no-op.
+financeRouter.post(
+  "/documents/:id/reread",
+  aiLimiter,
+  ah(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Bad id." });
+    const doc = await get(
+      "SELECT id, filename, mime, data FROM fin_documents WHERE id = ?", [id]
+    );
+    if (!doc?.data) return res.status(404).json({ error: "That document is gone." });
+
+    const kindParsed = z.enum(["expense", "revenue", "contract"])
+      .safeParse(req.body?.kind);
+    try {
+      const result = await ingestDocument({
+        filename: doc.filename, mime: doc.mime,
+        buffer: Buffer.from(doc.data, "base64"),
+        source: "upload", replace: true,
+        kind: kindParsed.success ? kindParsed.data : "contract",
+        entityHint: entityOnly.safeParse(req.body?.entityHint).success
+          ? req.body.entityHint : undefined,
+      });
+      res.json(result);
+    } catch (err) {
+      if (err.code === "AI_DISABLED") return res.status(503).json({ error: err.message });
+      if (err.code === "ANTHROPIC_ERROR") {
+        return res.status(502).json({ error: "Claude could not read that document again." });
+      }
+      throw err;
+    }
   })
 );
