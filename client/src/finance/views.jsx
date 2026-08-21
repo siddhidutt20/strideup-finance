@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api.js";
 import { Panel, Kpi, TrendChart, CategoryBars, Ranked, Receivables, CapitalList } from "./pieces.jsx";
 import { CURRENCIES, delta, fmtAmount, majorOf, monthLabel, thisMonth, today, ZERO_DECIMAL,
@@ -427,11 +427,22 @@ export function ManualEntry({
   categories, currency, onAdded, entity: entityProp = "strideup",
   defaultDirection = "out", preferKinds, title, sub,
   descPlaceholder = "Founder equity injection", whoPlaceholder = "Founder, bank, supplier…",
-  whoLabel = "Who",
+  whoLabel = "Who", openSignal = 0,
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
+  const formRef = useRef(null);
+  // Opened from the button in the page header. A counter rather than a
+  // boolean, so pressing it again while the form is already open still brings
+  // it back into view instead of doing nothing.
+  useEffect(() => {
+    if (!openSignal) return;
+    setOpen(true);
+    const id = requestAnimationFrame(() =>
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }));
+    return () => cancelAnimationFrame(id);
+  }, [openSignal]);
   const [form, setForm] = useState({
     entryDate: today(), direction: defaultDirection, amount: "",
     currency, categoryId: "", description: "", counterparty: "",
@@ -488,7 +499,7 @@ export function ManualEntry({
   }
 
   return (
-    <section className="fin-panel">
+    <section className="fin-panel" ref={formRef}>
       <div className="fin-panel-head">
         <div>
           <h2>{title || "Add an entry by hand"}</h2>

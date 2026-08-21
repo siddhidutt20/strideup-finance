@@ -57,7 +57,13 @@ that table. There is no second store, so there is nothing to reconcile between.
    then skips that occurrence — otherwise the same payment shows twice, once
    in the recorded position and again as still to come. Undoing removes the
    entry too, unless its month is closed.
-11. **Two sets of books never mix.** Every entry carries `entity` — `'strideup'`
+11. **An invoice is a claim, not revenue.** Raising one writes to
+   `fin_invoices` and nothing else — it ages under outstanding payments.
+   Recording payment against it is what writes the ledger entry, keyed
+   `invoice:<id>:<date>:<amount>`, in the month the money landed. Part
+   payments leave the balance outstanding and still ageing. The same rule
+   contracts follow: agreed is not arrived.
+12. **Two sets of books never mix.** Every entry carries `entity` — `'strideup'`
    or `'personal'`. Every aggregate in `metrics.js` filters on it. Picking
    "Both" returns two separate blocks under `byEntity`; it never sums them.
    There is no entity whose profit a combined figure would represent.

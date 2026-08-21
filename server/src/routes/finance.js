@@ -6,7 +6,7 @@ import { requireOwner } from "../auth.js";
 import { aiLimiter } from "../security.js";
 import { config } from "../config.js";
 import { ah, isoDate } from "../util.js";
-import { ACCEPTED_MIME, sniffMime, toMinor } from "../finance/extract.js";
+import { ACCEPTED_MIME, sniffMime, toMinor, fromMinor } from "../finance/extract.js";
 import { ENTITIES, ENTITY_LABEL, FREQUENCIES } from "../finance/schema.js";
 import { ingestDocument, learnRule, resolvePeriod, findOrCreateCounterparty, convertToBase } from "../finance/ingest.js";
 import { importGhlCsv } from "../finance/ghl.js";
@@ -1084,5 +1084,163 @@ financeRouter.get(
       entity: choice, entities: list, period, direction, byEntity,
       baseCurrency: config.finance.baseCurrency,
     });
+  })
+);
+
+// ── Invoices ─────────────────────────────────────────────────
+// An invoice you have issued is money owed to you. It is not revenue and it
+// is not cash: it is a claim. So creating one writes nothing to the ledger —
+// it appears under outstanding payments and starts ageing. Recording it as
+// paid is what turns it into revenue, in the month the money actually landed,
+// which is the same rule contracts follow.
+const invoiceSchema = z.object({
+  entity: entityOnly.optional(),
+  customer: z.string().trim().min(1).max(160),
+  number: z.string().trim().max(80).optional(),
+  amount: z.coerce.number().positive(),
+  currency: z.string().length(3).optional(),
+  issueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
+  url: z.string().trim().max(500).nullish(),
+});
+
+financeRouter.get(
+  "/invoices",
+  ah(async (req, res) => {
+    const { choice, list } = resolveEntities(req.query.entity);
+    const rows = (await Promise.all(list.map((ent) =>
+      all(
+        `SELECT id, source, external_id, customer, issue_date, due_date,
+                amount_minor, paid_minor, currency, status, entity, url
+           FROM fin_invoices WHERE entity = ?
+          ORDER BY issue_date DESC, id DESC LIMIT 200`, [ent]
+      )
+    ))).flat();
+    res.json({
+      entity: choice, entities: list,
+      invoices: rows.map((r) => ({
+        id: Number(r.id), source: r.source, number: r.external_id,
+        customer: r.customer, issueDate: isoDate(r.issue_date),
+        dueDate: r.due_date ? isoDate(r.due_date) : null,
+        amountMinor: Number(r.amount_minor), paidMinor: Number(r.paid_minor),
+        outstanding: Number(r.amount_minor) - Number(r.paid_minor),
+        currency: r.currency, status: r.status, entity: r.entity, url: r.url,
+      })),
+      baseCurrency: config.finance.baseCurrency,
+    });
+  })
+);
+
+financeRouter.post(
+  "/invoices",
+  ah(async (req, res) => {
+    const parsed = invoiceSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Fill in who it is for, how much, and when." });
+    }
+    const b = parsed.data;
+    if (b.dueDate && b.dueDate < b.issueDate) {
+      return res.status(400).json({ error: "The due date is before the issue date." });
+    }
+    const entity = b.entity || "strideup";
+    const currency = (b.currency || config.finance.baseCurrency).toUpperCase();
+    const minor = toMinor(b.amount, currency);
+    const number = b.number?.trim() || `INV-${Date.now().toString(36).toUpperCase()}`;
+
+    const clash = await get(
+      "SELECT id FROM fin_invoices WHERE source = 'manual' AND external_id = ?",
+      [number]
+    );
+    if (clash) {
+      return res.status(409).json({ error: `Invoice ${number} already exists.` });
+    }
+
+    const rs = await run(
+      `INSERT INTO fin_invoices
+         (source, external_id, customer, issue_date, due_date,
+          amount_minor, currency, status, entity, url)
+       VALUES ('manual', ?, ?, ?, ?, ?, ?, 'sent', ?, ?) RETURNING id`,
+      [number, b.customer, b.issueDate, b.dueDate || null,
+       minor, currency, entity, b.url || null]
+    );
+    res.status(201).json({ id: lastId(rs), number });
+  })
+);
+
+// Recording payment is what makes it revenue. Partial payments are allowed:
+// the balance keeps ageing and the invoice stays open.
+financeRouter.post(
+  "/invoices/:id/payments",
+  ah(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Bad id." });
+    const parsed = z
+      .object({
+        amount: z.coerce.number().positive().optional(),
+        paidDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        categoryId: z.coerce.number().int().positive().optional(),
+      })
+      .safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "How much, and when?" });
+
+    const inv = await get("SELECT * FROM fin_invoices WHERE id = ?", [id]);
+    if (!inv) return res.status(404).json({ error: "That invoice is gone." });
+
+    const outstanding = Number(inv.amount_minor) - Number(inv.paid_minor);
+    if (outstanding <= 0) return res.status(409).json({ error: "That invoice is already settled." });
+
+    const when = parsed.data.paidDate || isoDate(new Date());
+    const minor = parsed.data.amount != null
+      ? toMinor(parsed.data.amount, inv.currency)
+      : outstanding;
+    if (minor > outstanding) {
+      return res.status(422).json({
+        error: `That is more than the ${inv.currency} ` +
+               `${fromMinor(outstanding, inv.currency).toLocaleString()} still outstanding.`,
+      });
+    }
+
+    const { period } = await resolvePeriod(when, inv.entity);
+    const fx = await convertToBase(minor, inv.currency, when);
+    const paidSoFar = Number(inv.paid_minor) + minor;
+
+    await run(
+      `INSERT INTO fin_entries
+         (entry_date, direction, amount_minor, currency, fx_rate, base_amount_minor,
+          counterparty_id, category_id, description, dedup_key, confidence,
+          review_status, period, entity)
+       VALUES (?, 'in', ?,?,?,?,?,?,?,?,1,'approved',?,?)
+       ON CONFLICT (dedup_key) DO NOTHING`,
+      [
+        when, minor, inv.currency, fx.fxRate, fx.baseAmountMinor,
+        inv.customer ? await findOrCreateCounterparty(inv.customer, "customer") : null,
+        parsed.data.categoryId ?? null,
+        `${inv.customer || "Invoice"} — ${inv.external_id}`,
+        `invoice:${id}:${when}:${minor}`, period, inv.entity,
+      ]
+    );
+    await run(
+      "UPDATE fin_invoices SET paid_minor = ?, status = ?, updated_at = now() WHERE id = ?",
+      [paidSoFar, paidSoFar >= Number(inv.amount_minor) ? "paid" : "partial", id]
+    );
+    res.status(201).json({ ok: true, id, paidMinor: paidSoFar });
+  })
+);
+
+financeRouter.delete(
+  "/invoices/:id",
+  ah(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Bad id." });
+    const inv = await get("SELECT paid_minor FROM fin_invoices WHERE id = ?", [id]);
+    if (!inv) return res.status(404).json({ error: "That invoice is gone." });
+    if (Number(inv.paid_minor) > 0) {
+      return res.status(409).json({
+        error: "Money has been recorded against this invoice. Remove those ledger " +
+               "entries first if it really needs deleting.",
+      });
+    }
+    await run("DELETE FROM fin_invoices WHERE id = ?", [id]);
+    res.json({ ok: true });
   })
 );

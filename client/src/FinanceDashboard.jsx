@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api.js";
-import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS, FUTURE_CSS, CASHFLOW_AHEAD_CSS, CF_NONE_CSS, VENDORS_CSS, CASH_CSS, CONTRACTS_GROUP_CSS, SIDE_CSS, CASH_BAND_CSS, NARROW_FIX_CSS } from "./finance/styles.js";
+import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS, FUTURE_CSS, CASHFLOW_AHEAD_CSS, CF_NONE_CSS, VENDORS_CSS, CASH_CSS, CONTRACTS_GROUP_CSS, SIDE_CSS, CASH_BAND_CSS, NARROW_FIX_CSS, INVOICE_CSS } from "./finance/styles.js";
 import {
   fmtAmount, monthLabel, readFile, shiftMonth, thisMonth, useMoney, ZERO_DECIMAL,
   ENTITY_LABEL, ENTITY_CHOICES, loadEntity, saveEntity,
@@ -14,6 +14,7 @@ import { ContractsView } from "./finance/contracts.jsx";
 import { VendorsView } from "./finance/vendors.jsx";
 import { CashView } from "./finance/cash.jsx";
 import { SideView } from "./finance/side.jsx";
+import { NewInvoice, PayInvoice, InvoiceList } from "./finance/invoice.jsx";
 import { DueSoon } from "./finance/spend.jsx";
 import { Panel } from "./finance/pieces.jsx";
 import { ICONS } from "./finance/icons.jsx";
@@ -61,6 +62,10 @@ export default function FinanceDashboard({ owner, onLogout }) {
   const [vendors, setVendors] = useState(null);
   const [cash, setCash] = useState(null);
   const [sides, setSides] = useState(null);
+  const [invoices, setInvoices] = useState(null);
+  const [raising, setRaising] = useState(false);
+  const [paying, setPaying] = useState(null);
+  const [manualOpen, setManualOpen] = useState(0);
   const setEntity = (v) => { saveEntity(v); setEntityState(v); };
   const [busy, setBusy] = useState(false);
 
@@ -118,11 +123,13 @@ export default function FinanceDashboard({ owner, onLogout }) {
         api.finVendors(entity),
         api.finCash(entity, 3),
       ]);
-      const [rin, rout] = await Promise.all([
+      const [rin, rout, inv] = await Promise.all([
         api.finSide("in", entity, period),
         api.finSide("out", entity, period),
+        api.finInvoices(entity),
       ]);
       setSides({ in: rin, out: rout });
+      setInvoices(inv);
       setForecast(fc); setCommitments(cm); setDue(dd);
       setSchedule(sc); setVendors(vn); setCash(cs);
     } catch (err) {
@@ -239,6 +246,15 @@ export default function FinanceDashboard({ owner, onLogout }) {
     }
   }
 
+  async function removeInvoice(inv) {
+    if (!window.confirm(
+      `Remove invoice ${inv.number} for ${inv.customer}?\n\nNothing has been ` +
+      `recorded against it, so no ledger entry is affected.`
+    )) return;
+    try { await api.deleteInvoice(inv.id); loadForecast(); }
+    catch (err) { setError(err.message || "Could not remove that invoice."); }
+  }
+
   async function removeEntry(entry) {
     const what = entry.description || entry.counterparty || "this entry";
     const amount = fmtAmount(entry.currency, entry.amount_minor);
@@ -259,7 +275,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
         {/* Joined in JS, not as three JSX children: a <style> element with
             several text children does not reliably end up with all of them in
             the DOM, and the symptom is a stylesheet that silently truncates. */}
-        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS}</style>
+        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS}</style>
         <div className="fin-boot"><div className="fin-spinner" /></div>
       </div>
     );
@@ -297,7 +313,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
 
   return (
     <div className="fin-app">
-      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS}</style>
+      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS}</style>
 
       <aside className="fin-side" aria-label="Sections">
         <div className="fin-sidebrand">
@@ -349,6 +365,21 @@ export default function FinanceDashboard({ owner, onLogout }) {
             </p>
           </div>
           <div className="fin-headctl">
+            {(view === "revenue" || view === "expenses") && (
+              <span className="fin-headacts">
+                <a className="fin-btn ghost" href={api.finExportUrl()}
+                   title="Every entry, as a spreadsheet">Export</a>
+                {view === "revenue" ? (
+                  <button className="fin-btn" onClick={() => setRaising(true)}>
+                    + New invoice
+                  </button>
+                ) : (
+                  <button className="fin-btn" onClick={() => setManualOpen((n) => n + 1)}>
+                    + New expense
+                  </button>
+                )}
+              </span>
+            )}
             <div className="fin-entnav" role="group" aria-label="Which books">
               {ENTITY_CHOICES.map((e) => (
                 <button key={e} className={entity === e ? "on" : ""}
@@ -384,7 +415,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
       )}
 
       {MANUAL[view] && !waiting && (
-        <ManualEntry key={view} categories={categories}
+        <ManualEntry key={view} categories={categories} openSignal={manualOpen}
                      currency={data?.baseCurrency || "USD"}
                      entity={entity === "both" ? "strideup" : entity}
                      onAdded={() => load(period)} {...MANUAL[view]} />
@@ -420,6 +451,13 @@ export default function FinanceDashboard({ owner, onLogout }) {
                         trend={trendFor(ent)} />
             </EntityBlock>
           ))}
+          {view === "revenue" && invoices && (
+            <Panel title="Invoices raised"
+                   sub="Money owed to you — becomes revenue when you record it as paid">
+              <InvoiceList invoices={invoices.invoices} money={money} busy={busy}
+                           onPay={setPaying} onDelete={removeInvoice} />
+            </Panel>
+          )}
           {view === "expenses" && sides?.out && (sides.out.entities ?? [entity]).map((ent) => (
             <EntityBlock key={ent} show={(sides.out.entities ?? []).length > 1}
                          label={sides.out.byEntity[ent].label}>
@@ -506,6 +544,17 @@ export default function FinanceDashboard({ owner, onLogout }) {
           </>
         )}
       </div>
+
+      {raising && (
+        <NewInvoice entity={entity} currency={data?.baseCurrency || "USD"}
+                    onClose={() => setRaising(false)}
+                    onSaved={() => { setRaising(false); loadForecast(); load(period); }} />
+      )}
+      {paying && (
+        <PayInvoice invoice={paying} categories={categories} money={money}
+                    onClose={() => setPaying(null)}
+                    onSaved={() => { setPaying(null); loadForecast(); load(period); }} />
+      )}
     </div>
   );
 }

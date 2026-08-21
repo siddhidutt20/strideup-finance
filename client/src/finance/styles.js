@@ -791,3 +791,23 @@ export const NARROW_FIX_CSS = `
 .cf-row > span:last-child{flex:0 0 auto;margin-left:auto}
 .fin-chart,.fin-svg{max-width:100%}
 `;
+
+export const INVOICE_CSS = `
+.fin-headacts{display:inline-flex;align-items:center;gap:8px}
+.fin-headacts .fin-btn{padding:8px 14px;font-size:13px;white-space:nowrap;
+  text-decoration:none;display:inline-flex;align-items:center}
+.iv-dialog{max-width:520px}
+.iv-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+.iv-grid label.wide{grid-column:1 / -1}
+.iv-grid label{display:flex;flex-direction:column;gap:5px;font-size:12.5px;
+  font-weight:600;color:var(--fin-muted)}
+.iv-grid label em{font-style:normal;font-weight:400;color:var(--fin-faint)}
+.iv-grid input,.iv-grid select{font-family:inherit;font-size:14px;padding:9px 11px;
+  border-radius:10px;border:1px solid var(--fin-line);background:var(--fin-surface);
+  color:var(--fin-ink)}
+.iv-grid input:focus,.iv-grid select:focus{outline:none;border-color:var(--fin-accent)}
+.iv-table{min-width:760px}
+.iv-actions{white-space:nowrap;display:flex;gap:6px;align-items:center}
+.iv-table td em.vm-late{display:block;font-style:normal;font-size:10.5px}
+@media(max-width:520px){.iv-grid{grid-template-columns:1fr}}
+`;
