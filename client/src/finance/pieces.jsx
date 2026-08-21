@@ -231,3 +231,112 @@ export function CapitalList({ capital, money }) {
     </>
   );
 }
+
+// ── Several series over the same months ──────────────────────
+// Recorded months are solid with filled dots; months past today carry what is
+// committed and are drawn dashed with hollow dots, split by a marked divider.
+// The two are the same line because they are the same measure, and they are
+// drawn differently because one happened and the other is only agreed.
+//
+// Colours: #5B21B6 / #0FA3C7 / #eda100 — worst all-pairs ΔE 21.4 under
+// protanopia, 28.8 under normal vision. The legend labels every series, which
+// is the relief the two lightest hues need on a light surface.
+export const LINE_COLOURS = ["#5B21B6", "#0FA3C7", "#eda100"];
+
+export function MultiLine({ points, series, money, aheadFrom, height = 210 }) {
+  const [hover, setHover] = useState(null);
+  const W = 780, H = height, L = 52, R = 10, T = 14, B = 30;
+  const n = points.length;
+  if (!n) return <p className="fc-none">Nothing to plot yet.</p>;
+
+  const max = Math.max(1, ...points.flatMap((p) => series.map((s) => p[s.key] ?? 0)));
+  // A round ceiling, so the gridline labels are numbers a person would say.
+  const step = Math.pow(10, Math.floor(Math.log10(max)));
+  const top = Math.ceil(max / step) * step || 1;
+  const x = (i) => L + (n === 1 ? (W - L - R) / 2 : ((W - L - R) * i) / (n - 1));
+  const y = (v) => T + (H - T - B) * (1 - (v ?? 0) / top);
+
+  const aheadIdx = aheadFrom == null ? n : points.findIndex((p) => p.period === aheadFrom);
+  const cut = aheadIdx < 0 ? n : aheadIdx;
+  const path = (key, from, to) =>
+    points.slice(from, to)
+          .map((p, i) => `${i ? "L" : "M"}${x(from + i)},${y(p[key])}`)
+          .join(" ");
+
+  return (
+    <div className="fin-chart">
+      <div className="fin-legend">
+        {series.map((s, i) => (
+          <span key={s.key}>
+            <i className="ml-key" style={{ background: s.colour ?? LINE_COLOURS[i] }} />
+            {s.label}
+          </span>
+        ))}
+        {cut < n && <span><i className="ml-key ahead" />Committed, not yet recorded</span>}
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="fin-svg ml-svg" role="img"
+           aria-label={series.map((s) => s.label).join(", ") + " by month"}>
+        {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+          <g key={t}>
+            <line x1={L} x2={W - R} y1={y(top * t)} y2={y(top * t)} className="fin-grid-line" />
+            <text x={L - 8} y={y(top * t) + 3.5} className="ml-ylab">
+              {money.compact ? money.compact(top * t) : Math.round(top * t / 100)}
+            </text>
+          </g>
+        ))}
+        {cut > 0 && cut < n && (
+          <>
+            <line x1={x(cut - 1)} x2={x(cut - 1)} y1={T} y2={H - B} className="ml-divide" />
+            <text x={x(cut - 1) - 6} y={T + 8} className="ml-band" textAnchor="end">Recorded</text>
+            <text x={x(cut - 1) + 6} y={T + 8} className="ml-band">Committed</text>
+          </>
+        )}
+        {series.map((s, si) => {
+          const c = s.colour ?? LINE_COLOURS[si];
+          return (
+            <g key={s.key}>
+              <path d={path(s.key, 0, cut)} fill="none" stroke={c} strokeWidth={s.weight ?? 2.2}
+                    strokeLinejoin="round" strokeLinecap="round" />
+              {cut > 0 && cut < n && (
+                <path d={path(s.key, cut - 1, n)} fill="none" stroke={c}
+                      strokeWidth={s.weight ?? 2.2}
+                      strokeDasharray="5 4" strokeLinejoin="round" strokeLinecap="round" />
+              )}
+              {points.map((p, i) => (
+                <circle key={p.period} cx={x(i)} cy={y(p[s.key])} r={hover === i ? 4.5 : 3}
+                        fill={i >= cut ? "var(--fin-surface)" : c} stroke={c} strokeWidth="1.8" />
+              ))}
+            </g>
+          );
+        })}
+        {points.map((p, i) => (
+          <rect key={p.period} x={x(i) - (W - L - R) / (2 * Math.max(n - 1, 1))} y={0}
+                width={(W - L - R) / Math.max(n - 1, 1)} height={H} fill="transparent"
+                onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} />
+        ))}
+        {points.map((p, i) => (
+          (n <= 8 || i % Math.ceil(n / 8) === 0 || i === n - 1) ? (
+            <text key={`l-${p.period}`} x={x(i)} y={H - 10}
+                  className={`fin-xlab${i >= cut ? " ahead" : ""}`}>
+              {monthLabel(p.period, true).split(" ")[0]}
+            </text>
+          ) : null
+        ))}
+      </svg>
+      <div className="fin-tip" aria-live="polite">
+        {hover != null ? (
+          <>
+            <strong>{monthLabel(points[hover].period)}</strong>
+            {series.map((s, si) => (
+              <span key={s.key}>
+                <i style={{ background: s.colour ?? LINE_COLOURS[si] }} />
+                {money.exact(points[hover][s.key] ?? 0)}
+              </span>
+            ))}
+            {hover >= cut && <span className="fin-tip-ahead">committed, not recorded</span>}
+          </>
+        ) : <span className="fin-tip-idle">Hover a month for exact figures</span>}
+      </div>
+    </div>
+  );
+}

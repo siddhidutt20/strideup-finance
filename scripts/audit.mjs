@@ -116,6 +116,43 @@ for (const ent of ["strideup","personal"]) {
           sd.parties.reduce((t, p) => t + (p.total || 0), 0), sd.thisMonth);
   }
 
+  // The two detail pages, on their own figures.
+  for (const [label, sd] of [["revenue", sin], ["expenses", sout]]) {
+    // The month the page headlines must be the month the split chart plots.
+    const here = sd.split.find((m) => m.period === P);
+    check(`${label} split chart agrees with the month`, here.total, sd.thisMonth);
+    check(`${label} split: fixed + variable = total`, here.fixed + here.variable, here.total);
+    check(`${label} split: fixed = the contract-linked figure`, here.fixed, sd.fixed);
+
+    // Fixed against variable must not count one payment on both sides.
+    check(`${label} variable parties sum to the variable half`,
+          sd.variableParties.reduce((t, p) => t + p.total, 0), sd.variable);
+
+    // Ranked categories are the same rows the donut draws.
+    check(`${label} ranked = category total`,
+          sd.ranked.reduce((t, r) => t + r.total, 0), sd.categoryTotal);
+
+    // Due and late are disjoint, and together they are everything in the window.
+    const both = [...sd.upcoming, ...sd.overdue];
+    check(`${label}: nothing is both upcoming and late`,
+          new Set(both.map((u) => `${u.commitmentId}:${u.date}`)).size, both.length);
+    check(`${label} upcoming total = its own rows`,
+          sd.upcoming.reduce((t, u) => t + u.amount, 0), sd.upcomingTotal);
+    check(`${label} late total = its own rows`,
+          sd.overdue.reduce((t, u) => t + u.amount, 0), sd.overdueTotal);
+  }
+  // Committed months on the expenses chart must match the forecast's.
+  for (const m of sout.split.filter((x) => x.ahead)) {
+    const f = fc.months.find((x) => x.period === m.period);
+    if (f) check(`  expenses chart ${m.period.slice(0, 7)} = forecast committed out`,
+                 m.total, f.committedOut);
+  }
+  for (const m of sin.split.filter((x) => x.ahead)) {
+    const f = fc.months.find((x) => x.period === m.period);
+    if (f) check(`  revenue chart ${m.period.slice(0, 7)} = forecast committed in`,
+                 m.total, f.committedIn);
+  }
+
   // Receivables ageing must sum to the total.
   const b=dash.receivables.buckets;
   check("receivable buckets sum to total",

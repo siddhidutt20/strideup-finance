@@ -126,7 +126,7 @@ that table. There is no second store, so there is nothing to reconcile between.
 
 ## Checking the numbers
 
-`scripts/audit.mjs` runs 106 cross-page reconciliations against a running
+`scripts/audit.mjs` runs 158 cross-page reconciliations against a running
 server: every headline figure against the ledger it came from, and against
 the same figure wherever else it appears. It catches the class of fault that
 matters most here — two pages disagreeing about one number — which no unit
@@ -220,6 +220,15 @@ different files per case.
   legible, and inside an `overflow-x:auto` wrapper that is meant to scroll. As
   a grid item, `.fin` grew to 736px on a 390px phone instead. `min-width:0` was
   not enough; `width:100%` with `box-sizing:border-box` is what pins it.
+- **A panel's width, not the window's.** The same donut appears at four
+  different widths across the pages, and a viewport breakpoint cannot know
+  which. `.fin-panel` declares `container-name: fin-panel`, and the pieces
+  inside it — the donut and its legend, the fixed/variable columns — stack on
+  `@container fin-panel (max-width: …)`. A legend squeezed to zero-width names
+  is what a viewport query gave instead.
+- **A single 100% donut slice drew nothing.** An arc from 0° to 360° starts and
+  ends at the same point, so the path is degenerate. One slice is a stroked
+  circle, not a segment.
 - **Five headings, not five categories.** Company spend is read under Payroll,
   Tech, Marketing, Operations and G&A. That is a lens over the chart of
   accounts (`fin_categories.spend_group`), not a replacement for it: the entry

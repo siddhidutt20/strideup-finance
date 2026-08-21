@@ -76,7 +76,13 @@ export function SpendByCategory({ rows, money, period, total, title }) {
       <div className="sp-donut">
         <svg viewBox={`0 0 ${S} ${S}`} role="img"
              aria-label={title || "Spending by category"}>
-          {arcs.map((a) => (
+          {/* One category is the whole ring, and an arc whose start and end are
+              the same point draws nothing at all. A full ring is a stroked
+              circle, not a segment. */}
+          {arcs.length === 1 ? (
+            <circle cx={C} cy={C} r={(R + RI) / 2} fill="none"
+                    stroke={arcs[0].colour} strokeWidth={R - RI} className="sp-seg" />
+          ) : arcs.map((a) => (
             <path key={a.name} d={segment(C, C, focus?.name === a.name ? R + 4 : R, RI, a.from, a.to)}
                   fill={a.colour} className="sp-seg"
                   onMouseEnter={() => setHover(a.name)}

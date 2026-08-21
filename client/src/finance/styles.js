@@ -187,7 +187,8 @@ export const FIN_CSS = `
 .fin-closebox{margin-top:22px;padding-top:18px;border-top:1px solid var(--fin-hair)}
 .fin-closebox h3{font-family:var(--fin-display);font-weight:600;font-size:16px;margin:0 0 6px}
 .fin-panel{background:var(--fin-surface);border:1px solid var(--fin-line);border-radius:14px;
-  padding:20px 22px;margin-bottom:14px;scroll-margin-top:64px}
+  padding:20px 22px;margin-bottom:14px;scroll-margin-top:64px;
+  container-type:inline-size;container-name:fin-panel}
 .fin-panel-head{display:flex;align-items:baseline;justify-content:space-between;gap:14px;
   margin-bottom:16px}
 .fin-panel-head h2{font-family:var(--fin-display);font-weight:600;font-size:19px;
@@ -372,7 +373,7 @@ export const STATEMENT_CSS = `
 // weight carry the difference, so the distinction survives greyscale, print
 // and every kind of colour vision.
 export const FORECAST_CSS = `
-.fin-twocol{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px}
+.fin-twocol{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;align-items:start}
 
 /* KPI cards */
 .fc-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin:0 0 18px}
@@ -447,7 +448,18 @@ export const FORECAST_CSS = `
 .fc-open{color:var(--fin-faint);font-style:italic}
 
 /* Spending donut */
+/* The donut and its legend sit side by side only where the legend has room
+   for a category name. Below that the name is squeezed to nothing — a legend
+   with no names identifies nothing — so the two stack instead. A container
+   query, not a viewport one: what matters is the width of THIS panel, and the
+   same panel appears at four different widths across the pages. The query is
+   declared on the panel because a container cannot query itself. */
 .sp-wrap{display:grid;grid-template-columns:auto minmax(0,1fr);gap:20px;align-items:center}
+@container fin-panel (max-width: 470px){
+  .sp-wrap{grid-template-columns:minmax(0,1fr)}
+  .sp-donut{justify-self:center}
+  .sp-name{overflow:visible;white-space:normal}
+}
 .sp-donut svg{width:190px;height:190px;display:block}
 .sp-seg{transition:.14s;cursor:default}
 .sp-centre-fig{text-anchor:middle;font-size:19px;font-weight:600;fill:var(--fin-ink);
@@ -462,7 +474,7 @@ export const FORECAST_CSS = `
 .sp-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   color:var(--fin-ink)}
 .sp-list li:has(.sp-parts){align-items:flex-start}
-.sp-list li:has(.sp-parts) .sp-name{overflow:visible;text-overflow:clip}
+.sp-list li:has(.sp-parts) .sp-name{overflow:visible;text-overflow:clip;white-space:normal}
 .sp-parts{display:block;font-style:normal;font-size:11px;line-height:1.45;
   color:var(--fin-faint);white-space:normal;margin-top:1px}
 .sp-share{color:var(--fin-faint);font-variant-numeric:tabular-nums;font-size:11.5px}
@@ -625,7 +637,13 @@ export const VENDORS_CSS = `
 .vm-cat{flex:none;max-width:190px;border:1px solid var(--fin-line);
   background:var(--fin-surface);font-family:inherit;font-size:11.5px;
   color:var(--fin-muted);padding:5px 8px;border-radius:8px;cursor:pointer}
-@media(max-width:700px){.vm-cat{max-width:100%;width:100%;order:5}}
+@media(max-width:700px){
+  .vm-cat{max-width:100%;width:100%;order:5}
+  .vm-lib li .fc-dir{order:1}
+  .vm-file{order:2;flex:1 1 100%}
+  .vm-lib li b{order:3}
+  .vm-lib li .vm-rec{order:6;flex:1 1 auto}
+}
 .vm-rec{flex:none;border:1px solid var(--fin-line);background:var(--fin-surface);
   font-family:inherit;font-size:11.5px;font-weight:600;color:var(--fin-muted);
   padding:5px 10px;border-radius:8px;cursor:pointer}
@@ -662,7 +680,10 @@ export const VENDORS_CSS = `
   font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--fin-muted)}
 .vm-lib h4 span{background:var(--fin-sunk);border-radius:99px;padding:1px 7px;font-size:10.5px}
 .vm-lib ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1px}
-.vm-lib li{display:flex;align-items:center;gap:11px;padding:8px;border-radius:9px}
+/* Filename, category, amount and two buttons do not fit one line on a phone.
+   The row wraps rather than pushing the page wider than the screen. */
+.vm-lib li{display:flex;flex-wrap:wrap;align-items:center;gap:11px;padding:8px;
+  border-radius:9px}
 .vm-lib li:hover{background:var(--fin-sunk)}
 .vm-file{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.35}
 .vm-file a{font-size:13px;font-weight:600;color:var(--fin-accent);text-decoration:none;
@@ -766,6 +787,51 @@ export const SIDE_CSS = `
 .sd-windows strong{font-size:18px;font-weight:600;letter-spacing:-.02em}
 .sd-upcoming{border-top:1px solid var(--fin-hair);padding-top:8px!important}
 @media(max-width:520px){.sd-windows{grid-template-columns:1fr}}
+
+/* Five headline figures, then five performance figures under the chart. Both
+   rows step down the same way, so the page keeps one rhythm at every width. */
+.sd-kpis,.sd-stats{grid-template-columns:repeat(5,minmax(0,1fr))}
+.sd-stats{margin:0 0 18px}
+@media(max-width:1320px){.sd-kpis,.sd-stats{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:820px){.sd-kpis,.sd-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:460px){.sd-kpis,.sd-stats{grid-template-columns:minmax(0,1fr)}}
+
+.sd-was{color:var(--fin-faint)}
+.sd-fv{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.sd-fv h5{margin:0 0 8px;padding-bottom:7px;border-bottom:1px solid var(--fin-hair);
+  font-size:12px;font-weight:600;color:var(--fin-muted);display:flex;
+  align-items:baseline;justify-content:space-between;gap:10px}
+.sd-fv h5 b{font-size:16px;font-weight:600;color:var(--fin-ink);letter-spacing:-.015em}
+/* Two lists side by side leave no room for a long vendor name on one line;
+   wrapping beats truncating to "Pathworks Experience N…". */
+.sd-fv .vm-what b{white-space:normal;overflow:visible;text-overflow:clip}
+/* Two lists of vendor names side by side need real width, and this panel is
+   half the page at 1400px but a third of it at 1100. The panel's own width is
+   what decides, not the window's. */
+@container fin-panel (max-width: 460px){
+  .sd-fv{grid-template-columns:minmax(0,1fr)}
+  .sd-windows{grid-template-columns:minmax(0,1fr)}
+}
+
+.sd-insights{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:9px}
+.sd-insights li{position:relative;padding-left:24px;font-size:13px;line-height:1.6;
+  color:var(--fin-ink)}
+.sd-insights li::before{content:"";position:absolute;left:0;top:6px;width:14px;height:14px;
+  border-radius:5px;background:color-mix(in srgb, var(--fin-accent) 14%, transparent)}
+.sd-insights li::after{content:"";position:absolute;left:4.5px;top:9.5px;width:4px;height:7px;
+  border:solid var(--fin-accent);border-width:0 1.8px 1.8px 0;transform:rotate(45deg)}
+
+/* The multi-series chart. The gutter holds a compact axis label, and the
+   divider says where recorded stops and committed starts. */
+.ml-svg{overflow:visible}
+.ml-ylab{font-size:9.5px;fill:var(--fin-faint);text-anchor:end;font-family:inherit;
+  font-variant-numeric:tabular-nums}
+.ml-divide{stroke:var(--fin-line);stroke-width:1;stroke-dasharray:3 3}
+.ml-band{font-size:9px;fill:var(--fin-faint);font-family:inherit;letter-spacing:.04em;
+  text-transform:uppercase}
+.fin-legend i.ml-key{width:15px;height:3px;border-radius:2px}
+.fin-legend i.ml-key.ahead{background:none;height:0;
+  border-top:2px dashed var(--fin-faint);border-radius:0}
 `;
 
 export const CASH_BAND_CSS = `

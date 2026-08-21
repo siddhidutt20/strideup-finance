@@ -1395,7 +1395,8 @@ async function invoiceStats(entity, period, today) {
   // Days to collect is only answerable for invoices that were actually
   // settled; an unpaid one has no collection date to measure to.
   const days = await get(
-    `SELECT AVG(EXTRACT(EPOCH FROM (updated_at::date - issue_date)) / 86400) AS d,
+    // Subtracting two dates in Postgres is already a count of days.
+    `SELECT AVG(updated_at::date - issue_date) AS d,
             COUNT(*) AS n
        FROM fin_invoices
       WHERE paid_minor >= amount_minor AND amount_minor > 0
@@ -1477,6 +1478,25 @@ export async function sideDetail(entity, period, direction, today = new Date()) 
   const fixed = Number(linked?.total ?? 0);
   const variable = Math.max(0, thisMonth - fixed);
 
+  // Who the variable half actually went to. The same provable split as the
+  // total — an entry posted from a commitment carries a dedup key saying so —
+  // because listing every party under "everything else" put the contract
+  // payments in both columns and made the two add up to twice the month.
+  const variableParties = (
+    await all(
+      `SELECT COALESCE(p.name, 'Unattributed') AS name,
+              SUM(e.base_amount_minor) AS total, COUNT(*) AS n
+         FROM fin_entries e
+         LEFT JOIN fin_counterparties p ON p.id = e.counterparty_id
+        WHERE e.review_status <> 'rejected' AND e.period = ? AND e.direction = ?
+          AND (e.dedup_key IS NULL OR e.dedup_key NOT LIKE 'commitment:%')${ENT(entity)}
+        GROUP BY 1
+        ORDER BY 2 DESC
+        LIMIT 10`,
+      [period, direction, ...ENT_ARG(entity)]
+    )
+  ).map((r) => ({ name: r.name, total: Number(r.total), count: Number(r.n) }));
+
   // What the schedule said should happen this month, recorded or not. Kept
   // separate from the above because it answers a different question.
   const monthCommitted = commitmentsForMonth(commitments, period, null, settled);
@@ -1499,8 +1519,58 @@ export async function sideDetail(entity, period, direction, today = new Date()) 
   const due = await dueSoon(entity, 30, today);
   const upcoming = (isIn ? due.incoming : due.payable);
 
+  // Thirteen months behind on what was recorded, then three ahead on what is
+  // committed. Fixed and variable are split per month the same provable way
+  // the current month is split, so the chart and the panel below it cannot
+  // disagree.
+  const recorded = await splitTrend(entity, direction, 13, thisPeriod, today);
+  const ahead = committedTrend(commitments, settled, thisPeriod, 4, direction, asOf)
+    .slice(1);
+  const split = [...recorded, ...ahead];
+
+  // The invoice book, and how it is performing. Money-out has no invoice book
+  // of its own — a bill is somebody else's invoice — so this is null there.
+  const invoices = isIn ? await invoiceTrend(entity, 13, thisPeriod) : null;
+  const stats = isIn ? await invoiceStats(entity, period, today) : null;
+
+  // The two headline categories, ranked, with what each did last month beside
+  // it. Not a budget: there are no budgets, so there is no variance to show.
+  const prevBreakdown = await categoryBreakdown(addMonths(period, -1), entity);
+  const prevRows = prevBreakdown
+    .filter((r) => kinds.includes(r.kind) && r.direction === direction)
+    .map((r) => ({ name: r.name, group: r.group, total: r.amount, count: r.count }));
+  const prevCats = isIn ? prevRows : groupSpend(prevRows);
+  const prevByName = new Map(prevCats.map((c) => [c.name, c.total]));
+  const ranked = categories.map((c) => {
+    const before = prevByName.get(c.name) ?? 0;
+    return {
+      ...c,
+      lastMonth: before,
+      change: before ? (c.total - before) / before : null,
+      share: categoryTotal ? c.total / categoryTotal : 0,
+    };
+  });
+
+  // Burn: what the last three complete months actually averaged, and what next
+  // month is already committed to. One is history, the other is agreement —
+  // neither is a forecast of the whole month, and the page says so.
+  const complete = recorded.filter((m) => m.period < thisPeriod).slice(-3);
+  const averageMonth = complete.length
+    ? Math.round(complete.reduce((t, m) => t + m.total, 0) / complete.length)
+    : 0;
+  const nextCommitted = ahead.length ? ahead[0].total : 0;
+
   return {
     entity, period, direction, asOf,
+    split, invoices, stats,
+    ranked,
+    burn: {
+      averageMonth,
+      months: complete.length,
+      nextCommitted,
+      nextPeriod: addMonths(thisPeriod, 1),
+      change: averageMonth ? (nextCommitted - averageMonth) / averageMonth : null,
+    },
     thisMonth, lastMonth,
     change: lastMonth ? (thisMonth - lastMonth) / Math.abs(lastMonth) : null,
     categories: categories.map((c) => ({
@@ -1518,12 +1588,16 @@ export async function sideDetail(entity, period, direction, today = new Date()) 
       period: m.period, value: isIn ? m.revenue : m.expenses,
     })),
     expected: { d30: windowTotal(30), d60: windowTotal(60), d90: windowTotal(90) },
-    fixed, variable, scheduled,
+    fixed, variable, variableParties, scheduled,
     fixedShare: thisMonth ? fixed / thisMonth : null,
     recurring: recurring.slice(0, 8),
     recurringMonthly: recurring.reduce((t, r) => t + r.monthlyEquivalent, 0),
-    upcoming: upcoming.slice(0, 8),
-    upcomingTotal: upcoming.reduce((t, u) => t + u.amount, 0),
+    // Still to come and already late are two different facts, and a panel
+    // headed "the next 30 days" listing a payment from May is neither. They
+    // are separated here rather than left to each page to filter.
+    upcoming: upcoming.filter((u) => u.status !== "overdue").slice(0, 10),
+    upcomingTotal: upcoming.filter((u) => u.status !== "overdue")
+                           .reduce((t, u) => t + u.amount, 0),
     overdue: upcoming.filter((u) => u.status === "overdue"),
     overdueTotal: upcoming.filter((u) => u.status === "overdue")
                           .reduce((t, u) => t + u.amount, 0),

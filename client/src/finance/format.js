@@ -41,10 +41,16 @@ export function useMoney(currency) {
     const opts = { style: "currency", currency };
     const round = new Intl.NumberFormat(undefined, { ...opts, maximumFractionDigits: 0 });
     const exact = new Intl.NumberFormat(undefined, { ...opts, minimumFractionDigits: 2 });
+    // Axis labels have to fit in a gutter, so $16,399 becomes $16K. Only ever
+    // used where the exact figure is one hover away.
+    const compact = new Intl.NumberFormat(undefined, {
+      ...opts, notation: "compact", maximumFractionDigits: 1,
+    });
     return {
       currency,
       round: (minor) => round.format(majorOf(minor, currency)),
       exact: (minor) => exact.format(majorOf(minor, currency)),
+      compact: (minor) => compact.format(majorOf(minor, currency)),
     };
   }, [currency]);
 }
