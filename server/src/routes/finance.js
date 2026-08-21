@@ -11,10 +11,11 @@ import { ENTITIES, ENTITY_LABEL, FREQUENCIES } from "../finance/schema.js";
 import { ingestDocument, learnRule, resolvePeriod, findOrCreateCounterparty, convertToBase } from "../finance/ingest.js";
 import { importGhlCsv } from "../finance/ghl.js";
 import {
-  monthStart, periodSummary, categoryBreakdown, trend, cashPosition,
+  monthStart, addMonths, periodSummary, categoryBreakdown, trend, cashPosition,
   burnAndRunway, receivables, capitalPosition, reviewCount,
   profitAndLoss, cashflow, byCounterparty, forecast, activeCommitments, dueSoon,
-  contractSchedule, occurrencesIn, commitmentsForMonth, paymentMap, committedRunUp,
+  contractSchedule, occurrencesIn, occKey, statusOf, outstandingOn, commitmentsForMonth, paymentMap, committedRunUp,
+  vendorManagement, contractLibrary,
 } from "../finance/metrics.js";
 
 export const financeRouter = express.Router();
@@ -196,7 +197,9 @@ const uploadSchema = z.object({
   // has chosen to replace it.
   replace: z.boolean().optional(),
   // Which way the money went — a bill received, or an invoice issued.
-  kind: z.enum(["expense", "revenue"]).optional(),
+  // "contract" is neither until the document says so — an agreement can be
+  // money coming in or going out, and the reader works that out from the terms.
+  kind: z.enum(["expense", "revenue", "contract"]).optional(),
   // Which books you were looking at. Used only when the reader is unsure —
   // a rule always wins, and a confident reading beats the hint.
   entityHint: entityOnly.optional(),
@@ -458,8 +461,23 @@ financeRouter.delete(
     }
 
     await run("DELETE FROM fin_entries WHERE id = ?", [id]);
+
+    // The document goes with the entry only if nothing else still needs it. A
+    // contract's commitments point at the file they were read from, and the
+    // contract folder is that file — deleting an unrelated ledger row must not
+    // take the agreement with it. Foreign keys would have nulled the reference
+    // silently, leaving a schedule with no document behind it.
     if (entry.document_id) {
-      await run("DELETE FROM fin_documents WHERE id = ?", [entry.document_id]);
+      const stillUsed = await get(
+        `SELECT
+           (SELECT COUNT(*) FROM fin_entries      WHERE document_id = ?) AS entries,
+           (SELECT COUNT(*) FROM fin_commitments  WHERE document_id = ?) AS commitments`,
+        [entry.document_id, entry.document_id]
+      );
+      const used = Number(stillUsed?.entries ?? 0) + Number(stillUsed?.commitments ?? 0);
+      if (used === 0) {
+        await run("DELETE FROM fin_documents WHERE id = ?", [entry.document_id]);
+      }
     }
     res.json({ ok: true });
   })
@@ -832,7 +850,7 @@ financeRouter.post(
         dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
         paidDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
         amount: z.coerce.number().positive().optional(),
-        status: z.enum(["paid", "waived"]).optional(),
+        status: z.enum(["paid", "partial", "waived"]).optional(),
       })
       .safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "Which payment, and when?" });
@@ -866,7 +884,7 @@ financeRouter.post(
     let minor = Number(k.amount_minor);
     let baseMinor = Number(k.base_amount_minor);
 
-    if (status === "paid") {
+    if (status === "paid" || status === "partial") {
       // A payment can land for a different amount than the schedule said —
       // a part payment, a rounded transfer, a rate that moved. What is
       // recorded is what arrived, not what was expected.
@@ -901,7 +919,7 @@ financeRouter.post(
          (commitment_id, due_date, paid_date, entry_id, status,
           amount_minor, base_amount_minor, matched_by)
        VALUES (?,?,?,?,?,?,?, 'manual')`,
-      [id, dueDate, status === "paid" ? when : null, entryId, status, minor, baseMinor]
+      [id, dueDate, status === "waived" ? null : when, entryId, status, minor, baseMinor]
     );
     res.status(201).json({ ok: true, id, dueDate, status, entryId });
   })
@@ -945,5 +963,89 @@ financeRouter.delete(
       [id, dueDate]
     );
     res.json({ ok: true });
+  })
+);
+
+// ── Vendor management ────────────────────────────────────────
+financeRouter.get(
+  "/vendors",
+  ah(async (req, res) => {
+    const { choice, list } = resolveEntities(req.query.entity);
+    const byEntity = {};
+    for (const ent of list) {
+      byEntity[ent] = {
+        label: ENTITY_LABEL[ent],
+        ...(await vendorManagement(ent)),
+        library: await contractLibrary(ent),
+      };
+    }
+    res.json({
+      entity: choice, entities: list, byEntity,
+      baseCurrency: config.finance.baseCurrency,
+    });
+  })
+);
+
+// ── Export ───────────────────────────────────────────────────
+// Every scheduled payment, one row each, with what was agreed and what
+// actually happened against it. A spreadsheet is where this goes next, so the
+// shape is flat and the dates are plain ISO — nothing here needs parsing back
+// out of a formatted string.
+financeRouter.get(
+  "/vendors/export.csv",
+  ah(async (req, res) => {
+    const { list } = resolveEntities(req.query.entity);
+    const asOf = isoDate(new Date());
+    const cell = (v) => {
+      const t = v == null ? "" : String(v);
+      return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+    };
+    const money = (minor, currency) =>
+      (Number(minor || 0) / (["JPY", "KRW", "VND"].includes(currency) ? 1 : 100)).toFixed(2);
+
+    const lines = [[
+      "books", "vendor", "relationship", "contract", "category", "source",
+      "due_date", "currency", "scheduled_amount", "scheduled_base",
+      "status", "paid_date", "paid_base", "outstanding_base", "document_id",
+    ].join(",")];
+
+    for (const ent of list) {
+      const commitments = await activeCommitments(ent);
+      const settled = await paymentMap(ent);
+      const thisPeriod = monthStart();
+      for (const k of commitments) {
+        for (let i = -18; i <= 18; i++) {
+          const period = addMonths(thisPeriod, i);
+          for (const occ of occurrencesIn(k, period)) {
+            const rec = settled.get(occKey(k.id, occ.date));
+            const scheduled = Number(k.base_amount_minor);
+            lines.push([
+              ent,
+              k.counterparty || "Unattributed",
+              k.direction === "in" ? "they pay" : "we pay",
+              k.description,
+              k.category_name || "",
+              k.source,
+              occ.date,
+              k.currency,
+              money(k.amount_minor, k.currency),
+              money(scheduled, config.finance.baseCurrency),
+              statusOf(occ.date, asOf, rec),
+              rec?.paidDate || "",
+              money(rec?.amount ?? 0, config.finance.baseCurrency),
+              money(outstandingOn(scheduled, rec), config.finance.baseCurrency),
+              k.document_id ?? "",
+            ].map(cell).join(","));
+          }
+        }
+      }
+    }
+
+    res.setHeader("content-type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "content-disposition",
+      `attachment; filename="strideup-vendors-${asOf}.csv"`
+    );
+    res.send(lines.join("\n"));
   })
 );

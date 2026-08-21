@@ -363,6 +363,11 @@ async function ingestContract({
   if (!categoryId) reasons.push("no matching category");
   const reason = reasons.join("; ") || null;
 
+  const lastInstallment = ex.installments
+    .map((x) => x.due_date)
+    .sort()
+    .at(-1);
+
   const created = [];
   for (const [i, inst] of ex.installments.entries()) {
     const minor = toMinor(inst.amount, ex.currency);
@@ -370,6 +375,16 @@ async function ingestContract({
     const label = inst.label?.trim()
       ? `${ex.vendor_name} — ${inst.label.trim()}`
       : `${ex.vendor_name} — installment ${i + 1} of ${ex.installments.length}`;
+    // Each installment is a single dated commitment, but its end_date is the
+    // agreement's end, not its own due date. Storing the due date there made
+    // every installment look like an agreement expiring that day, so a
+    // contract running to March 2027 reported as "ending in 25 days" the
+    // moment its first payment came round. Never earlier than the installment
+    // itself, or the occurrence would fall outside its own window.
+    const agreementEnd =
+      ex.contract_end && ex.contract_end >= inst.due_date
+        ? ex.contract_end
+        : lastInstallment;
     const rs = await run(
       `INSERT INTO fin_commitments
          (entity, direction, description, counterparty_id, category_id,
@@ -382,7 +397,7 @@ async function ingestContract({
       [
         entity, direction, label.slice(0, 200), counterpartyId, categoryId,
         minor, ex.currency, fx.fxRate, fx.baseAmountMinor,
-        inst.due_date, inst.due_date, documentId,
+        inst.due_date, agreementEnd, documentId,
         ex.confidence, reason ? "needs_review" : "ok", reason,
         `doc:${hash}:${inst.due_date}:${i}`,
       ]
@@ -395,6 +410,18 @@ async function ingestContract({
 
   await run(
     "UPDATE fin_documents SET parse_error = NULL WHERE id = ?", [documentId]
+  );
+
+  // The schedule already existing is the normal outcome of re-reading a
+  // contract, and nothing needs doing. But a commitment can end up pointing at
+  // no document — an earlier version of the delete route took the file with an
+  // unrelated ledger row — and re-uploading is exactly how someone would try
+  // to fix that. So the link is repaired rather than left dangling.
+  await run(
+    `UPDATE fin_commitments SET document_id = ?
+      WHERE source = 'contract' AND document_id IS NULL
+        AND dedup_key LIKE ?`,
+    [documentId, `doc:${hash}:%`]
   );
 
   return {

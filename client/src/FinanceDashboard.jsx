@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api.js";
-import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS, FUTURE_CSS, CASHFLOW_AHEAD_CSS, CF_NONE_CSS } from "./finance/styles.js";
+import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS, FUTURE_CSS, CASHFLOW_AHEAD_CSS, CF_NONE_CSS, VENDORS_CSS } from "./finance/styles.js";
 import {
   fmtAmount, monthLabel, readFile, shiftMonth, thisMonth, useMoney, ZERO_DECIMAL,
   ENTITY_LABEL, ENTITY_CHOICES, loadEntity, saveEntity,
@@ -11,6 +11,7 @@ import {
 } from "./finance/views.jsx";
 import { ForecastView } from "./finance/forecast.jsx";
 import { ContractsView } from "./finance/contracts.jsx";
+import { VendorsView } from "./finance/vendors.jsx";
 import { DueSoon } from "./finance/spend.jsx";
 import { Panel } from "./finance/pieces.jsx";
 import { ICONS } from "./finance/icons.jsx";
@@ -26,7 +27,9 @@ const VIEWS = [
   ["expenses", "Expenses", "Expenses", "Where the money went in"],
   ["cashflow", "Cash flow", "Cash flow", "What actually moved in"],
   ["forecast", "Forecast", "Forecast", "What is already committed, from"],
-  ["contracts", "Contracts", "Contracts", "Every agreed payment, around"],
+  ["vendors", "Vendor Management", "Vendor Management",
+   "Parties, contracts and payments, around"],
+  ["contracts", "Payment schedule", "Payment schedule", "Every agreed payment, around"],
   ["pnl", "P&L", "Profit and loss", "The statement for"],
   ["ledger", "Ledger", "Ledger", "Every entry in"],
   ["tools", "Import & close", "Import and close", "Bring in revenue, and settle"],
@@ -53,6 +56,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
   const [commitments, setCommitments] = useState(null);
   const [due, setDue] = useState(null);
   const [schedule, setSchedule] = useState(null);
+  const [vendors, setVendors] = useState(null);
   const setEntity = (v) => { saveEntity(v); setEntityState(v); };
   const [busy, setBusy] = useState(false);
 
@@ -102,20 +106,21 @@ export default function FinanceDashboard({ owner, onLogout }) {
   // on every dashboard load would be paid by everyone to serve one view.
   const loadForecast = useCallback(async () => {
     try {
-      const [fc, cm, dd, sc] = await Promise.all([
+      const [fc, cm, dd, sc, vn] = await Promise.all([
         api.finForecast(entity, 6),
         api.finCommitments(entity),
         api.finDue(entity, 30),
         api.finSchedule(entity),
+        api.finVendors(entity),
       ]);
-      setForecast(fc); setCommitments(cm); setDue(dd); setSchedule(sc);
+      setForecast(fc); setCommitments(cm); setDue(dd); setSchedule(sc); setVendors(vn);
     } catch (err) {
       setError(err.message || "Could not load the forecast.");
     }
   }, [entity]);
 
   useEffect(() => {
-    if (!["forecast", "contracts", "overview"].includes(view) && period <= thisMonth()) return;
+    if (!["forecast", "contracts", "vendors", "overview"].includes(view) && period <= thisMonth()) return;
     loadForecast();
   }, [view, entity, period, loadForecast]);
 
@@ -242,7 +247,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
         {/* Joined in JS, not as three JSX children: a <style> element with
             several text children does not reliably end up with all of them in
             the DOM, and the symptom is a stylesheet that silently truncates. */}
-        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS}</style>
+        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS}</style>
         <div className="fin-boot"><div className="fin-spinner" /></div>
       </div>
     );
@@ -258,7 +263,8 @@ export default function FinanceDashboard({ owner, onLogout }) {
     (statements?.period !== period || statements?.entity !== entity);
   // Adding things belongs where you are looking at them: a sales invoice on
   // Revenue, a bill on Expenses.
-  const UPLOAD_VIEWS = { overview: "expense", revenue: "revenue", expenses: "expense", ledger: "expense" };
+  const UPLOAD_VIEWS = { overview: "expense", revenue: "revenue", expenses: "expense",
+                         ledger: "expense", vendors: "contract" };
   const uploadKind = UPLOAD_VIEWS[view];
   const showUpload = !!uploadKind;
   const MANUAL = {
@@ -279,7 +285,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
 
   return (
     <div className="fin-app">
-      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS}</style>
+      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS}</style>
 
       <aside className="fin-side" aria-label="Sections">
         <div className="fin-sidebrand">
@@ -450,6 +456,17 @@ export default function FinanceDashboard({ owner, onLogout }) {
               ))}
             </div>
           ) : <div className="fin-boot"><div className="fin-spinner" /></div>)}
+          {view === "vendors" && (vendors ? (
+            (vendors.entities ?? [entity]).map((ent) => (
+              <EntityBlock key={ent} show={(vendors.entities ?? []).length > 1}
+                           label={vendors.byEntity[ent].label}>
+                <VendorsView vm={vendors.byEntity[ent]} money={money} entity={ent}
+                             showEntity={(vendors.entities ?? []).length > 1}
+                             onRecord={(u) => { setView("contracts"); }}
+                             busy={busy} />
+              </EntityBlock>
+            ))
+          ) : <div className="fin-boot"><div className="fin-spinner" /></div>)}
           {view === "contracts" && (schedule ? (
             (schedule.entities ?? [entity]).map((ent) => (
               <EntityBlock key={ent} show={(schedule.entities ?? []).length > 1}
@@ -535,6 +552,12 @@ const DROP_COPY = {
   expense: {
     title: "Drop invoices and receipts here",
     body: "Bills and receipts for things you paid for. Read, categorised, and added to the month automatically.",
+  },
+  contract: {
+    title: "Drop contracts and agreements here",
+    body: "Retainers, service agreements, subscriptions, leases. The payment " +
+          "schedule is read off the terms and filed below — whether the money " +
+          "comes to you or goes out is worked out from the document.",
   },
 };
 

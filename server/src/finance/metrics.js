@@ -428,8 +428,11 @@ export function commitmentsForMonth(commitments, period, afterDate = null, settl
   for (const k of commitments) {
     for (const occ of occurrencesIn(k, period)) {
       if (afterDate && occ.date <= afterDate) continue; // already in the ledger
-      if (settled?.has(occKey(k.id, occ.date))) continue;
-      const amount = Number(k.base_amount_minor);
+      const rec = settled?.get(occKey(k.id, occ.date));
+      // A part payment leaves the rest still owed, so it is not skipped — only
+      // the portion that actually arrived is taken out.
+      const amount = outstandingOn(Number(k.base_amount_minor), rec);
+      if (amount <= 0) continue;
       if (k.direction === "in") committedIn += amount;
       else committedOut += amount;
       items.push({
@@ -732,14 +735,29 @@ export async function paymentMap(entity) {
   return m;
 }
 
-// paid — settled, and now a real ledger entry.
+// paid — settled in full, and now a real ledger entry.
+// partial — some of it arrived; the remainder is still owed and still counts
+//   as committed, which is why it cannot simply be treated as paid.
 // waived — written off deliberately; it is not coming and is not a debt.
 // overdue — the date has passed and nothing was recorded.
 // due — still ahead.
 export function statusOf(dueDate, asOf, settled) {
   if (settled?.status === "paid") return "paid";
+  if (settled?.status === "partial") return "partial";
   if (settled?.status === "waived") return "waived";
   return dueDate < asOf ? "overdue" : "due";
+}
+
+// What is still owed on an occurrence, given whatever has been recorded
+// against it. Full payment and a waiver both leave nothing; a part payment
+// leaves the difference.
+export function outstandingOn(scheduledMinor, settled) {
+  if (!settled) return scheduledMinor;
+  if (settled.status === "paid" || settled.status === "waived") return 0;
+  if (settled.status === "partial") {
+    return Math.max(0, scheduledMinor - (settled.amount ?? 0));
+  }
+  return scheduledMinor;
 }
 
 // ── The contract schedule ────────────────────────────────────
@@ -766,11 +784,15 @@ export async function contractSchedule(entity, monthsBack = 2, monthsAhead = 9, 
         period,
         occurrences: occs.map((o) => {
           const settled = paid.get(occKey(k.id, o.date));
+          const scheduled = Number(k.base_amount_minor);
           return {
             date: o.date,
             status: statusOf(o.date, asOf, settled),
             paidDate: settled?.paidDate ?? null,
-            amount: settled?.amount ?? Number(k.base_amount_minor),
+            scheduled,
+            paid: settled?.amount ?? 0,
+            outstanding: outstandingOn(scheduled, settled),
+            amount: settled?.amount ?? scheduled,
             matchedBy: settled?.matchedBy ?? null,
           };
         }),
@@ -839,4 +861,185 @@ export function committedRunUp(commitments, settled, fromPeriod, toPeriod, asOf)
     p = addMonths(p, 1);
   }
   return total;
+}
+
+// ── Vendor management ────────────────────────────────────────
+// Everything the page needs in one call: who you deal with, which way the
+// money goes with each of them, what has been settled, what is late, and
+// which agreements are about to run out.
+//
+// "Vendor" here means any party on a commitment, in either direction. A
+// university paying you and a landlord you pay are the same kind of record —
+// a relationship with a schedule attached — and splitting them into two
+// concepts would mean maintaining the same thing twice.
+
+const YEAR_START = (today) => `${today.toISOString().slice(0, 4)}-01-01`;
+
+export async function vendorManagement(entity, today = new Date(), horizonDays = 30) {
+  const asOf = isoDate(today);
+  const yearStart = YEAR_START(today);
+  const horizon = isoDate(new Date(today.getTime() + horizonDays * 86400000));
+  const commitments = await activeCommitments(entity);
+  const settled = await paymentMap(entity);
+
+  // Two years of occurrences either side is enough to answer "what is next",
+  // "what is late" and "what has been settled this year" without walking a
+  // schedule that may be open-ended.
+  const thisPeriod = monthStart(today);
+  const periods = [];
+  for (let i = -18; i <= 18; i++) periods.push(addMonths(thisPeriod, i));
+
+  const vendors = new Map();
+  const tally = { paid: 0, partial: 0, unpaid: 0, overdue: 0 };
+  const pending = [];
+
+  for (const k of commitments) {
+    const name = k.counterparty || "Unattributed";
+    const key = `${name}::${k.entity}`;
+    if (!vendors.has(key)) {
+      vendors.set(key, {
+        name, entity: k.entity, contracts: 0, directions: new Set(),
+        categories: new Set(), currencies: new Set(),
+        paidThisYear: 0, outstanding: 0, overdue: 0,
+        next: null, lastPaid: null, endsOn: null, fromContract: false,
+      });
+    }
+    const v = vendors.get(key);
+    v.contracts += 1;
+    v.directions.add(k.direction);
+    if (k.category_name) v.categories.add(k.category_name);
+    v.currencies.add(k.currency);
+    if (k.source === "contract") v.fromContract = true;
+    const end = k.end_date ? isoDate(k.end_date) : null;
+    if (end && (!v.endsOn || end < v.endsOn)) v.endsOn = end;
+
+    for (const period of periods) {
+      for (const occ of occurrencesIn(k, period)) {
+        const rec = settled.get(occKey(k.id, occ.date));
+        const status = statusOf(occ.date, asOf, rec);
+        const scheduled = Number(k.base_amount_minor);
+        const owed = outstandingOn(scheduled, rec);
+
+        if (status === "paid" || status === "partial") {
+          const got = rec?.amount ?? scheduled;
+          if ((rec?.paidDate ?? occ.date) >= yearStart) v.paidThisYear += got;
+          if (!v.lastPaid || (rec?.paidDate ?? occ.date) > v.lastPaid) {
+            v.lastPaid = rec?.paidDate ?? occ.date;
+          }
+          if (status === "paid") tally.paid += got; else tally.partial += got;
+        }
+        if (owed > 0) {
+          v.outstanding += owed;
+          if (occ.date < asOf) { v.overdue += owed; tally.overdue += owed; }
+          else tally.unpaid += owed;
+          if (!v.next || occ.date < v.next.date) {
+            v.next = { date: occ.date, amount: owed, direction: k.direction, status };
+          }
+          if (occ.date <= horizon) {
+            pending.push({
+              commitmentId: Number(k.id), vendor: name, entity: k.entity,
+              description: k.description, date: occ.date, amount: owed,
+              scheduled, direction: k.direction, status,
+              daysAway: Math.round((Date.parse(occ.date) - Date.parse(asOf)) / 86400000),
+            });
+          }
+        }
+      }
+    }
+  }
+
+  pending.sort((a, b) => a.date.localeCompare(b.date));
+
+  const rows = [...vendors.values()]
+    .map((v) => ({
+      ...v,
+      relationship:
+        v.directions.size > 1 ? "both" : v.directions.has("in") ? "in" : "out",
+      directions: undefined,
+      categories: [...v.categories],
+      currencies: [...v.currencies],
+      daysToEnd: v.endsOn
+        ? Math.round((Date.parse(v.endsOn) - Date.parse(asOf)) / 86400000)
+        : null,
+    }))
+    .sort((a, b) => (b.outstanding + b.paidThisYear) - (a.outstanding + a.paidThisYear));
+
+  const expiring = rows
+    .filter((v) => v.daysToEnd != null && v.daysToEnd >= 0 && v.daysToEnd <= 90)
+    .sort((a, b) => a.daysToEnd - b.daysToEnd);
+
+  return {
+    entity, asOf, horizonDays, yearStart,
+    vendors: rows,
+    pending: pending.slice(0, 40),
+    expiring,
+    tally,
+    totals: {
+      vendors: rows.length,
+      contracts: commitments.length,
+      // Split, because "38 payments pending" reads as a full inbox while
+      // "12 of them are already late" is the part that needs acting on. Rolled
+      // together, months of arrears hide inside a figure labelled "next 30 days".
+      pendingCount: pending.length,
+      pendingAmount: pending.reduce((t, p) => t + p.amount, 0),
+      dueCount: pending.filter((p) => p.status !== "overdue").length,
+      dueAmount: pending.filter((p) => p.status !== "overdue")
+                        .reduce((t, p) => t + p.amount, 0),
+      overdueCount: pending.filter((p) => p.status === "overdue").length,
+      overdueAmount: pending.filter((p) => p.status === "overdue")
+                            .reduce((t, p) => t + p.amount, 0),
+      paidInYear: rows.filter((v) => v.relationship !== "out")
+                      .reduce((t, v) => t + v.paidThisYear, 0),
+      paidOutYear: rows.filter((v) => v.relationship === "out")
+                       .reduce((t, v) => t + v.paidThisYear, 0),
+    },
+  };
+}
+
+// ── The contract folder ──────────────────────────────────────
+// Every document that produced a schedule, grouped by the month it was filed
+// under, so the agreements themselves can be found rather than only their
+// consequences.
+export async function contractLibrary(entity) {
+  const rows = await all(
+    `SELECT d.id, d.filename, d.mime, d.byte_size, d.received_at,
+            MIN(k.start_date) AS first_due, MAX(COALESCE(k.end_date, k.start_date)) AS last_due,
+            COUNT(k.id) AS installments,
+            SUM(k.base_amount_minor) AS total,
+            MIN(k.direction) AS direction, MIN(k.entity) AS entity,
+            MIN(p.name) AS counterparty, MIN(c.name) AS category_name,
+            BOOL_OR(k.review_status = 'needs_review') AS flagged
+       FROM fin_commitments k
+       JOIN fin_documents d ON d.id = k.document_id
+       LEFT JOIN fin_counterparties p ON p.id = k.counterparty_id
+       LEFT JOIN fin_categories c ON c.id = k.category_id
+      WHERE k.source = 'contract'${entity && entity !== "both" ? " AND k.entity = ?" : ""}
+      GROUP BY d.id, d.filename, d.mime, d.byte_size, d.received_at
+      ORDER BY MIN(k.start_date) DESC`,
+    entity && entity !== "both" ? [entity] : []
+  );
+
+  const byMonth = new Map();
+  for (const r of rows) {
+    const first = isoDate(r.first_due);
+    const period = `${first.slice(0, 7)}-01`;
+    if (!byMonth.has(period)) byMonth.set(period, { period, contracts: [] });
+    byMonth.get(period).contracts.push({
+      documentId: Number(r.id),
+      filename: r.filename,
+      mime: r.mime,
+      bytes: Number(r.byte_size),
+      receivedAt: r.received_at,
+      firstDue: first,
+      lastDue: isoDate(r.last_due),
+      installments: Number(r.installments),
+      total: Number(r.total),
+      direction: r.direction,
+      entity: r.entity,
+      counterparty: r.counterparty,
+      categoryName: r.category_name,
+      flagged: r.flagged === true,
+    });
+  }
+  return { months: [...byMonth.values()], count: rows.length };
 }

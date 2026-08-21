@@ -580,3 +580,72 @@ export const CASHFLOW_AHEAD_CSS = `
 export const CF_NONE_CSS = `
 .cf-none{margin:10px 0 2px;font-size:13px;color:var(--fin-faint);font-style:italic}
 `;
+
+// ── Vendor management ────────────────────────────────────────
+export const VENDORS_CSS = `
+.vm-kpis{grid-template-columns:repeat(auto-fit,minmax(165px,1fr))}
+.vm-stack{display:flex;flex-direction:column;gap:16px}
+.vm-actions{display:inline-flex;align-items:center;gap:8px}
+.vm-search{font-family:inherit;font-size:12.5px;padding:7px 11px;border-radius:9px;
+  border:1px solid var(--fin-line);background:var(--fin-surface);color:var(--fin-ink);width:170px}
+.vm-search:focus{outline:none;border-color:var(--fin-accent)}
+
+/* Pending and expiring lists */
+.vm-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1px}
+.vm-list li{display:flex;align-items:center;gap:11px;padding:9px 8px;border-radius:9px}
+.vm-list li:hover{background:var(--fin-sunk)}
+.vm-what{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.35}
+.vm-what b{font-size:13.5px;font-weight:600;color:var(--fin-ink);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vm-what em{font-style:normal;font-size:11.5px;color:var(--fin-faint);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vm-right{display:flex;flex-direction:column;align-items:flex-end;line-height:1.35;flex:none}
+.vm-right b{font-size:13.5px;font-weight:600;font-variant-numeric:tabular-nums}
+.vm-right em{font-style:normal;font-size:11px;color:var(--fin-faint)}
+.vm-late{color:var(--fin-neg)!important;font-weight:600}
+.vm-rec{flex:none;border:1px solid var(--fin-line);background:var(--fin-surface);
+  font-family:inherit;font-size:11.5px;font-weight:600;color:var(--fin-muted);
+  padding:5px 10px;border-radius:8px;cursor:pointer}
+.vm-rec:hover{border-color:var(--fin-accent);color:var(--fin-accent)}
+.vm-days{flex:none;padding:3px 9px;border-radius:99px;font-size:11px;font-weight:700;
+  background:var(--fin-sunk);color:var(--fin-muted);font-variant-numeric:tabular-nums}
+.vm-days.soon{background:#FCE9F2;color:#A8225F}
+
+/* Directory */
+.vm-table{min-width:900px}
+.vm-table td:first-child{display:flex;align-items:center;gap:10px}
+.vm-avatar{width:30px;height:30px;flex:none;border-radius:9px;display:grid;place-items:center;
+  background:linear-gradient(135deg,var(--fin-accent),var(--fin-in));color:#fff;
+  font-weight:700;font-size:12.5px}
+.vm-name{display:flex;flex-direction:column;line-height:1.3;min-width:0}
+.vm-name em{font-style:normal;font-size:11px;color:var(--fin-faint);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:210px}
+.vm-rel{display:inline-block;padding:3px 9px;border-radius:7px;font-size:11px;font-weight:700;
+  letter-spacing:.02em}
+.vm-rel.rel-in{background:#E4F6FA;color:#0B7C97}
+.vm-rel.rel-out{background:#FCE9F2;color:#A8225F}
+.vm-rel.rel-both{background:#F1ECFB;color:#5B21B6}
+.vm-status{display:inline-block;padding:3px 9px;border-radius:7px;font-size:11px;font-weight:700}
+.vm-status.s-paid{background:#E3F2F7;color:#12657F}
+.vm-status.s-partial{background:#FDF3DC;color:#8A6A15}
+.vm-status.s-due{background:var(--fin-sunk);color:var(--fin-muted)}
+.vm-status.s-overdue{background:#FBE5E5;color:#A32A2A}
+.vm-ends{display:block;font-style:normal;font-size:10.5px;color:var(--fin-faint)}
+.vm-table .fe-out em.vm-late{display:block;font-style:normal;font-size:10.5px}
+
+/* Contract folder */
+.vm-lib section{margin-bottom:16px}
+.vm-lib h4{display:flex;align-items:center;gap:8px;margin:0 0 6px;font-size:11.5px;
+  font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--fin-muted)}
+.vm-lib h4 span{background:var(--fin-sunk);border-radius:99px;padding:1px 7px;font-size:10.5px}
+.vm-lib ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1px}
+.vm-lib li{display:flex;align-items:center;gap:11px;padding:8px;border-radius:9px}
+.vm-lib li:hover{background:var(--fin-sunk)}
+.vm-file{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.35}
+.vm-file a{font-size:13px;font-weight:600;color:var(--fin-accent);text-decoration:none;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vm-file a:hover{text-decoration:underline}
+.vm-file em{font-style:normal;font-size:11.5px;color:var(--fin-faint);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vm-lib li b{font-variant-numeric:tabular-nums;font-size:13px;flex:none}
+`;

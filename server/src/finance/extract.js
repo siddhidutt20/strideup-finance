@@ -89,7 +89,11 @@ function buildPrompt(grouped, kind) {
   const hints = config.finance.entityHints;
   const list = (rows) => rows.map((r) => `- ${r.name}`).join("\n");
   const framing =
-    kind === "revenue"
+    kind === "contract"
+      ? `You are reading a CONTRACT or AGREEMENT. It may run in either
+direction: the company may be the one being paid under it, or the one paying.
+Work out which from the terms and say so in "direction". Do not assume.`
+    : kind === "revenue"
       ? `You are reading a SALES document a company ISSUED to a customer — an
 invoice it sent out, or a receipt for money it received. The company is the
 one being PAID here.`
@@ -200,8 +204,12 @@ export async function extractDocument({ mime, data, kind = "expense" }) {
 
   // Offer only the categories that make sense for the direction of the money,
   // so a sales invoice cannot come back filed under Office supplies.
+  // A contract may run either way, so it is offered the whole chart of
+  // accounts rather than half of it.
   const kinds =
-    kind === "revenue" ? "('revenue')" : "('cogs','opex','capex','tax')";
+    kind === "contract" ? "('revenue','cogs','opex','capex','tax','capital')"
+    : kind === "revenue" ? "('revenue')"
+    : "('cogs','opex','capex','tax')";
   const cats = await all(
     `SELECT name, entity FROM fin_categories WHERE kind IN ${kinds} ORDER BY sort`
   );

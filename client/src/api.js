@@ -62,6 +62,8 @@ export const api = {
     request("GET", `/finance/due?entity=${entity}&days=${days}`),
   addCommitment: (b) => request("POST", "/finance/commitments", b),
   deleteCommitment: (id) => request("DELETE", `/finance/commitments/${id}`),
+  finVendors: (entity) => request("GET", `/finance/vendors?entity=${entity}`),
+  vendorExportUrl: (entity) => `/api/finance/vendors/export.csv?entity=${entity}`,
   finDocUrl: (id) => `/api/finance/documents/${id}`,
   finExportUrl: () => "/api/finance/export.csv",
 };
