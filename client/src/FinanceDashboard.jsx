@@ -6,8 +6,7 @@ import {
   ENTITY_LABEL, ENTITY_CHOICES, loadEntity, saveEntity,
 } from "./finance/format.js";
 import {
-  OverviewView, RevenueView, ExpensesView, CashflowView, PnlView, LedgerView,
-  ToolsView, ManualEntry,
+  OverviewView, PnlView, LedgerView, ToolsView, ManualEntry,
 } from "./finance/views.jsx";
 import { ForecastView } from "./finance/forecast.jsx";
 import { ContractsView } from "./finance/contracts.jsx";
@@ -16,7 +15,7 @@ import { CashView } from "./finance/cash.jsx";
 import { SideView } from "./finance/side.jsx";
 import { NewInvoice, PayInvoice, InvoiceList } from "./finance/invoice.jsx";
 import { DueSoon } from "./finance/spend.jsx";
-import { Panel } from "./finance/pieces.jsx";
+import { Panel, CapitalList } from "./finance/pieces.jsx";
 import { ICONS } from "./finance/icons.jsx";
 
 // ── StrideUp finances ────────────────────────────────────────
@@ -474,14 +473,26 @@ export default function FinanceDashboard({ owner, onLogout }) {
                             onGo={setView} />
                 </EntityBlock>
               ))}
-              {statements && (
+              {/* The month's opening/movement/closing statement used to sit here.
+                  The dashboard above already carries the position over time and
+                  the month's movements, so it was saying the same thing twice.
+                  Capital is different information, and only appears when there
+                  is any — an empty panel asserting "no capital events" is
+                  clutter on a page nobody visits to learn that. */}
+              {statements && entityList.some(
+                (ent) => (statements.byEntity[ent].capital?.items?.length ?? 0) > 0
+              ) && (
                 <div className={entityList.length > 1 ? "fin-sidebyside" : ""}>
-                  {entityList.map((ent) => (
-                    <EntityBlock key={ent} show={entityList.length > 1}
-                                 label={`${statements.byEntity[ent].label} — ${monthLabel(period)}`}>
-                      <CashflowView st={statements.byEntity[ent]} money={money} period={period} />
-                    </EntityBlock>
-                  ))}
+                  {entityList
+                    .filter((ent) => (statements.byEntity[ent].capital?.items?.length ?? 0) > 0)
+                    .map((ent) => (
+                      <EntityBlock key={ent} show={entityList.length > 1}
+                                   label={statements.byEntity[ent].label}>
+                        <Panel title="Capital" sub="Equity, loans and draws to date">
+                          <CapitalList capital={statements.byEntity[ent].capital} money={money} />
+                        </Panel>
+                      </EntityBlock>
+                    ))}
                 </div>
               )}
             </>
@@ -618,8 +629,10 @@ function EntityBlock({ show, label, children }) {
 
 const DROP_COPY = {
   revenue: {
-    title: "Drop sales invoices and receipts here",
-    body: "Invoices you issued, or receipts for money you received. Read and added to revenue automatically.",
+    title: "Drop receipts and payment confirmations here",
+    body: "Proof that money arrived — a receipt, a remittance, a settled invoice. " +
+          "Read and recorded as revenue automatically. For money owed to you that " +
+          "has not arrived yet, use New invoice instead.",
   },
   expense: {
     title: "Drop invoices and receipts here",
