@@ -263,8 +263,9 @@ export default function FinanceDashboard({ owner, onLogout }) {
 
       <aside className="fin-side" aria-label="Sections">
         <div className="fin-sidebrand">
-          <span className="fin-mark" aria-hidden="true" />
-          <span>StrideUp <em>Finance</em></span>
+          <img src="/strideup-wordmark.png" alt="StrideUp"
+               width="128" height="53" className="fin-wordmark" />
+          <span className="fin-product">Finance</span>
         </div>
         <p className="fin-sidelabel">Menu</p>
         <nav>

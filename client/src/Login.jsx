@@ -28,7 +28,8 @@ export default function Login({ onAuthed }) {
     <div className="lg-wrap">
       <style>{LOGIN_CSS}</style>
       <form className="lg-card" onSubmit={submit}>
-        <p className="lg-eyebrow">StrideUp</p>
+        <img src="/strideup-wordmark.png" alt="StrideUp"
+             width="176" height="73" className="lg-wordmark" />
         <h1 className="lg-title">Finance</h1>
         <p className="lg-sub">
           Revenue, expenses, cash and outstanding payments — in one place.
@@ -72,8 +73,7 @@ const LOGIN_CSS = `
              radial-gradient(42% 42% at 12% 88%,rgba(101,0,193,.34),transparent 62%)}
 .lg-card{position:relative;z-index:1;width:100%;max-width:410px;background:#fff;border-radius:22px;
   padding:34px 30px;box-shadow:0 30px 80px -30px rgba(20,8,40,.7);display:flex;flex-direction:column}
-.lg-eyebrow{font-size:11.5px;font-weight:800;letter-spacing:2.2px;text-transform:uppercase;
-  color:#9333EA;margin:0 0 6px}
+.lg-wordmark{align-self:flex-start;width:auto;height:52px;max-width:100%;margin:0 0 10px}
 .lg-title{font-family:'Newsreader',Georgia,serif;font-weight:400;font-size:40px;
   letter-spacing:-.02em;line-height:1;margin:0 0 10px;color:#171326}
 .lg-sub{font-size:14px;line-height:1.55;color:#6b6188;margin:0 0 20px}

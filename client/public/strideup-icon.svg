@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="StrideUp">
+  <defs>
+    <linearGradient id="su-grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#D43081"/>
+      <stop offset="55%" stop-color="#9333EA"/>
+      <stop offset="100%" stop-color="#6500C1"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="url(#su-grad)"/>
+  <path d="M15 45 L32 27 L49 45" fill="none" stroke="#fff" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M15 33 L32 15 L49 33" fill="none" stroke="#fff" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.55"/>
+</svg>

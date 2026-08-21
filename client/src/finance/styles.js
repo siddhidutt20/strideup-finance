@@ -32,11 +32,13 @@ export const FIN_CSS = `
 .fin-side{position:sticky;top:0;align-self:start;height:100vh;display:flex;
   flex-direction:column;gap:4px;padding:18px 14px;background:var(--fin-surface);
   border-right:1px solid var(--fin-line)}
-.fin-sidebrand{display:flex;align-items:center;gap:9px;font-weight:800;font-size:14.5px;
-  letter-spacing:-.02em;color:var(--fin-ink);padding:6px 10px 16px}
-.fin-sidebrand em{font-style:normal;font-weight:600;color:var(--fin-faint)}
-.fin-mark{width:22px;height:22px;border-radius:7px;flex:none;
-  background:linear-gradient(135deg,var(--fin-accent),var(--fin-in))}
+/* The brand lockup: their wordmark, with the product name under it rather
+   than beside it — "Finance" is what this app is, not part of the logo. */
+.fin-sidebrand{display:flex;flex-direction:column;align-items:flex-start;gap:2px;
+  padding:10px 10px 20px}
+.fin-wordmark{display:block;width:auto;height:42px}
+.fin-product{font-family:var(--fin-serif);font-size:17px;font-weight:400;
+  letter-spacing:-.01em;color:var(--fin-muted);padding-left:1px}
 .fin-sidelabel{margin:0 0 6px;padding:0 10px;font-size:10.5px;font-weight:700;
   letter-spacing:.11em;text-transform:uppercase;color:var(--fin-faint)}
 .fin-side nav ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
@@ -91,7 +93,9 @@ export const FIN_CSS = `
   .fin-app{grid-template-columns:minmax(0,1fr)}
   .fin-side{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;
     gap:10px;border-right:none;border-bottom:1px solid var(--fin-line);padding:12px 15px}
-  .fin-sidebrand{padding:0}
+  .fin-sidebrand{flex-direction:row;align-items:center;gap:8px;padding:0}
+  .fin-wordmark{height:28px}
+  .fin-product{font-size:15px;padding:0}
   .fin-sidelabel{display:none}
   .fin-side nav{flex:1 0 100%;overflow-x:auto}
   .fin-side nav ul{flex-direction:row;gap:4px}
