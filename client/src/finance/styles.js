@@ -555,3 +555,17 @@ export const LEDGER_EDIT_CSS = `
   background:var(--fin-surface);color:var(--fin-ink);font-variant-numeric:tabular-nums}
 .fe-amtin:focus{outline:none;box-shadow:0 0 0 3px #EDE4FC}
 `;
+
+export const FUTURE_CSS = `
+.fin-future{background:#F6F2FE;border:1px solid #E3D8FA;border-radius:14px;
+  padding:15px 18px;margin:0 0 18px}
+.fin-future strong{display:block;font-size:14px;font-weight:600;color:var(--fin-accent);
+  margin-bottom:5px}
+.fin-future p{margin:0 0 8px;font-size:13px;line-height:1.6;color:var(--fin-muted)}
+.fin-future ul{list-style:none;margin:0 0 8px;padding:0;display:flex;flex-direction:column;gap:5px}
+.fin-future li{display:flex;align-items:baseline;gap:12px;font-size:13.5px}
+.fin-future li b{min-width:78px;font-weight:600;color:var(--fin-ink);font-size:12.5px}
+.fin-future li span{font-weight:600;font-variant-numeric:tabular-nums}
+.fin-future-go{margin:0!important}
+.fin-help.warn{color:var(--fin-warn)}
+`;

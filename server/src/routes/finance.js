@@ -510,6 +510,14 @@ financeRouter.post(
       .safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "Bad period." });
     const { period, entity, reopen } = parsed.data;
+    // Closing a month that has not happened is not a thing closing means. It
+    // would send anything dated in it to the open month as an adjustment,
+    // which is the opposite of what someone pressing this wants.
+    if (!reopen && period > monthStart()) {
+      return res.status(422).json({
+        error: `${period.slice(0, 7)} has not happened yet — there is nothing to close.`,
+      });
+    }
     await run(
       `INSERT INTO fin_periods (period, entity, status, closed_at)
        VALUES (?, ?, ?, ?)

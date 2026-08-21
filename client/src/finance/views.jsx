@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { api } from "../api.js";
 import { Panel, Kpi, TrendChart, CategoryBars, Ranked, Receivables, CapitalList } from "./pieces.jsx";
-import { CURRENCIES, delta, fmtAmount, majorOf, monthLabel, today, ZERO_DECIMAL,
+import { CURRENCIES, delta, fmtAmount, majorOf, monthLabel, thisMonth, today, ZERO_DECIMAL,
          ENTITY_LABEL } from "./format.js";
 import { SpendByCategory } from "./spend.jsx";
 
@@ -10,15 +10,22 @@ import { SpendByCategory } from "./spend.jsx";
 // behind the other tabs, so nothing here needs reading — only glancing at.
 export function OverviewView({ data, trend, money, period }) {
   const s = data.summary, prev = data.previous;
+  // A month that has not happened is down 100% on the one before it, which is
+  // arithmetically true and tells you nothing. No comparison is offered.
+  const future = period > thisMonth();
+  const cmp = (now, before) => (future ? null : delta(now, before));
   return (
     <>
       <section className="fin-kpis">
         <Kpi label="Revenue" value={money.round(s.revenue)}
-             delta={delta(s.revenue, prev.revenue)} tone="in" />
+             delta={cmp(s.revenue, prev.revenue)} tone="in"
+             hint={future ? "nothing recorded yet" : undefined} />
         <Kpi label="Expenses" value={money.round(s.expenses)}
-             delta={delta(s.expenses, prev.expenses)} tone="out" invertDelta />
+             delta={cmp(s.expenses, prev.expenses)} tone="out" invertDelta
+             hint={future ? "nothing recorded yet" : undefined} />
         <Kpi label="Net" value={money.round(s.net)}
-             delta={delta(s.net, prev.net)} tone={s.net >= 0 ? "in" : "out"} emphasis />
+             delta={cmp(s.net, prev.net)} tone={s.net >= 0 ? "in" : "out"} emphasis
+             hint={future ? "nothing recorded yet" : undefined} />
         <Kpi label={data.cash.source === "bank" ? "Cash on hand" : "Recorded position"}
              value={money.round(data.cash.amount)}
              hint={data.cash.source === "bank" ? null : "no bank feed connected"} />
@@ -560,6 +567,13 @@ export function ToolsView({ period, entity, entityList, byEntity, onDone }) {
 
       <div className="fin-closebox">
         <h3>Close {monthLabel(period)}</h3>
+        {period > thisMonth() && (
+          <p className="fin-help warn">
+            {monthLabel(period)} has not happened yet. Closing a month that is still
+            ahead would send anything dated in it to the open month instead, which is
+            not what closing is for.
+          </p>
+        )}
         <p className="fin-help">
           Each set of books closes on its own. Closing one stops a late document
           dated in that month from quietly changing a figure you have already
@@ -569,7 +583,8 @@ export function ToolsView({ period, entity, entityList, byEntity, onDone }) {
           {(entityList ?? [entity]).filter((e) => e !== "both").map((ent) => {
             const isClosed = byEntity?.[ent]?.periodClosed;
             return (
-              <button key={ent} className="fin-btn ghost" disabled={working}
+              <button key={ent} className="fin-btn ghost"
+                      disabled={working || (period > thisMonth() && !isClosed)}
                       onClick={() => toggleClose(ent, isClosed)}>
                 {isClosed ? `Reopen ${ENTITY_LABEL[ent]}` : `Close ${ENTITY_LABEL[ent]}`}
               </button>

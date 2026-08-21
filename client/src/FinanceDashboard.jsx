@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api.js";
-import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS } from "./finance/styles.js";
+import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS, FUTURE_CSS } from "./finance/styles.js";
 import {
   fmtAmount, monthLabel, readFile, shiftMonth, thisMonth, useMoney, ZERO_DECIMAL,
   ENTITY_LABEL, ENTITY_CHOICES, loadEntity, saveEntity,
@@ -32,6 +32,10 @@ const VIEWS = [
   ["tools", "Import & close", "Import and close", "Bring in revenue, and settle"],
 ];
 const NEEDS_STATEMENTS = new Set(["revenue", "expenses", "cashflow", "pnl"]);
+
+// Months ahead the picker will walk to. Future months hold no actuals — the
+// point of visiting one is to see what is already committed to land in it.
+const HORIZON_MONTHS = 18;
 
 export default function FinanceDashboard({ owner, onLogout }) {
   const [view, setView] = useState("overview");
@@ -111,9 +115,9 @@ export default function FinanceDashboard({ owner, onLogout }) {
   }, [entity]);
 
   useEffect(() => {
-    if (!["forecast", "contracts", "overview"].includes(view)) return;
+    if (!["forecast", "contracts", "overview"].includes(view) && period <= thisMonth()) return;
     loadForecast();
-  }, [view, entity, loadForecast]);
+  }, [view, entity, period, loadForecast]);
 
   // How many committed payments fall due in the next 30 days, across whichever
   // books are in view. Shown on the nav so it is visible without opening it.
@@ -238,7 +242,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
         {/* Joined in JS, not as three JSX children: a <style> element with
             several text children does not reliably end up with all of them in
             the DOM, and the symptom is a stylesheet that silently truncates. */}
-        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS}</style>
+        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS}</style>
         <div className="fin-boot"><div className="fin-spinner" /></div>
       </div>
     );
@@ -275,7 +279,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
 
   return (
     <div className="fin-app">
-      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS}</style>
+      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS}</style>
 
       <aside className="fin-side" aria-label="Sections">
         <div className="fin-sidebrand">
@@ -338,12 +342,17 @@ export default function FinanceDashboard({ owner, onLogout }) {
               <button onClick={() => setPeriod(shiftMonth(period, -1))} aria-label="Previous month">‹</button>
               <strong>{monthLabel(period)}</strong>
               <button onClick={() => setPeriod(shiftMonth(period, 1))}
-                      disabled={period >= thisMonth()} aria-label="Next month">›</button>
+                      disabled={period >= shiftMonth(thisMonth(), HORIZON_MONTHS)}
+                      aria-label="Next month">›</button>
             </div>
           </div>
         </header>
 
       {error && <div className="fin-error">{error}</div>}
+
+      {period > thisMonth() && <FutureMonth period={period} entityList={entityList}
+                                            forecast={forecast} money={money}
+                                            onGo={setView} />}
       {data && !data.aiEnabled && view === "overview" && (
         <div className="fin-warn">
           Reading documents needs an Anthropic API key. Set <code>ANTHROPIC_API_KEY</code>{" "}
@@ -457,6 +466,53 @@ export default function FinanceDashboard({ owner, onLogout }) {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// A month that has not happened yet holds no actuals, so every statement in
+// it is legitimately empty. Saying so — and saying what is already committed
+// to land in it — is the difference between an empty page and an answer.
+function FutureMonth({ period, entityList, forecast, money, onGo }) {
+  const rows = entityList
+    .map((ent) => {
+      const m = forecast?.byEntity?.[ent]?.months?.find((x) => x.period === period);
+      return m ? { ent, label: forecast.byEntity[ent].label, ...m } : null;
+    })
+    .filter(Boolean);
+  const anything = rows.some((r) => r.committedIn || r.committedOut);
+
+  return (
+    <div className="fin-future">
+      <strong>{monthLabel(period)} hasn't happened yet</strong>
+      {anything ? (
+        <>
+          <p>
+            Nothing is recorded against it, so the statements below are empty. What
+            is already agreed for that month:
+          </p>
+          <ul>
+            {rows.map((r) => (
+              <li key={r.ent}>
+                {entityList.length > 1 && <b>{r.label}</b>}
+                {r.committedIn > 0 && <span className="fe-in">{money.round(r.committedIn)} in</span>}
+                {r.committedOut > 0 && <span className="fe-out">{money.round(r.committedOut)} out</span>}
+                {!r.committedIn && !r.committedOut && <span className="fin-dash">nothing committed</span>}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : (
+        <p>
+          Nothing is recorded against it and nothing is committed to land in it, so
+          the statements below are empty.
+        </p>
+      )}
+      <p className="fin-future-go">
+        <button className="fin-link asbtn" onClick={() => onGo("contracts")}>See the schedule</button>
+        {" · "}
+        <button className="fin-link asbtn" onClick={() => onGo("forecast")}>See the projection</button>
+      </p>
     </div>
   );
 }
