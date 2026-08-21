@@ -53,7 +53,22 @@ const installment = z.object({
   label: z.string().trim().max(120).catch(""),
 });
 
+// How a contract actually reads: "a one-off setup fee, then twelve monthly
+// payments". Asking for that shape directly, rather than for a flat list of
+// dates, is what stops a twelve-month retainer becoming twelve separate
+// commitments that repeat the same party name down the page.
+const planEntry = z.object({
+  kind: z.enum(["once", "recurring"]).catch("once"),
+  amount: z.number().finite().positive(),
+  label: z.string().trim().max(120).catch(""),
+  first_due: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  frequency: z.enum(["weekly", "monthly", "quarterly", "annual"]).nullable().catch(null),
+  count: z.number().int().min(1).max(600).nullable().catch(null),
+  last_due: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().catch(null),
+});
+
 const extraction = z.object({
+  payment_plan: z.array(planEntry).max(40).catch([]),
   vendor_name: z.string().trim().min(1).max(160),
   document_type: z
     .enum(["invoice", "receipt", "credit_note", "statement", "contract", "other"])
@@ -109,6 +124,7 @@ Extract the following and reply with ONLY a JSON object, no prose and no code fe
   "vendor_name": "${kind === "revenue" ? "the CUSTOMER being billed" : "the supplier/merchant name as printed"}",
   "document_type": "invoice | receipt | credit_note | statement | contract | other",
   "issue_date": "YYYY-MM-DD — the document date, not today's date",
+  "payment_plan": [],
   "installments": [],
   "contract_start": null,
   "contract_end": null,
@@ -137,17 +153,27 @@ promise of payments on the dates it names.
 If the document sets out future payments, set "document_type" to "contract"
 and fill in:
 
-- "installments": one entry per payment the document names, as
-  [{"due_date":"YYYY-MM-DD","amount":number,"label":"short description"}].
-  Read the payment clause carefully and work the dates out:
+- "payment_plan": the schedule described the way the contract describes it,
+  as a short list. Each entry is either a single dated payment or a repeating
+  one — NOT one entry per occurrence of a repeating charge.
+    { "kind":"once", "amount":number, "first_due":"YYYY-MM-DD", "label":"..." }
+    { "kind":"recurring", "amount":number, "frequency":"weekly|monthly|quarterly|annual",
+      "first_due":"YYYY-MM-DD", "count":number|null, "last_due":"YYYY-MM-DD"|null,
+      "label":"..." }
+  Worked examples:
     · "50% on execution, 50% on completion, invoiced on or after 15 March
-      2027" with an effective date of 15 September 2026 and a total of 100,000
-      is TWO installments: 50,000 on 2026-09-15 and 50,000 on 2027-03-15.
-    · "12 monthly payments of 2,000 from 1 April" is twelve entries, one a
-      month, each 2,000.
-  The installment amounts must add up to the total. If the document states a
-  total but you cannot work out the dates, return an empty list and give a low
+      2027", effective 15 September 2026, total 100,000 → TWO "once" entries:
+      50,000 on 2026-09-15 and 50,000 on 2027-03-15.
+    · "a 7,500 onboarding fee, then 4,500 per month for 12 months from 1 July"
+      → TWO entries: one "once" of 7,500, and ONE "recurring" of 4,500,
+      monthly, count 12. Not twelve entries.
+    · "2,000 a month, no end date" → one "recurring", count null, last_due null.
+  The plan must account for the contract's total. If the document states a
+  total but you cannot work the dates out, return an empty plan and give a low
   confidence — do not invent dates.
+- "installments": leave this empty unless the schedule is genuinely irregular —
+  different amounts on dates that follow no pattern. Then list them as
+  [{"due_date":"YYYY-MM-DD","amount":number,"label":"..."}].
 - "contract_start" / "contract_end": the service period, or null if open-ended.
 - "direction": "in" if this business RECEIVES the money under the agreement,
   "out" if it PAYS.

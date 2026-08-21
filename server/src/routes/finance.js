@@ -15,7 +15,7 @@ import {
   burnAndRunway, receivables, capitalPosition, reviewCount,
   profitAndLoss, cashflow, byCounterparty, forecast, activeCommitments, dueSoon,
   contractSchedule, occurrencesIn, occKey, statusOf, outstandingOn, commitmentsForMonth, paymentMap, committedRunUp,
-  vendorManagement, contractLibrary,
+  vendorManagement, contractLibrary, cashDashboard,
 } from "../finance/metrics.js";
 
 export const financeRouter = express.Router();
@@ -1047,5 +1047,22 @@ financeRouter.get(
       `attachment; filename="strideup-vendors-${asOf}.csv"`
     );
     res.send(lines.join("\n"));
+  })
+);
+
+// ── Cash flow and forecast dashboard ─────────────────────────
+financeRouter.get(
+  "/cash",
+  ah(async (req, res) => {
+    const { choice, list } = resolveEntities(req.query.entity);
+    const months = Math.min(12, Math.max(1, Number(req.query.months) || 3));
+    const byEntity = {};
+    for (const ent of list) {
+      byEntity[ent] = { label: ENTITY_LABEL[ent], ...(await cashDashboard(ent, months)) };
+    }
+    res.json({
+      entity: choice, entities: list, months, byEntity,
+      baseCurrency: config.finance.baseCurrency,
+    });
   })
 );

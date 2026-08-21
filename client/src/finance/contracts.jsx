@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Panel } from "./pieces.jsx";
 import { api } from "../api.js";
 import { monthLabel, today } from "./format.js";
+import { FREQ_LABEL } from "./forecast.jsx";
 
 // ── Contracts ────────────────────────────────────────────────
 // One row per commitment, one cell per month, so the question "has this
@@ -73,6 +74,26 @@ export function ContractsView({ sched, money, onChange }) {
   const t = sched.tally;
   const arrears = sched.arrears;
 
+  // A contract with a setup fee and a monthly charge is two commitments that
+  // belong to one party. Grouping by party keeps the name off every line.
+  const groups = [];
+  const seen = new Map();
+  for (const row of sched.rows) {
+    const name = row.counterparty || "Unattributed";
+    const key = `${name}::${row.direction}`;
+    if (!seen.has(key)) {
+      const g = { key, name, direction: row.direction, rows: [] };
+      seen.set(key, g);
+      groups.push(g);
+    }
+    // Strip the party name the ingest prefixes onto each commitment, so the
+    // line reads "Monthly platform fee" under a heading that already says who.
+    const label = row.description.startsWith(`${name} — `)
+      ? row.description.slice(name.length + 3)
+      : row.description;
+    seen.get(key).rows.push({ ...row, label });
+  }
+
   return (
     <>
       <div className="fc-kpis">
@@ -123,18 +144,31 @@ export function ContractsView({ sched, money, onChange }) {
                 </tr>
               </thead>
               <tbody>
-                {sched.rows.map((row) => (
-                  <tr key={row.id}>
+                {groups.map((g) => [
+                  // The party is named once, on its own row, rather than
+                  // repeated down every line of its own schedule.
+                  g.rows.length > 1 || g.name !== g.rows[0].label ? (
+                    <tr key={`g-${g.key}`} className="ct-group">
+                      <td className="ct-who" colSpan={sched.periods.length + 1}>
+                        <span className={`fc-dir ${g.direction}`}>
+                          {g.direction === "in" ? "In" : "Out"}
+                        </span>
+                        {g.name}
+                        <span className="fc-cat">
+                          {g.rows.length} commitment{g.rows.length === 1 ? "" : "s"}
+                        </span>
+                      </td>
+                    </tr>
+                  ) : null,
+                  ...g.rows.map((row) => (
+                  <tr key={row.id} className="ct-line">
                     <td className="ct-who">
                       {row.months.every((m) => !m.occurrences.length) && (
                         <span className="ct-outside">nothing due in these months</span>
                       )}
-                      <span className={`fc-dir ${row.direction}`}>
-                        {row.direction === "in" ? "In" : "Out"}
-                      </span>
-                      {row.description}
+                      {row.label}
                       <span className="fc-cat">
-                        {row.counterparty || "no party recorded"} · {money.exact(row.amount)}
+                        {FREQ_LABEL[row.frequency]} · {money.exact(row.amount)}
                       </span>
                     </td>
                     {row.months.map((cell) => (
@@ -142,7 +176,8 @@ export function ContractsView({ sched, money, onChange }) {
                             onToggle={toggle} busy={busy} />
                     ))}
                   </tr>
-                ))}
+                  )),
+                ])}
               </tbody>
             </table>
           </div>

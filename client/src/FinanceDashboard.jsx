@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api.js";
-import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS, FUTURE_CSS, CASHFLOW_AHEAD_CSS, CF_NONE_CSS, VENDORS_CSS } from "./finance/styles.js";
+import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS, FUTURE_CSS, CASHFLOW_AHEAD_CSS, CF_NONE_CSS, VENDORS_CSS, CASH_CSS, CONTRACTS_GROUP_CSS } from "./finance/styles.js";
 import {
   fmtAmount, monthLabel, readFile, shiftMonth, thisMonth, useMoney, ZERO_DECIMAL,
   ENTITY_LABEL, ENTITY_CHOICES, loadEntity, saveEntity,
@@ -12,6 +12,7 @@ import {
 import { ForecastView } from "./finance/forecast.jsx";
 import { ContractsView } from "./finance/contracts.jsx";
 import { VendorsView } from "./finance/vendors.jsx";
+import { CashView } from "./finance/cash.jsx";
 import { DueSoon } from "./finance/spend.jsx";
 import { Panel } from "./finance/pieces.jsx";
 import { ICONS } from "./finance/icons.jsx";
@@ -57,6 +58,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
   const [due, setDue] = useState(null);
   const [schedule, setSchedule] = useState(null);
   const [vendors, setVendors] = useState(null);
+  const [cash, setCash] = useState(null);
   const setEntity = (v) => { saveEntity(v); setEntityState(v); };
   const [busy, setBusy] = useState(false);
 
@@ -106,21 +108,24 @@ export default function FinanceDashboard({ owner, onLogout }) {
   // on every dashboard load would be paid by everyone to serve one view.
   const loadForecast = useCallback(async () => {
     try {
-      const [fc, cm, dd, sc, vn] = await Promise.all([
+      const [fc, cm, dd, sc, vn, cs] = await Promise.all([
         api.finForecast(entity, 6),
         api.finCommitments(entity),
         api.finDue(entity, 30),
         api.finSchedule(entity),
         api.finVendors(entity),
+        api.finCash(entity, 3),
       ]);
-      setForecast(fc); setCommitments(cm); setDue(dd); setSchedule(sc); setVendors(vn);
+      setForecast(fc); setCommitments(cm); setDue(dd);
+      setSchedule(sc); setVendors(vn); setCash(cs);
     } catch (err) {
       setError(err.message || "Could not load the forecast.");
     }
   }, [entity]);
 
   useEffect(() => {
-    if (!["forecast", "contracts", "vendors", "overview"].includes(view) && period <= thisMonth()) return;
+    if (!["forecast", "contracts", "vendors", "cashflow", "overview"].includes(view)
+        && period <= thisMonth()) return;
     loadForecast();
   }, [view, entity, period, loadForecast]);
 
@@ -247,7 +252,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
         {/* Joined in JS, not as three JSX children: a <style> element with
             several text children does not reliably end up with all of them in
             the DOM, and the symptom is a stylesheet that silently truncates. */}
-        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS}</style>
+        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS}</style>
         <div className="fin-boot"><div className="fin-spinner" /></div>
       </div>
     );
@@ -285,7 +290,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
 
   return (
     <div className="fin-app">
-      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS}</style>
+      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS}</style>
 
       <aside className="fin-side" aria-label="Sections">
         <div className="fin-sidebrand">
@@ -415,15 +420,26 @@ export default function FinanceDashboard({ owner, onLogout }) {
                             money={money} period={period} />
             </EntityBlock>
           ))}
-          {view === "cashflow" && statements && (
-            <div className={entityList.length > 1 ? "fin-sidebyside" : ""}>
-              {entityList.map((ent) => (
-                <EntityBlock key={ent} show={entityList.length > 1}
-                             label={statements.byEntity[ent].label}>
-                  <CashflowView st={statements.byEntity[ent]} money={money} period={period} />
+          {view === "cashflow" && (
+            <>
+              {cash && (cash.entities ?? [entity]).map((ent) => (
+                <EntityBlock key={`ch-${ent}`} show={(cash.entities ?? []).length > 1}
+                             label={cash.byEntity[ent].label}>
+                  <CashView ch={cash.byEntity[ent]} money={money} period={period}
+                            onGo={setView} />
                 </EntityBlock>
               ))}
-            </div>
+              {statements && (
+                <div className={entityList.length > 1 ? "fin-sidebyside" : ""}>
+                  {entityList.map((ent) => (
+                    <EntityBlock key={ent} show={entityList.length > 1}
+                                 label={`${statements.byEntity[ent].label} — ${monthLabel(period)}`}>
+                      <CashflowView st={statements.byEntity[ent]} money={money} period={period} />
+                    </EntityBlock>
+                  ))}
+                </div>
+              )}
+            </>
           )}
           {view === "pnl" && statements && (
             <div className={entityList.length > 1 ? "fin-sidebyside" : ""}>

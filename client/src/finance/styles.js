@@ -649,3 +649,68 @@ export const VENDORS_CSS = `
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .vm-lib li b{font-variant-numeric:tabular-nums;font-size:13px;flex:none}
 `;
+
+// ── Cash flow dashboard ──────────────────────────────────────
+export const CASH_CSS = `
+.ch-kpis{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+.ch-kpi-spark{margin-top:6px}
+.ch-spark{display:block;width:100%;height:24px;margin-top:8px;overflow:visible}
+.ch-sparkline{fill:none;stroke:var(--fin-in);stroke-width:1.6;stroke-linejoin:round;
+  stroke-linecap:round}
+.ch-sparkfill{fill:var(--fin-in);opacity:.1}
+
+/* Recorded months read differently from projected ones. */
+.ch-line-rec{fill:none;stroke:var(--fin-ink);stroke-width:2;stroke-linejoin:round;
+  stroke-linecap:round;opacity:.72}
+.ch-dot-rec{fill:var(--fin-surface);stroke:var(--fin-ink);stroke-width:1.8;opacity:.8}
+.ch-today{stroke:var(--fin-faint);stroke-width:1;stroke-dasharray:2 4}
+.ch-todaylab{font-size:9px;fill:var(--fin-faint);font-weight:700;letter-spacing:.09em;
+  text-transform:uppercase}
+.fin-legend i.ch-key-rec{width:15px;height:3px;border-radius:2px;background:var(--fin-ink);
+  opacity:.72}
+
+/* Alerts. Tone is carried by an icon and a word as well as a colour. */
+.ch-alerts{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.ch-alerts li{display:flex;gap:11px;padding:11px 13px;border-radius:12px;
+  border:1px solid var(--fin-line);background:var(--fin-sunk)}
+.ch-alerticon{flex:none;width:22px;height:22px;border-radius:7px;display:grid;
+  place-items:center;font-size:12px;font-weight:800;color:#fff}
+.ch-alerts li.t-critical{background:#FDF0F0;border-color:#F3D6D6}
+.ch-alerts li.t-critical .ch-alerticon{background:#d03b3b}
+.ch-alerts li.t-serious{background:#FEF4EF;border-color:#F6DECE}
+.ch-alerts li.t-serious .ch-alerticon{background:#ec835a}
+.ch-alerts li.t-warning{background:#FFFAEC;border-color:#F3E5C2}
+.ch-alerts li.t-warning .ch-alerticon{background:#c8901a}
+.ch-alerttext{display:flex;flex-direction:column;gap:2px;min-width:0}
+.ch-alerttext b{font-size:13px;font-weight:600;color:var(--fin-ink);line-height:1.35}
+.ch-alerttext em{font-style:normal;font-size:12px;color:var(--fin-muted);line-height:1.5}
+
+.ch-runway{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:4px}
+.ch-runway div{background:var(--fin-sunk);border:1px solid var(--fin-hair);border-radius:12px;
+  padding:11px 13px;display:flex;flex-direction:column;gap:3px}
+.ch-runway span{font-size:11px;font-weight:600;color:var(--fin-muted)}
+.ch-runway strong{font-size:20px;font-weight:600;letter-spacing:-.02em}
+
+.ch-table{min-width:640px}
+.ch-table td:first-child{white-space:nowrap}
+.ch-table td em{font-style:normal;font-size:11.5px;color:var(--fin-faint)}
+.ch-dot{display:inline-block;width:8px;height:8px;border-radius:3px;margin-right:8px}
+.ch-dot.in{background:var(--fin-in)}
+.ch-dot.out{background:var(--fin-out)}
+.ch-est td{background:var(--fin-sunk)}
+.ch-net td{border-top:1.5px solid var(--fin-line);font-weight:600;padding-top:11px}
+
+.ch-costs{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1px}
+.ch-costs li{display:flex;align-items:center;gap:11px;padding:8px;border-radius:9px}
+.ch-costs li:hover{background:var(--fin-sunk)}
+.ch-costs li b{flex:none;font-variant-numeric:tabular-nums;font-size:13px}
+@media(max-width:520px){.ch-runway{grid-template-columns:1fr}}
+`;
+
+export const CONTRACTS_GROUP_CSS = `
+.ct-group td{padding-top:14px!important;padding-bottom:6px!important;
+  border-bottom:1px solid var(--fin-hair)}
+.ct-group .fc-cat{display:inline;margin-left:8px}
+.ct-line .ct-who{padding-left:26px!important;font-size:12.5px}
+.ct-line .fc-cat{display:block;margin-top:2px}
+`;

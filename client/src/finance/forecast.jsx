@@ -9,7 +9,7 @@ import { monthLabel, today, CURRENCIES, ENTITY_LABEL } from "./format.js";
 // projection deliberately incomplete, so the view has to say so out loud
 // rather than let an incomplete line read as a complete one.
 
-const FREQ_LABEL = {
+export const FREQ_LABEL = {
   once: "One-off", weekly: "Weekly", monthly: "Monthly",
   quarterly: "Quarterly", annual: "Annual",
 };

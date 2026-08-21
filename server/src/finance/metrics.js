@@ -1043,3 +1043,202 @@ export async function contractLibrary(entity) {
   }
   return { months: [...byMonth.values()], count: rows.length };
 }
+
+// ── The cash flow dashboard ──────────────────────────────────
+// One call behind the whole page. It answers four questions in order: where
+// the cash is, where it is heading, what is going to hurt, and what the
+// projection is actually built on.
+//
+// The distinction that runs through all of it: recorded money is fact,
+// committed money is agreed, estimated money is neither. They are computed
+// separately and stay labelled apart the whole way to the screen.
+export async function cashDashboard(entity, months = 3, today = new Date()) {
+  const asOf = isoDate(today);
+  const thisPeriod = monthStart(today);
+  const fc = await forecast(entity, Math.max(months, 6), today);
+  const cash = await cashPosition(entity);
+  const history = await trend(13, thisPeriod, entity);
+  const commitments = await activeCommitments(entity);
+  const settled = await paymentMap(entity);
+  const due = await dueSoon(entity, 30, today);
+  const ar = await receivables(today, entity);
+
+  const window = fc.months.slice(0, months + 1);
+  const inflow = window.reduce((t, m) => t + m.committedIn + (m.predictedIn ?? 0), 0);
+  const outflow = window.reduce((t, m) => t + m.committedOut + (m.predictedOut ?? 0), 0);
+
+  // Thirty days out, prorated across whichever months it spans.
+  const in30 = isoDate(new Date(today.getTime() + 30 * 86400000));
+  let committed30 = 0;
+  for (const period of [thisPeriod, addMonths(thisPeriod, 1), addMonths(thisPeriod, 2)]) {
+    for (const k of commitments) {
+      for (const occ of occurrencesIn(k, period)) {
+        if (occ.date <= asOf || occ.date > in30) continue;
+        const owed = outstandingOn(Number(k.base_amount_minor), settled.get(occKey(k.id, occ.date)));
+        committed30 += k.direction === "in" ? owed : -owed;
+      }
+    }
+  }
+
+  // ── Runway, three ways ───────────────────────────────────
+  // Burn from recorded months is what has actually been happening; the
+  // scenarios come from the same spread the projection uses, so best and
+  // worst are the quartiles of real months rather than invented multipliers.
+  const burn = await burnAndRunway(cash.amount, entity);
+  const est = fc.prediction;
+  const monthlyNet = (i, o) => o - i;
+  const scenarios = est?.available
+    ? {
+        expected: monthlyNet(est.perMonth.in.mid, est.perMonth.out.mid),
+        best: monthlyNet(est.perMonth.in.high, est.perMonth.out.low),
+        worst: monthlyNet(est.perMonth.in.low, est.perMonth.out.high),
+      }
+    : null;
+  const runwayOf = (netBurn) =>
+    netBurn > 0 ? cash.amount / netBurn : null;
+  // A runway of null means two different things and they must not look alike:
+  // either nothing is being burned, in which case there is no runway to run
+  // out of, or there is not enough history to say. `burning` separates them.
+  const runway = {
+    current: burn.runwayMonths,
+    monthlyBurn: burn.monthlyBurn,
+    burning: burn.monthlyBurn > 0,
+    best: scenarios ? runwayOf(scenarios.best) : null,
+    expected: scenarios ? runwayOf(scenarios.expected) : null,
+    worst: scenarios ? runwayOf(scenarios.worst) : null,
+    // Monthly net under each case: negative is money coming in, not going out.
+    scenarios,
+    available: !!scenarios,
+  };
+
+  // ── Where the projection crosses zero ────────────────────
+  const crossing = (key) => fc.months.find((m) => m[key] < 0)?.period ?? null;
+  const belowZero = {
+    committed: crossing("closing"),
+    expected: est?.available ? crossing("expected") : null,
+    worst: est?.available ? crossing("low") : null,
+  };
+
+  // ── What is going to hurt ────────────────────────────────
+  // Real conditions only. Nothing here is a placeholder that always fires.
+  const alerts = [];
+  if (runway.current != null && runway.current < 3) {
+    alerts.push({
+      kind: "runway", tone: "critical",
+      title: "Less than three months of runway",
+      detail: `At ${(runway.monthlyBurn / 100).toFixed(0)} a month of net burn, ` +
+              `what is recorded lasts about ${runway.current.toFixed(1)} months.`,
+    });
+  }
+  if (belowZero.committed) {
+    alerts.push({
+      kind: "zero", tone: "critical",
+      title: `Committed money runs out in ${belowZero.committed.slice(0, 7)}`,
+      detail: "On agreed payments alone the position goes below zero that month.",
+    });
+  } else if (belowZero.expected) {
+    alerts.push({
+      kind: "zero", tone: "serious",
+      title: `Expected case goes below zero in ${belowZero.expected.slice(0, 7)}`,
+      detail: "That half of the projection is an estimate, not a certainty.",
+    });
+  }
+  const biggest = [...due.payable].sort((a, b) => b.amount - a.amount)[0];
+  if (biggest) {
+    // Whether it is late is the date, not the status — a part payment sits at
+    // status "partial" while its due date is months gone, and reading only the
+    // status produced "due in -20 days".
+    const late = biggest.daysAway < 0;
+    const when = late
+      ? `${Math.abs(biggest.daysAway)} day${Math.abs(biggest.daysAway) === 1 ? "" : "s"} ago`
+      : biggest.daysAway === 0 ? "today" : `in ${biggest.daysAway} days`;
+    alerts.push({
+      kind: "payment", tone: late ? "serious" : "warning",
+      title: late
+        ? `${biggest.description} was due ${when}`
+        : `Large payment due ${when}`,
+      detail: `${(biggest.amount / 100).toLocaleString()} to ` +
+              `${biggest.counterparty || "an unrecorded party"}, dated ${biggest.date}` +
+              `${biggest.status === "partial" ? " — part paid, this is the remainder" : ""}.`,
+      amount: biggest.amount,
+    });
+  }
+  const ending = commitments
+    .filter((k) => k.end_date)
+    .map((k) => ({ k, end: isoDate(k.end_date) }))
+    .filter((x) => x.end >= asOf &&
+      Math.round((Date.parse(x.end) - Date.parse(asOf)) / 86400000) <= 60)
+    .sort((a, b) => a.end.localeCompare(b.end))[0];
+  if (ending) {
+    alerts.push({
+      kind: "contract", tone: "warning",
+      title: "An agreement is ending soon",
+      detail: `${ending.k.description} ends ${ending.end}.`,
+    });
+  }
+  if (ar.overdue > 0) {
+    alerts.push({
+      kind: "receivable", tone: "serious",
+      title: `${ar.invoices.filter((i) => i.daysOverdue > 0).length} invoices overdue`,
+      detail: `${(ar.overdue / 100).toLocaleString()} is past its due date.`,
+      amount: ar.overdue,
+    });
+  }
+
+  // ── The breakdown table ──────────────────────────────────
+  // Committed and estimated stay in separate rows. Adding them into one
+  // "inflow" line would make an agreed payment and a guess look alike.
+  const columns = fc.months.slice(0, months + 1).map((m) => m.period);
+  const pick = (period, key) => fc.months.find((m) => m.period === period)?.[key] ?? 0;
+  const sum = (key) => columns.reduce((t, p) => t + pick(p, key), 0);
+  const breakdown = {
+    columns,
+    rows: [
+      { label: "Committed in", kind: "in", group: "in",
+        values: columns.map((p) => pick(p, "committedIn")), total: sum("committedIn") },
+      ...(est?.available ? [{
+        label: "Estimated in", kind: "in", group: "in", estimated: true,
+        values: columns.map((p) => pick(p, "predictedIn")), total: sum("predictedIn") }] : []),
+      { label: "Committed out", kind: "out", group: "out",
+        values: columns.map((p) => pick(p, "committedOut")), total: sum("committedOut") },
+      ...(est?.available ? [{
+        label: "Estimated out", kind: "out", group: "out", estimated: true,
+        values: columns.map((p) => pick(p, "predictedOut")), total: sum("predictedOut") }] : []),
+    ],
+    net: columns.map((p) => {
+      const m = fc.months.find((x) => x.period === p);
+      return (m.committedIn + (m.predictedIn ?? 0)) - (m.committedOut + (m.predictedOut ?? 0));
+    }),
+  };
+  breakdown.netTotal = breakdown.net.reduce((a, b) => a + b, 0);
+
+  // ── The largest recurring costs ──────────────────────────
+  const recurring = commitments
+    .filter((k) => k.direction === "out" && k.frequency !== "once")
+    .map((k) => {
+      const perMonth = { weekly: 52 / 12, monthly: 1, quarterly: 1 / 3, annual: 1 / 12 };
+      return {
+        description: k.description,
+        counterparty: k.counterparty,
+        categoryName: k.category_name,
+        frequency: k.frequency,
+        amount: Number(k.base_amount_minor),
+        monthlyEquivalent: Math.round(Number(k.base_amount_minor) * (perMonth[k.frequency] ?? 1)),
+      };
+    })
+    .sort((a, b) => b.monthlyEquivalent - a.monthlyEquivalent);
+  const recurringTotal = recurring.reduce((t, r) => t + r.monthlyEquivalent, 0);
+
+  return {
+    entity, asOf, months,
+    cash, history, forecast: fc,
+    inflow, outflow, net: inflow - outflow,
+    committed30, projected30: cash.amount + committed30,
+    runway, belowZero, alerts, breakdown,
+    recurring: recurring.slice(0, 8), recurringTotal,
+    upcoming: due.payable.concat(due.incoming)
+      .sort((a, b) => a.date.localeCompare(b.date)).slice(0, 8),
+    receivables: ar,
+    prediction: est,
+  };
+}

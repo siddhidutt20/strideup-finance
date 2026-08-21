@@ -265,7 +265,7 @@ export async function ingestDocument({
   // is a promise of payments on the dates it names. So a contract writes
   // commitments — one per installment — and touches the ledger not at all
   // until each payment is actually recorded as arrived.
-  if (ex.document_type === "contract" && ex.installments?.length) {
+  if (ex.document_type === "contract" && (ex.payment_plan?.length || ex.installments?.length)) {
     return await ingestContract({
       ex, documentId, entity, counterpartyId, categoryId, categoryName, kind, filename,
     });
@@ -344,18 +344,20 @@ async function ingestContract({
   const doc = await get("SELECT content_hash FROM fin_documents WHERE id = ?", [documentId]);
   const hash = doc?.content_hash ?? String(documentId);
 
-  // The installments must account for the contract's stated total. When they
-  // do not, the reading is recorded anyway and flagged — a schedule that is
-  // nearly right is far more useful than no schedule, but nobody should have
-  // to discover the gap themselves.
+  const plan = buildPlan(ex);
+
+  // The plan must account for the contract's stated total. When it does not,
+  // the reading is recorded anyway and flagged — a schedule that is nearly
+  // right is far more useful than no schedule, but nobody should have to
+  // discover the gap themselves.
   const stated = Number(ex.total) || 0;
-  const summed = ex.installments.reduce((t, i) => t + Number(i.amount || 0), 0);
+  const summed = plan.reduce((t, p) => t + p.amount * (p.occurrences ?? 1), 0);
   const mismatch = stated > 0 && Math.abs(summed - stated) > Math.max(1, stated * 0.01);
 
   const reasons = [];
   if (mismatch) {
     reasons.push(
-      `installments add up to ${summed.toFixed(2)} but the contract states ` +
+      `the schedule adds up to ${summed.toFixed(2)} but the contract states ` +
       `${stated.toFixed(2)}`
     );
   }
@@ -363,54 +365,54 @@ async function ingestContract({
   if (!categoryId) reasons.push("no matching category");
   const reason = reasons.join("; ") || null;
 
-  const lastInstallment = ex.installments
-    .map((x) => x.due_date)
+  const lastDue = plan
+    .map((p) => p.end || p.start)
     .sort()
     .at(-1);
 
   const created = [];
-  for (const [i, inst] of ex.installments.entries()) {
-    const minor = toMinor(inst.amount, ex.currency);
-    const fx = await convertToBase(minor, ex.currency, inst.due_date);
-    const label = inst.label?.trim()
-      ? `${ex.vendor_name} — ${inst.label.trim()}`
-      : `${ex.vendor_name} — installment ${i + 1} of ${ex.installments.length}`;
-    // Each installment is a single dated commitment, but its end_date is the
-    // agreement's end, not its own due date. Storing the due date there made
-    // every installment look like an agreement expiring that day, so a
-    // contract running to March 2027 reported as "ending in 25 days" the
-    // moment its first payment came round. Never earlier than the installment
-    // itself, or the occurrence would fall outside its own window.
+  for (const [i, p] of plan.entries()) {
+    const minor = toMinor(p.amount, ex.currency);
+    const fx = await convertToBase(minor, ex.currency, p.start);
+    const label = p.label?.trim()
+      ? `${ex.vendor_name} — ${p.label.trim()}`
+      : plan.length === 1
+        ? ex.vendor_name
+        : `${ex.vendor_name} — part ${i + 1} of ${plan.length}`;
+    // A commitment's end_date is the agreement's end, not the payment's own
+    // date: storing the due date there made every installment look like an
+    // agreement expiring that day.
     const agreementEnd =
-      ex.contract_end && ex.contract_end >= inst.due_date
-        ? ex.contract_end
-        : lastInstallment;
+      p.end ||
+      (ex.contract_end && ex.contract_end >= p.start ? ex.contract_end : lastDue);
+
     const rs = await run(
       `INSERT INTO fin_commitments
          (entity, direction, description, counterparty_id, category_id,
           amount_minor, currency, fx_rate, base_amount_minor,
           frequency, start_date, end_date, source, document_id,
           confidence, review_status, review_reason, dedup_key)
-       VALUES (?,?,?,?,?,?,?,?,?, 'once', ?, ?, 'contract', ?, ?, ?, ?, ?)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'contract', ?, ?, ?, ?, ?)
        ON CONFLICT (dedup_key) DO NOTHING
        RETURNING id`,
       [
         entity, direction, label.slice(0, 200), counterpartyId, categoryId,
         minor, ex.currency, fx.fxRate, fx.baseAmountMinor,
-        inst.due_date, agreementEnd, documentId,
+        p.frequency, p.start, agreementEnd, documentId,
         ex.confidence, reason ? "needs_review" : "ok", reason,
-        `doc:${hash}:${inst.due_date}:${i}`,
+        `doc:${hash}:${p.frequency}:${p.start}:${i}`,
       ]
     );
     const id = lastId(rs);
     if (id != null) {
-      created.push({ id: Number(id), dueDate: inst.due_date, amount: inst.amount, label });
+      created.push({
+        id: Number(id), dueDate: p.start, amount: p.amount, label,
+        frequency: p.frequency, occurrences: p.occurrences ?? 1,
+      });
     }
   }
 
-  await run(
-    "UPDATE fin_documents SET parse_error = NULL WHERE id = ?", [documentId]
-  );
+  await run("UPDATE fin_documents SET parse_error = NULL WHERE id = ?", [documentId]);
 
   // The schedule already existing is the normal outcome of re-reading a
   // contract, and nothing needs doing. But a commitment can end up pointing at
@@ -441,4 +443,99 @@ async function ingestContract({
     reviewReason: reason,
     confidence: ex.confidence,
   };
+}
+
+// ── Reading a contract's schedule ────────────────────────────
+// Preferred shape is the payment plan the reader returns: "a one-off fee,
+// then twelve monthly payments". Older readings, and any genuinely irregular
+// schedule, arrive as a flat list of dates instead.
+//
+// The flat list gets one more chance before it is taken literally: a run of
+// identical amounts on an even monthly, quarterly or annual cadence is the
+// same fact written the long way, and turning it back into a recurrence is
+// what stops twelve rows appearing where one belongs. Anything that does not
+// fit that pattern is left exactly as read — guessing a rhythm out of an
+// irregular schedule would be worse than a few extra rows.
+const MONTHS_APART = (a, b) =>
+  (Number(b.slice(0, 4)) - Number(a.slice(0, 4))) * 12 +
+  (Number(b.slice(5, 7)) - Number(a.slice(5, 7)));
+
+const BY_GAP = { 1: "monthly", 3: "quarterly", 12: "annual" };
+
+export function collapseInstallments(installments) {
+  if (!installments || installments.length < 3) return null;
+  const rows = [...installments].sort((a, b) => a.due_date.localeCompare(b.due_date));
+
+  // Same amount every time, or it is not one repeating charge.
+  const amounts = new Set(rows.map((r) => Number(r.amount).toFixed(2)));
+  if (amounts.size !== 1) return null;
+
+  // Same gap every time, and a gap a frequency can express.
+  const gaps = rows.slice(1).map((r, i) => MONTHS_APART(rows[i].due_date, r.due_date));
+  if (new Set(gaps).size !== 1) return null;
+  const frequency = BY_GAP[gaps[0]];
+  if (!frequency) return null;
+
+  // Same day of the month, or a monthly rule would move the dates.
+  if (new Set(rows.map((r) => r.due_date.slice(8, 10))).size !== 1) return null;
+
+  return {
+    kind: "recurring", frequency,
+    amount: Number(rows[0].amount),
+    start: rows[0].due_date,
+    end: rows[rows.length - 1].due_date,
+    occurrences: rows.length,
+    label: rows[0].label?.replace(/\s*\d+\s*$/, "").trim() || "",
+  };
+}
+
+// Where a recurrence ends when the contract gives a count rather than a date.
+function endFromCount(start, frequency, count) {
+  if (!count || count < 1) return null;
+  const step = { monthly: 1, quarterly: 3, annual: 12 }[frequency];
+  if (!step) {
+    if (frequency !== "weekly") return null;
+    const d = new Date(`${start}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + (count - 1) * 7);
+    return d.toISOString().slice(0, 10);
+  }
+  const [y, m, day] = start.split("-").map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + (count - 1) * step, 1));
+  const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  return `${d.toISOString().slice(0, 8)}${String(Math.min(day, last)).padStart(2, "0")}`;
+}
+
+export function buildPlan(ex) {
+  const plan = [];
+
+  for (const p of ex.payment_plan ?? []) {
+    if (p.kind === "recurring" && p.frequency) {
+      const end = p.last_due || endFromCount(p.first_due, p.frequency, p.count);
+      plan.push({
+        frequency: p.frequency, amount: p.amount, start: p.first_due,
+        end, label: p.label,
+        occurrences: p.count ?? null,
+      });
+    } else {
+      plan.push({
+        frequency: "once", amount: p.amount, start: p.first_due,
+        end: p.first_due, label: p.label, occurrences: 1,
+      });
+    }
+  }
+  if (plan.length) return plan;
+
+  const collapsed = collapseInstallments(ex.installments);
+  if (collapsed) {
+    return [{
+      frequency: collapsed.frequency, amount: collapsed.amount,
+      start: collapsed.start, end: collapsed.end,
+      label: collapsed.label, occurrences: collapsed.occurrences,
+    }];
+  }
+
+  return (ex.installments ?? []).map((i) => ({
+    frequency: "once", amount: Number(i.amount), start: i.due_date,
+    end: i.due_date, label: i.label, occurrences: 1,
+  }));
 }
