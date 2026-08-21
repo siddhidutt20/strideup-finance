@@ -62,6 +62,20 @@ that table. There is no second store, so there is nothing to reconcile between.
   comparing as strings. This has caused two real bugs: dates printing as
   `Sun Aug 02 2026` in the CSV export, and a `Map` lookup silently missing and
   zeroing the whole trend chart.
+- **One typeface: Poppins, self-hosted.** It is the geometric sans the
+  StrideUp wordmark is drawn in. Hierarchy comes from weight and size —
+  `--fin-display` is the same family at 600 — not from a second family.
+  The faces live in `client/public/fonts` and are declared in
+  `client/src/fonts.css`, deliberately not fetched from fonts.googleapis.com:
+  one less third-party round trip, and it renders on a network that blocks
+  Google. **The build sandbox blocks fonts.googleapis.com**, so a webfont
+  loaded from there is silently absent in every local screenshot — check
+  `document.fonts.size`, not just `getComputedStyle().fontFamily`, which
+  reports the family you asked for whether or not it loaded.
+- **The brand mark** is `client/public/strideup-wordmark.png`, rendered down
+  from the 630KB traced SVG in the onboarding repo and trimmed to the ink with
+  a transparent background. Re-render it rather than scaling the SVG in the
+  browser; the source file embeds a full-size PNG.
 - **SQL uses `?` placeholders**, converted to `$1, $2 …` by `db.js`.
 - **Every route** is wrapped in `ah()` and validates its body with zod.
 - **Categories are entity-tagged.** Each row in `FIN_CATEGORIES` ends with

@@ -74,7 +74,7 @@ const LOGIN_CSS = `
 .lg-card{position:relative;z-index:1;width:100%;max-width:410px;background:#fff;border-radius:22px;
   padding:34px 30px;box-shadow:0 30px 80px -30px rgba(20,8,40,.7);display:flex;flex-direction:column}
 .lg-wordmark{align-self:flex-start;width:auto;height:52px;max-width:100%;margin:0 0 10px}
-.lg-title{font-family:'Newsreader',Georgia,serif;font-weight:400;font-size:40px;
+.lg-title{font-weight:600;font-size:38px;
   letter-spacing:-.02em;line-height:1;margin:0 0 10px;color:#171326}
 .lg-sub{font-size:14px;line-height:1.55;color:#6b6188;margin:0 0 20px}
 .lg-label{font-size:12.5px;font-weight:700;color:#5c5277;margin:14px 0 6px}

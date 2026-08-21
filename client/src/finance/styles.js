@@ -1,8 +1,9 @@
 // Series colours are validated for colour-vision separation (deutan ΔE 10.7
 // between revenue and expenses); both carry a legend and direct labels, so
-// identity never rests on colour alone. Newsreader is reserved for the page
-// title and the financial figures — the register of a printed statement —
-// with Instrument Sans carrying every piece of interface around them.
+// identity never rests on colour alone. One family throughout — Poppins, the
+// geometric sans the StrideUp wordmark is drawn in. Page titles and financial
+// figures use --fin-display, which is the same family at a heavier weight:
+// hierarchy comes from weight and size rather than from a second typeface.
 export const FIN_CSS = `
 /* Tokens are declared on both the shell and the content column. The sidebar
    is a sibling of .fin, not a child, so a token block that lived only on .fin
@@ -13,7 +14,7 @@ export const FIN_CSS = `
   --fin-ink:#171326; --fin-muted:#6E6884; --fin-faint:#9C96AE;
   --fin-line:#EBE8F2; --fin-hair:#F2F0F7; --fin-surface:#fff;
   --fin-sunk:#FAF9FC; --fin-warn:#8A6A15; --fin-neg:#A8225F;
-  --fin-serif:'Newsreader',Georgia,'Times New Roman',serif}
+  --fin-display:'Poppins',system-ui,-apple-system,sans-serif}
 /* Layout belongs to the content column alone — the shell is the grid.
    min-width:0 matters: a grid item defaults to min-width:auto, which is
    min-content, so a wide table inside an overflow-x:auto wrapper stretches
@@ -37,7 +38,7 @@ export const FIN_CSS = `
 .fin-sidebrand{display:flex;flex-direction:column;align-items:flex-start;gap:2px;
   padding:10px 10px 20px}
 .fin-wordmark{display:block;width:auto;height:42px}
-.fin-product{font-family:var(--fin-serif);font-size:17px;font-weight:400;
+.fin-product{font-family:var(--fin-display);font-size:17px;font-weight:600;
   letter-spacing:-.01em;color:var(--fin-muted);padding-left:1px}
 .fin-sidelabel{margin:0 0 6px;padding:0 10px;font-size:10.5px;font-weight:700;
   letter-spacing:.11em;text-transform:uppercase;color:var(--fin-faint)}
@@ -105,7 +106,7 @@ export const FIN_CSS = `
 
 /* ── Masthead ── */
 .fin-head{padding:44px 0 26px}
-.fin-head h1{font-family:var(--fin-serif);font-weight:400;font-size:clamp(34px,5vw,46px);
+.fin-head h1{font-family:var(--fin-display);font-weight:600;font-size:clamp(34px,5vw,46px);
   letter-spacing:-.021em;line-height:1;margin:0 0 8px}
 .fin-head p{margin:0;color:var(--fin-muted);font-size:15px}
 
@@ -144,7 +145,7 @@ export const FIN_CSS = `
 
 .fin-empty{background:var(--fin-surface);border:1px solid var(--fin-line);border-radius:14px;
   padding:44px 34px;text-align:center}
-.fin-empty h2{font-family:var(--fin-serif);font-weight:400;font-size:24px;
+.fin-empty h2{font-family:var(--fin-display);font-weight:600;font-size:24px;
   letter-spacing:-.015em;margin:0 0 10px}
 .fin-empty p{margin:0 auto;max-width:430px;color:var(--fin-muted);font-size:14.5px}
 
@@ -157,7 +158,7 @@ export const FIN_CSS = `
 .fin-kpi.emph{border-color:#D9CBF3;box-shadow:0 1px 3px rgba(91,33,182,.06),0 8px 24px -16px rgba(91,33,182,.4)}
 .fin-kpi-label{font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;
   color:var(--fin-faint)}
-.fin-kpi-value{font-family:var(--fin-serif);font-weight:400;font-size:24px;line-height:1.08;
+.fin-kpi-value{font-family:var(--fin-display);font-weight:600;font-size:24px;line-height:1.08;
   letter-spacing:-.015em;font-variant-numeric:tabular-nums}
 .fin-kpi.t-in .fin-kpi-value{color:#0A7E96}
 .fin-kpi.t-out .fin-kpi-value{color:var(--fin-neg)}
@@ -170,7 +171,7 @@ export const FIN_CSS = `
 .fin-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
 @media(max-width:900px){.fin-grid{grid-template-columns:1fr}}
 .fin-entblock{margin-bottom:6px}
-.fin-entlabel{font-family:var(--fin-serif);font-weight:400;font-size:15px;
+.fin-entlabel{font-family:var(--fin-display);font-weight:600;font-size:15px;
   letter-spacing:.02em;text-transform:uppercase;color:var(--fin-faint);
   margin:22px 0 10px;padding-bottom:7px;border-bottom:1px solid var(--fin-line)}
 .fin-sidebyside{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
@@ -181,12 +182,12 @@ export const FIN_CSS = `
 .fe-ent.e-strideup{color:var(--fin-accent);background:#F1ECFB}
 .fe-ent.e-personal{color:#0A7E96;background:#E6F5F8}
 .fin-closebox{margin-top:22px;padding-top:18px;border-top:1px solid var(--fin-hair)}
-.fin-closebox h3{font-family:var(--fin-serif);font-weight:400;font-size:16px;margin:0 0 6px}
+.fin-closebox h3{font-family:var(--fin-display);font-weight:600;font-size:16px;margin:0 0 6px}
 .fin-panel{background:var(--fin-surface);border:1px solid var(--fin-line);border-radius:14px;
   padding:20px 22px;margin-bottom:14px;scroll-margin-top:64px}
 .fin-panel-head{display:flex;align-items:baseline;justify-content:space-between;gap:14px;
   margin-bottom:16px}
-.fin-panel-head h2{font-family:var(--fin-serif);font-weight:400;font-size:19px;
+.fin-panel-head h2{font-family:var(--fin-display);font-weight:600;font-size:19px;
   letter-spacing:-.012em;margin:0}
 .fin-panel-head>div>span{display:block;font-size:12.5px;color:var(--fin-faint);margin-top:2px}
 .fin-none{color:var(--fin-muted);font-size:13.5px;margin:4px 0}
@@ -323,7 +324,7 @@ export const STATEMENT_CSS = `
 .st-head td{padding-top:20px;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
   color:var(--fin-faint);font-weight:600;border-bottom:1px solid var(--fin-line)}
 .st-sub td{font-weight:600;border-bottom:1px solid var(--fin-line)}
-.st-total td{font-family:var(--fin-serif);font-size:19px;font-weight:400;padding:16px 0 8px;
+.st-total td{font-family:var(--fin-display);font-size:19px;font-weight:600;padding:16px 0 8px;
   border-bottom:2px solid var(--fin-ink);border-top:1px solid var(--fin-line)}
 .st-total td:first-child{letter-spacing:-.01em}
 .st-pos td:last-child{color:#0A7E96}
@@ -334,13 +335,13 @@ export const STATEMENT_CSS = `
 /* Cash flow: opening, what moved, closing */
 .cf-row{display:grid;grid-template-columns:1fr auto;gap:16px;align-items:baseline;
   padding:11px 0;border-bottom:1px solid var(--fin-hair);font-size:14px}
-.cf-row.cf-open,.cf-row.cf-close{font-family:var(--fin-serif);font-size:20px;font-weight:400;
+.cf-row.cf-open,.cf-row.cf-close{font-family:var(--fin-display);font-size:20px;font-weight:600;
   padding:16px 0;border-bottom:2px solid var(--fin-ink)}
 .cf-row.cf-close{border-top:1px solid var(--fin-line)}
 .cf-row span:last-child{font-variant-numeric:tabular-nums;white-space:nowrap}
 .cf-row .cf-in{color:#0A7E96}
 .cf-row .cf-out{color:var(--fin-neg)}
-.cf-sub{display:block;font-size:12px;color:var(--fin-faint);font-family:'Instrument Sans',sans-serif}
+.cf-sub{display:block;font-size:12px;font-weight:400;color:var(--fin-faint)}
 
 /* Ranked list — customers, vendors */
 .rk{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:11px}
@@ -353,7 +354,7 @@ export const STATEMENT_CSS = `
 
 .fin-viewhead{display:flex;align-items:baseline;justify-content:space-between;
   gap:16px;flex-wrap:wrap;padding:36px 0 22px}
-.fin-viewhead h1{font-family:var(--fin-serif);font-weight:400;
+.fin-viewhead h1{font-family:var(--fin-display);font-weight:600;
   font-size:clamp(30px,4.4vw,40px);letter-spacing:-.02em;line-height:1;margin:0 0 6px}
 .fin-viewhead p{margin:0;color:var(--fin-muted);font-size:14.5px}
 `;
@@ -443,7 +444,7 @@ export const FORECAST_CSS = `
 .sp-donut svg{width:190px;height:190px;display:block}
 .sp-seg{transition:.14s;cursor:default}
 .sp-centre-fig{text-anchor:middle;font-size:19px;font-weight:600;fill:var(--fin-ink);
-  font-family:var(--fin-serif);letter-spacing:-.02em}
+  font-family:var(--fin-display);letter-spacing:-.02em}
 .sp-centre-lab{text-anchor:middle;font-size:10px;fill:var(--fin-faint);font-weight:600;
   letter-spacing:.06em;text-transform:uppercase}
 .sp-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1px}
