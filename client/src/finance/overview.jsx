@@ -191,8 +191,10 @@ export function OverviewDash({ ov, money, period, onGo }) {
       </div>
 
       <div className="ov-band">
-        <Panel title="Cash, recorded and committed"
-               sub="Thirteen months behind, and what is agreed ahead">
+        <Panel title="Revenue and expenses by month"
+               sub={pj
+                 ? `Seven months to ${monthLabel(period)} — recorded, then committed`
+                 : `Seven months to ${monthLabel(period)}, as recorded`}>
           <TrendChart series={trend} money={money} current={period} />
         </Panel>
         <Panel title="Needs attention" sub="Conditions that are true right now">

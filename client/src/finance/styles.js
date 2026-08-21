@@ -213,7 +213,11 @@ export const FIN_CSS = `
 .fin-svg{width:100%;height:auto;display:block;overflow:visible}
 .fin-grid-line{stroke:var(--fin-hair);stroke-width:1}
 .fin-axis{stroke:var(--fin-line);stroke-width:1}
+.fin-legend i.fin-key-ahead{background:var(--fin-muted);opacity:.35;
+  border:1.5px dashed var(--fin-muted)}
+.fin-tip-ahead{color:var(--fin-muted);font-style:italic}
 .fin-xlab{font-size:9.5px;fill:var(--fin-faint);text-anchor:middle;font-family:inherit}
+.fin-xlab.ahead{font-style:italic}
 .fin-xlab.now{fill:var(--fin-accent);font-weight:700}
 .fin-svg g:hover rect[fill="transparent"]{fill:rgba(91,33,182,.04)}
 .fin-tip{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:10px;padding-top:10px;

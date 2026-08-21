@@ -59,6 +59,13 @@ export function TrendChart({ series, money, current, only }) {
     : Math.min(18, Math.max(6, slot / 2 - 3));
   const scale = (v) => ((H - PAD_B - PAD_T) * v) / max;
   const colour = { revenue: "var(--fin-in)", expenses: "var(--fin-out)" };
+  // A month past today has recorded nothing; its bar is what is committed to
+  // move in it. Hollow rather than solid, so the two are never read as one
+  // kind of claim — the same grammar the forecast lines use.
+  const anyAhead = series.some((m) => m.committed);
+  const bar = (m, c) => (m.committed
+    ? { fill: c, fillOpacity: 0.16, stroke: c, strokeWidth: 1.5, strokeDasharray: "3 2" }
+    : { fill: c });
 
   return (
     <div className="fin-chart">
@@ -66,6 +73,7 @@ export function TrendChart({ series, money, current, only }) {
         <div className="fin-legend">
           <span><i style={{ background: "var(--fin-in)" }} />Revenue</span>
           <span><i style={{ background: "var(--fin-out)" }} />Expenses</span>
+          {anyAhead && <span><i className="fin-key-ahead" />Committed, not yet recorded</span>}
         </div>
       )}
       <svg viewBox={`0 0 ${W} ${H}`} className="fin-svg" role="img"
@@ -82,16 +90,17 @@ export function TrendChart({ series, money, current, only }) {
               <rect x={i * slot} y="0" width={slot} height={H} fill="transparent" />
               {only ? (
                 <path d={barPath(cx - bw / 2, H - PAD_B - scale(m[only]), bw, scale(m[only]))}
-                      fill={colour[only]} />
+                      {...bar(m, colour[only])} />
               ) : (
                 <>
                   <path d={barPath(cx - bw - 1, H - PAD_B - scale(m.revenue), bw, scale(m.revenue))}
-                        fill="var(--fin-in)" />
+                        {...bar(m, "var(--fin-in)")} />
                   <path d={barPath(cx + 1, H - PAD_B - scale(m.expenses), bw, scale(m.expenses))}
-                        fill="var(--fin-out)" />
+                        {...bar(m, "var(--fin-out)")} />
                 </>
               )}
-              <text x={cx} y={H - 8} className={`fin-xlab${m.period === current ? " now" : ""}`}>
+              <text x={cx} y={H - 8}
+                    className={`fin-xlab${m.period === current ? " now" : ""}${m.committed ? " ahead" : ""}`}>
                 {monthLabel(m.period, true).split(" ")[0]}
               </text>
             </g>
@@ -112,6 +121,7 @@ export function TrendChart({ series, money, current, only }) {
                 <span className="fin-tip-net">net {money.exact(hover.net)}</span>
               </>
             )}
+            {hover.committed && <span className="fin-tip-ahead">committed, not recorded</span>}
           </>
         ) : <span className="fin-tip-idle">Hover a month for exact figures</span>}
       </div>

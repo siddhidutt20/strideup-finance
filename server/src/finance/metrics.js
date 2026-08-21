@@ -1372,14 +1372,27 @@ export async function sideDetail(entity, period, direction, today = new Date()) 
 // It is assembled from the same functions the detail pages use rather than
 // its own queries, so a figure here and the figure you reach by clicking
 // through cannot disagree.
+// The trend chart ends on the month being read, not on the month we are in.
+// Months already past are what they recorded; months still ahead have recorded
+// nothing, so they carry what is committed instead and are marked as such —
+// the chart draws them differently, because they are a different claim.
+export function trendAhead(series, commitments, settled, thisPeriod) {
+  return series.map((m) => {
+    if (m.period <= thisPeriod) return { ...m, committed: false };
+    const c = commitmentsForMonth(commitments, m.period, null, settled);
+    return {
+      period: m.period, revenue: c.committedIn, expenses: c.committedOut,
+      net: c.committedIn - c.committedOut, committed: true,
+    };
+  });
+}
+
 // What a month still ahead is already committed to do: where it opens once
 // everything agreed between now and then has moved, what is agreed to move
 // inside it, and where that leaves it. Every figure here is committed, never
 // recorded — the opening carries the recorded position forward through the
 // committed path rather than restating it.
-export async function projectedMonth(entity, period, thisPeriod, cash, asOf) {
-  const commitments = await activeCommitments(entity);
-  const settled = await paymentMap(entity);
+export function projectedMonth(commitments, settled, period, thisPeriod, cash, asOf) {
   const c = commitmentsForMonth(commitments, period, null, settled);
   const runUp = committedRunUp(commitments, settled, thisPeriod, period, asOf);
   const opening = cash.amount + runUp;
@@ -1421,17 +1434,25 @@ export async function overviewDashboard(entity, today = new Date(), period = nul
   const target = period && period !== thisPeriod ? period : thisPeriod;
   const ahead = target > thisPeriod;
   const asOf = isoDate(today);
-  const [cash, summary, prev, series, breakdown, ar, cashDash, vendors] =
+  const [cash, summary, prev, recorded, breakdown, ar, cashDash, vendors] =
     await Promise.all([
       cashPosition(entity),
       periodSummary(target, entity),
       periodSummary(addMonths(target, -1), entity),
-      trend(13, thisPeriod, entity),
+      trend(13, target, entity),
       categoryBreakdown(target, entity),
       receivables(today, entity),
       cashDashboard(entity, 3, today),
       vendorManagement(entity, today, 30),
     ]);
+
+  // Read once and used twice: the month's own projection, and the months past
+  // today inside the trend window.
+  const commitments = ahead ? await activeCommitments(entity) : null;
+  const settled = ahead ? await paymentMap(entity) : null;
+  const series = ahead
+    ? trendAhead(recorded, commitments, settled, thisPeriod)
+    : recorded.map((m) => ({ ...m, committed: false }));
 
   const pctChange = (now, before) =>
     before ? (now - before) / Math.abs(before) : null;
@@ -1455,7 +1476,9 @@ export async function overviewDashboard(entity, today = new Date(), period = nul
 
   return {
     entity, asOf, period: target, thisPeriod, ahead,
-    projected: ahead ? await projectedMonth(entity, target, thisPeriod, cash, asOf) : null,
+    projected: ahead
+      ? projectedMonth(commitments, settled, target, thisPeriod, cash, asOf)
+      : null,
     cash,
     revenue: summary.revenue, expenses: summary.expenses, net: summary.net,
     revenueChange: pctChange(summary.revenue, prev.revenue),
