@@ -126,7 +126,7 @@ that table. There is no second store, so there is nothing to reconcile between.
 
 ## Checking the numbers
 
-`scripts/audit.mjs` runs 56 cross-page reconciliations against a running
+`scripts/audit.mjs` runs 98 cross-page reconciliations against a running
 server: every headline figure against the ledger it came from, and against
 the same figure wherever else it appears. It catches the class of fault that
 matters most here — two pages disagreeing about one number — which no unit
@@ -136,6 +136,11 @@ test would see, because each page is individually self-consistent.
 
 It exits non-zero on any mismatch. Run it after touching anything in
 `metrics.js`.
+
+A month still ahead is checked the same way: the overview must open where the
+month before it closes, move only by what is committed, and land on the figure
+the forecast already publishes for it. A projected month that agrees with
+itself but not with the forecast is the fault this catches.
 
 ## Running and testing locally
 
@@ -215,6 +220,11 @@ different files per case.
   legible, and inside an `overflow-x:auto` wrapper that is meant to scroll. As
   a grid item, `.fin` grew to 736px on a 390px phone instead. `min-width:0` was
   not enough; `width:100%` with `box-sizing:border-box` is what pins it.
+- **Deleting a panel deletes whatever only that panel rendered.** The month
+  statement was removed as a duplicate of the cash flow dashboard, and it was —
+  but it was also the only thing on screen reading `committed.openingProjected`
+  and `committed.projectedClosing`. The server went on computing a carry-forward
+  nobody could see. Before removing a view, grep for what it alone consumes.
 - **A scripted `.replace()` that silently matched nothing.** This has produced
   a 17-placeholder / 16-column insert and an index in the wrong file. After any
   scripted edit, grep for the *result*, not for something nearby.

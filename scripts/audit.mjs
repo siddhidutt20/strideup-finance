@@ -58,6 +58,29 @@ for (const ent of ["strideup","personal"]) {
             (m.period===fc.months[0].period? s2.cashflow.closing + m.committedIn - m.committedOut : m.closing) : 0);
   }
 
+  // The overview reads a month still ahead off the committed path. It must
+  // open where the month before it closes, move only by what is agreed, and
+  // land exactly where the forecast says — the same figure, four pages apart.
+  let prevClose = st.cashflow.closing;
+  for (const m of fc.months.slice(1, 4)) {
+    const mp = m.period.slice(0, 7);
+    const od = (await g(`/finance/dashboard?entity=${ent}&period=${m.period}`)).byEntity[ent];
+    const pj = od.projected;
+    check(`  overview ${mp} opens where ${prevClose === st.cashflow.closing ? "this month" : "the month before"} closes`,
+          pj.opening, prevClose);
+    check(`  overview ${mp} committed in = forecast`, pj.committedIn, m.committedIn);
+    check(`  overview ${mp} committed out = forecast`, pj.committedOut, m.committedOut);
+    check(`  overview ${mp} closes = opening + in − out`,
+          pj.closing, pj.opening + pj.committedIn - pj.committedOut);
+    check(`  overview ${mp} close = forecast close`, pj.closing, m.closing);
+    check(`  overview ${mp} spend donut = committed out`,
+          pj.byCategory.reduce((t, c) => t + c.total, 0), pj.committedOut);
+    check(`  overview ${mp} rows sum to in − out`,
+          pj.items.reduce((t, i) => t + (i.direction === "in" ? i.amount : -i.amount), 0),
+          pj.committedIn - pj.committedOut);
+    prevClose = pj.closing;
+  }
+
   // Side pages must decompose their own month.
   check("revenue: contract-linked + other = month", sin.fixed+sin.variable, sin.thisMonth);
   check("expenses: contract-linked + other = month", sout.fixed+sout.variable, sout.thisMonth);

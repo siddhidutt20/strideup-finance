@@ -838,6 +838,12 @@ export const RECORD_CSS = `
 `;
 
 export const OVERVIEW_CSS = `
+/* A month still ahead reads as a projection, not as a record. The tint is the
+   same one the future-month banner uses, so the two say "not yet" alike. */
+.ov-ahead{background:#F6F2FE;border:1px solid #E3D8FA;border-radius:14px;
+  padding:13px 16px;margin:0 0 16px;font-size:13px;line-height:1.6;
+  color:var(--fin-muted)}
+.ov-ahead b{color:var(--fin-accent);font-weight:600}
 .ov-kpis{grid-template-columns:repeat(6,minmax(0,1fr))}
 @media(max-width:1500px){.ov-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:820px){.ov-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}

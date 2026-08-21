@@ -1372,15 +1372,62 @@ export async function sideDetail(entity, period, direction, today = new Date()) 
 // It is assembled from the same functions the detail pages use rather than
 // its own queries, so a figure here and the figure you reach by clicking
 // through cannot disagree.
-export async function overviewDashboard(entity, today = new Date()) {
+// What a month still ahead is already committed to do: where it opens once
+// everything agreed between now and then has moved, what is agreed to move
+// inside it, and where that leaves it. Every figure here is committed, never
+// recorded — the opening carries the recorded position forward through the
+// committed path rather than restating it.
+export async function projectedMonth(entity, period, thisPeriod, cash, asOf) {
+  const commitments = await activeCommitments(entity);
+  const settled = await paymentMap(entity);
+  const c = commitmentsForMonth(commitments, period, null, settled);
+  const runUp = committedRunUp(commitments, settled, thisPeriod, period, asOf);
+  const opening = cash.amount + runUp;
+
+  // The same grouping the recorded month uses, so the category chart reads
+  // the same way whichever month is open.
+  const byName = new Map();
+  for (const it of c.items) {
+    if (it.direction !== "out") continue;
+    const name = it.categoryName || "Uncategorised";
+    byName.set(name, (byName.get(name) ?? 0) + it.amount);
+  }
+  const byCategory = [...byName]
+    .map(([name, total]) => ({ name, total }))
+    .sort((a, b) => b.total - a.total);
+
+  return {
+    period, opening, runUp,
+    committedIn: c.committedIn,
+    committedOut: c.committedOut,
+    movement: c.committedIn - c.committedOut,
+    closing: opening + c.committedIn - c.committedOut,
+    byCategory,
+    categoryTotal: byCategory.reduce((t, r) => t + r.total, 0),
+    items: c.items.map((it) => ({
+      commitmentId: it.id, date: it.date, vendor: it.counterparty,
+      description: it.description, direction: it.direction,
+      categoryName: it.categoryName, amount: it.amount, status: "due",
+    })),
+  };
+}
+
+export async function overviewDashboard(entity, today = new Date(), period = null) {
   const thisPeriod = monthStart(today);
+  // The overview answers "how are we doing" for whichever month is open, not
+  // only for the month we happen to be in. A month still ahead has nothing
+  // recorded against it, so it is answered from what is committed instead —
+  // kept in its own block so an agreed figure is never read as a recorded one.
+  const target = period && period !== thisPeriod ? period : thisPeriod;
+  const ahead = target > thisPeriod;
+  const asOf = isoDate(today);
   const [cash, summary, prev, series, breakdown, ar, cashDash, vendors] =
     await Promise.all([
       cashPosition(entity),
-      periodSummary(thisPeriod, entity),
-      periodSummary(addMonths(thisPeriod, -1), entity),
+      periodSummary(target, entity),
+      periodSummary(addMonths(target, -1), entity),
       trend(13, thisPeriod, entity),
-      categoryBreakdown(thisPeriod, entity),
+      categoryBreakdown(target, entity),
       receivables(today, entity),
       cashDashboard(entity, 3, today),
       vendorManagement(entity, today, 30),
@@ -1407,7 +1454,8 @@ export async function overviewDashboard(entity, today = new Date()) {
   const ninety = cashDash.forecast.months[3] ?? cashDash.forecast.months.at(-1);
 
   return {
-    entity, asOf: isoDate(today), period: thisPeriod,
+    entity, asOf, period: target, thisPeriod, ahead,
+    projected: ahead ? await projectedMonth(entity, target, thisPeriod, cash, asOf) : null,
     cash,
     revenue: summary.revenue, expenses: summary.expenses, net: summary.net,
     revenueChange: pctChange(summary.revenue, prev.revenue),

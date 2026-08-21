@@ -69,7 +69,8 @@ export const api = {
   deleteInvoice: (id) => request("DELETE", `/finance/invoices/${id}`),
   finSide: (direction, entity, period) =>
     request("GET", `/finance/side/${direction}?entity=${entity}&period=${period}`),
-  finDashboard: (entity) => request("GET", `/finance/dashboard?entity=${entity}`),
+  finDashboard: (entity, period) =>
+    request("GET", `/finance/dashboard?entity=${entity}&period=${period}`),
   finCash: (entity, months = 3) =>
     request("GET", `/finance/cash?entity=${entity}&months=${months}`),
   finVendors: (entity) => request("GET", `/finance/vendors?entity=${entity}`),

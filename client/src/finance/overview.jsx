@@ -86,13 +86,65 @@ function Ageing({ ar, money }) {
   );
 }
 
+// A month still ahead has recorded nothing, so its headline figures are the
+// committed ones: where it opens once everything agreed before it has moved,
+// what is agreed to move inside it, and where that leaves it. Nothing here is
+// an estimate and nothing here is recorded — every figure is under agreement.
+function AheadKpis({ pj, period, money }) {
+  const prev = monthLabel(prevPeriod(period));
+  return (
+    <>
+      <article className="fc-kpi">
+        <header><span>Opens at</span></header>
+        <p className="fin-fig">{money.round(pj.opening)}</p>
+        <footer>
+          {pj.runUp === 0
+            ? `${prev}'s closing, carried forward`
+            : `${prev}'s projected closing, carried forward`}
+        </footer>
+      </article>
+      <article className="fc-kpi">
+        <header><span>Committed to arrive</span></header>
+        <p className="fin-fig fe-in">{money.round(pj.committedIn)}</p>
+        <footer>{pj.committedIn ? "agreed under contract" : "nothing agreed to arrive"}</footer>
+      </article>
+      <article className="fc-kpi">
+        <header><span>Committed to go out</span></header>
+        <p className="fin-fig fe-out">{money.round(pj.committedOut)}</p>
+        <footer>{pj.committedOut ? "agreed under contract" : "nothing agreed to go out"}</footer>
+      </article>
+      <article className="fc-kpi">
+        <header><span>Closes at</span></header>
+        <p className={`fin-fig${pj.closing < 0 ? " fe-out" : ""}`}>{money.round(pj.closing)}</p>
+        <footer>
+          {pj.movement >= 0 ? "+" : "−"}{money.round(Math.abs(pj.movement))} on the month
+        </footer>
+      </article>
+    </>
+  );
+}
+
+const prevPeriod = (p) =>
+  `${new Date(Date.UTC(+p.slice(0, 4), +p.slice(5, 7) - 2, 1)).toISOString().slice(0, 7)}-01`;
+
 export function OverviewDash({ ov, money, period, onGo }) {
   const r = ov.runway;
   const trend = ov.trend.slice(-7);
+  const pj = ov.ahead ? ov.projected : null;
 
   return (
     <>
+      {pj && (
+        <p className="ov-ahead">
+          <b>{monthLabel(period)} hasn't happened yet.</b> Nothing is recorded
+          against it, so this page shows what is already agreed: it opens where{" "}
+          {monthLabel(prevPeriod(period))} leaves off and moves only on contracts
+          already signed.
+        </p>
+      )}
       <div className="fc-kpis ov-kpis">
+        {pj ? <AheadKpis pj={pj} period={period} money={money} /> : (
+        <>
         <article className="fc-kpi">
           <header><span>Cash today</span></header>
           <p className="fin-fig">{money.round(ov.cash.amount)}</p>
@@ -113,6 +165,8 @@ export function OverviewDash({ ov, money, period, onGo }) {
           <p className={`fin-fig${ov.net < 0 ? " fe-out" : ""}`}>{money.round(ov.net)}</p>
           <footer><Change v={ov.netChange} /></footer>
         </article>
+        </>
+        )}
         <article className="fc-kpi">
           <header><span>Committed, 90 days</span></header>
           <p className={`fin-fig${ov.expectedIn90 < 0 ? " fe-out" : ""}`}>
@@ -147,9 +201,11 @@ export function OverviewDash({ ov, money, period, onGo }) {
       </div>
 
       <div className="ov-band3">
-        <Panel title="Where the money went" sub={`Expenses · ${monthLabel(period)}`}>
-          <SpendByCategory rows={ov.expensesByCategory} money={money} period={period}
-                           total={ov.expenseTotal} />
+        <Panel title={pj ? "Where the money is going" : "Where the money went"}
+               sub={`${pj ? "Committed" : "Expenses"} · ${monthLabel(period)}`}>
+          <SpendByCategory rows={pj ? pj.byCategory : ov.expensesByCategory} money={money}
+                           period={period}
+                           total={pj ? pj.categoryTotal : ov.expenseTotal} />
         </Panel>
         <Panel title="Outstanding" sub="Invoices raised and not yet settled">
           <div className="ov-quad">
@@ -177,9 +233,15 @@ export function OverviewDash({ ov, money, period, onGo }) {
         </Panel>
       </div>
 
-      <Panel title="Coming up" sub={`${money.round(ov.upcomingTotal)} due in the next 30 days`}>
-        {ov.upcoming.length === 0 ? (
-          <p className="fc-none">Nothing falls due in the next 30 days.</p>
+      <Panel title={pj ? `Falling due in ${monthLabel(period)}` : "Coming up"}
+             sub={pj
+               ? `${money.round(pj.committedOut)} out · ${money.round(pj.committedIn)} in, all under agreement`
+               : `${money.round(ov.upcomingTotal)} owed now or falling due in 30 days`}>
+        {(pj ? pj.items : ov.upcoming).length === 0 ? (
+          <p className="fc-none">
+            {pj ? `Nothing is committed to move in ${monthLabel(period)}.`
+                : "Nothing falls due in the next 30 days."}
+          </p>
         ) : (
           <div className="fin-tablewrap">
             <table className="fin-table">
@@ -188,7 +250,7 @@ export function OverviewDash({ ov, money, period, onGo }) {
                     <th className="num">Amount</th></tr>
               </thead>
               <tbody>
-                {ov.upcoming.map((u, i) => (
+                {(pj ? pj.items : ov.upcoming).map((u, i) => (
                   <tr key={`${u.commitmentId}-${u.date}-${i}`}>
                     <td>
                       <span className={`fc-dir ${u.direction}`}>

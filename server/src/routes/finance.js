@@ -1260,12 +1260,20 @@ financeRouter.get(
   "/dashboard",
   ah(async (req, res) => {
     const { choice, list } = resolveEntities(req.query.entity);
+    // The month picker reaches the overview too: a month still ahead is
+    // answered from what is committed, a month behind from what it recorded.
+    const period = periodParam.safeParse(req.query.period).success
+      ? req.query.period
+      : monthStart();
     const byEntity = {};
     for (const ent of list) {
-      byEntity[ent] = { label: ENTITY_LABEL[ent], ...(await overviewDashboard(ent)) };
+      byEntity[ent] = {
+        label: ENTITY_LABEL[ent],
+        ...(await overviewDashboard(ent, new Date(), period)),
+      };
     }
     res.json({
-      entity: choice, entities: list, byEntity,
+      entity: choice, entities: list, period, byEntity,
       baseCurrency: config.finance.baseCurrency,
     });
   })

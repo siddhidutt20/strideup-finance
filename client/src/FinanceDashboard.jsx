@@ -6,7 +6,7 @@ import {
   ENTITY_LABEL, ENTITY_CHOICES, loadEntity, saveEntity,
 } from "./finance/format.js";
 import {
-  OverviewView, PnlView, LedgerView, ToolsView, ManualEntry,
+  OverviewView, PnlView, LedgerView, ToolsView,
 } from "./finance/views.jsx";
 import { ForecastView } from "./finance/forecast.jsx";
 import { ContractsView } from "./finance/contracts.jsx";
@@ -130,7 +130,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
         api.finVendors(entity),
         api.finCash(entity, 3),
       ]);
-      setDash(await api.finDashboard(entity));
+      setDash(await api.finDashboard(entity, period));
       const [rin, rout, inv] = await Promise.all([
         api.finSide("in", entity, period),
         api.finSide("out", entity, period),
@@ -295,8 +295,11 @@ export default function FinanceDashboard({ owner, onLogout }) {
       ? "Every entry recorded, across all months"
       : blurbBase;
   const waiting =
-    NEEDS_STATEMENTS.has(view) &&
-    (statements?.period !== period || statements?.entity !== entity);
+    (NEEDS_STATEMENTS.has(view) &&
+     (statements?.period !== period || statements?.entity !== entity)) ||
+    // The overview is now month-scoped too, so a month's figures are never
+    // shown under another month's heading while the new ones are in flight.
+    (view === "overview" && (!dash || dash.period !== period));
   // Adding things belongs where you are looking at them: a sales invoice on
   // Revenue, a bill on Expenses.
 
@@ -392,9 +395,9 @@ export default function FinanceDashboard({ owner, onLogout }) {
 
       {error && <div className="fin-error">{error}</div>}
 
-      {period > thisMonth() && <FutureMonth period={period} entityList={entityList}
-                                            forecast={forecast} money={money}
-                                            onGo={setView} />}
+      {period > thisMonth() && view !== "overview" &&
+        <FutureMonth period={period} entityList={entityList}
+                     forecast={forecast} money={money} onGo={setView} />}
       {data && !data.aiEnabled && view === "overview" && (
         <div className="fin-warn">
           Reading documents needs an Anthropic API key. Set <code>ANTHROPIC_API_KEY</code>{" "}
@@ -408,7 +411,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
         <UploadFeed feed={feed} money={money} onReplace={replaceFile} onDismiss={dismiss} />
       )}
 
-      {view === "overview" && isEmpty ? (
+      {view === "overview" && isEmpty && period <= thisMonth() ? (
         <div className="fin-empty">
           <h2>Nothing recorded for {monthLabel(period)} yet</h2>
           <p>
@@ -420,7 +423,8 @@ export default function FinanceDashboard({ owner, onLogout }) {
         <div className="fin-boot"><div className="fin-spinner" /></div>
       ) : (
         <>
-          {view === "overview" && dash && (dash.entities ?? [entity]).map((ent) => (
+          {view === "overview" && dash && dash.period === period &&
+            (dash.entities ?? [entity]).map((ent) => (
             <EntityBlock key={`ov-${ent}`} show={(dash.entities ?? []).length > 1}
                          label={dash.byEntity[ent].label}>
               <OverviewDash ov={dash.byEntity[ent]} money={money} period={period}
