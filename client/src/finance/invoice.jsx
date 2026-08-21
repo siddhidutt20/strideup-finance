@@ -8,7 +8,7 @@ import { CURRENCIES, today, ENTITY_LABEL } from "./format.js";
 // the ledger; recording payment against it is what makes it revenue, in the
 // month the money actually landed. Same rule contracts follow.
 
-export function NewInvoice({ entity, currency, onClose, onSaved }) {
+export function InvoiceFields({ entity, currency, onSaved }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [form, setForm] = useState({
@@ -35,14 +35,7 @@ export function NewInvoice({ entity, currency, onClose, onSaved }) {
   };
 
   return (
-    <div className="ct-modal" role="dialog" aria-modal="true" aria-label="New invoice">
-      <form className="ct-dialog iv-dialog" onSubmit={submit}>
-        <h3>New invoice</h3>
-        <p className="ct-dialogsub">
-          Money owed to you. It shows under outstanding payments and starts ageing —
-          it becomes revenue when you record it as paid.
-        </p>
-
+      <form className="fin-form iv-form" onSubmit={submit}>
         <div className="iv-grid">
           <label className="wide"><span>Customer</span>
             <input value={form.customer} onChange={set("customer")} required maxLength={160}
@@ -76,13 +69,11 @@ export function NewInvoice({ entity, currency, onClose, onSaved }) {
           </label>
         </div>
 
-        {error && <p className="fin-error">{error}</p>}
-        <div className="ct-dialogactions">
-          <button type="button" className="fin-btn ghost" onClick={onClose}>Cancel</button>
+        <div className="fin-form-foot">
           <button className="fin-btn" disabled={busy}>{busy ? "Saving…" : "Raise it"}</button>
+          {error && <span className="fin-err-inline">{error}</span>}
         </div>
       </form>
-    </div>
   );
 }
 

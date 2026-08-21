@@ -258,26 +258,17 @@ function LedgerTable({ entries, categories, money, baseCurrency, showEntity,
 
 // Not everything arrives as a document: money you put in, a bank charge, a
 // payment settled by transfer. This is how those get on the books.
-export function ManualEntry({
+// The fields only. It used to carry its own panel and open/close toggle and
+// live permanently on the page; it is now opened from a button, so the
+// chrome belongs to whatever is showing it.
+export function ManualEntryForm({
   categories, currency, onAdded, entity: entityProp = "strideup",
-  defaultDirection = "out", preferKinds, title, sub,
+  defaultDirection = "out", preferKinds,
   descPlaceholder = "Founder equity injection", whoPlaceholder = "Founder, bank, supplier…",
-  whoLabel = "Who", openSignal = 0,
+  whoLabel = "Who",
 }) {
-  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
-  const formRef = useRef(null);
-  // Opened from the button in the page header. A counter rather than a
-  // boolean, so pressing it again while the form is already open still brings
-  // it back into view instead of doing nothing.
-  useEffect(() => {
-    if (!openSignal) return;
-    setOpen(true);
-    const id = requestAnimationFrame(() =>
-      formRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }));
-    return () => cancelAnimationFrame(id);
-  }, [openSignal]);
   const [form, setForm] = useState({
     entryDate: today(), direction: defaultDirection, amount: "",
     currency, categoryId: "", description: "", counterparty: "",
@@ -334,18 +325,7 @@ export function ManualEntry({
   }
 
   return (
-    <section className="fin-panel" ref={formRef}>
-      <div className="fin-panel-head">
-        <div>
-          <h2>{title || "Add an entry by hand"}</h2>
-          <span>{sub || "Capital, transfers, anything without a document"}</span>
-        </div>
-        <button className="fin-link asbtn" onClick={() => setOpen((o) => !o)}>
-          {open ? "Hide" : "Write one"}
-        </button>
-      </div>
-
-      {open && (
+    <>
         <form className="fin-form" onSubmit={submit}>
           <label>
             <span>Books</span>
@@ -407,8 +387,7 @@ export function ManualEntry({
             {msg && <span className={msg.ok ? "fin-ok-inline" : "fin-err-inline"}>{msg.text}</span>}
           </div>
         </form>
-      )}
-    </section>
+    </>
   );
 }
 

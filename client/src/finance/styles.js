@@ -811,3 +811,28 @@ export const INVOICE_CSS = `
 .iv-table td em.vm-late{display:block;font-style:normal;font-size:10.5px}
 @media(max-width:520px){.iv-grid{grid-template-columns:1fr}}
 `;
+
+export const RECORD_CSS = `
+/* One "New" button, kind chosen first. */
+.nr-dialog,.up-dialog{max-width:640px;width:100%}
+.nr-kinds{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.nr-kind{text-align:left;border:1px solid var(--fin-line);background:var(--fin-surface);
+  border-radius:12px;padding:10px 12px;cursor:pointer;font-family:inherit;
+  display:flex;flex-direction:column;gap:3px;transition:.14s}
+.nr-kind:hover{border-color:var(--fin-accent)}
+.nr-kind.on{border-color:var(--fin-accent);background:#F6F2FE;
+  box-shadow:0 0 0 1px var(--fin-accent) inset}
+.nr-kind b{font-size:12.5px;font-weight:600;color:var(--fin-ink)}
+.nr-kind em{font-style:normal;font-size:11px;color:var(--fin-muted);line-height:1.45}
+.nr-body{max-height:52vh;overflow-y:auto;margin-top:4px;padding-right:2px}
+.nr-body .fin-form{padding:0}
+.up-dialog .fin-drop{margin:0}
+.fin-feed-loose{margin:0 0 18px}
+.iv-form{padding:0!important}
+
+/* The schedule, one month at a time. */
+.ct-month{min-width:640px}
+.ct-what{color:var(--fin-muted)}
+.ct-part{display:block;font-style:normal;font-size:11px;color:var(--fin-faint);margin-top:3px}
+@media(max-width:520px){.nr-kinds{grid-template-columns:1fr}}
+`;

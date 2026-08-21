@@ -822,9 +822,18 @@ financeRouter.get(
     };
     const back = clamp(req.query.back, 2, 0, 12);
     const ahead = clamp(req.query.ahead, 9, 1, 18);
+    // The schedule is read one month at a time. A grid of a year of columns
+    // repeated a party's name down every row of its own schedule and made a
+    // twelve-payment contract unreadable; the month picker already exists to
+    // answer "what about July".
+    const focus = periodParam.safeParse(req.query.period).success
+      ? req.query.period : monthStart();
     const byEntity = {};
     for (const ent of list) {
-      byEntity[ent] = { label: ENTITY_LABEL[ent], ...(await contractSchedule(ent, back, ahead)) };
+      byEntity[ent] = {
+        label: ENTITY_LABEL[ent], focus,
+        ...(await contractSchedule(ent, back, ahead)),
+      };
     }
     res.json({
       entity: choice, entities: list, byEntity,

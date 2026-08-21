@@ -17,24 +17,6 @@ import { FREQ_LABEL } from "./forecast.jsx";
 
 const LABEL = { paid: "Paid", due: "Due", overdue: "Overdue", waived: "Waived" };
 
-function Cell({ row, cell, money, onToggle, busy }) {
-  if (!cell.occurrences.length) return <td className="ct-cell empty"><span>—</span></td>;
-  return (
-    <td className="ct-cell">
-      {cell.occurrences.map((o) => (
-        <button key={o.date} className={`ct-chip ${o.status}`} disabled={busy}
-                title={o.status === "paid"
-                  ? `Recorded as paid ${o.paidDate || o.date} — click to undo`
-                  : `Due ${o.date} — click to record it as paid`}
-                onClick={() => onToggle(row, o)}>
-          <i aria-hidden="true" />
-          <span className="ct-chipamt">{money.round(o.amount)}</span>
-          <em>{LABEL[o.status]}</em>
-        </button>
-      ))}
-    </td>
-  );
-}
 
 export function ContractsView({ sched, money, onChange }) {
   const [busy, setBusy] = useState(false);
@@ -43,7 +25,7 @@ export function ContractsView({ sched, money, onChange }) {
 
   const toggle = async (row, occ) => {
     setError("");
-    if (occ.status === "paid") {
+    if (occ.status === "paid" || occ.status === "partial") {
       setBusy(true);
       try { await api.unmarkPaid(row.id, occ.date); onChange(); }
       catch (e) { setError(e.message || "Could not undo that."); }
@@ -74,25 +56,24 @@ export function ContractsView({ sched, money, onChange }) {
   const t = sched.tally;
   const arrears = sched.arrears;
 
-  // A contract with a setup fee and a monthly charge is two commitments that
-  // belong to one party. Grouping by party keeps the name off every line.
-  const groups = [];
-  const seen = new Map();
+  // One line per payment falling due in the month being looked at. A contract
+  // with twelve monthly installments has exactly one line here, not twelve —
+  // the month picker is what answers "and what about July".
+  const focus = sched.focus || sched.period;
+  const rows = [];
   for (const row of sched.rows) {
+    const cell = row.months.find((m) => m.period === focus);
+    if (!cell) continue;
     const name = row.counterparty || "Unattributed";
-    const key = `${name}::${row.direction}`;
-    if (!seen.has(key)) {
-      const g = { key, name, direction: row.direction, rows: [] };
-      seen.set(key, g);
-      groups.push(g);
-    }
     // Strip the party name the ingest prefixes onto each commitment, so the
-    // line reads "Monthly platform fee" under a heading that already says who.
+    // line reads "Monthly platform fee" beside a column that already says who.
     const label = row.description.startsWith(`${name} — `)
       ? row.description.slice(name.length + 3)
       : row.description;
-    seen.get(key).rows.push({ ...row, label });
+    for (const occ of cell.occurrences) rows.push({ ...row, label, occ });
   }
+  rows.sort((a, b) =>
+    a.occ.date.localeCompare(b.occ.date) || a.label.localeCompare(b.label));
 
   return (
     <>
@@ -123,71 +104,64 @@ export function ContractsView({ sched, money, onChange }) {
 
       {error && <div className="fin-error">{error}</div>}
 
-      <Panel title="Contracts and commitments"
-             sub="Every agreed payment, month by month. Click a cell to record that it arrived.">
-        {sched.rows.length === 0 ? (
+      <Panel title={`Due in ${monthLabel(sched.focus || sched.period)}`}
+             sub="Click a payment to record that it arrived">
+        {rows.length === 0 ? (
           <p className="fc-none">
-            Nothing committed yet. Add a contract, a retainer, a rent or an EMI on
-            the Forecast page and it appears here.
+            Nothing falls due in {monthLabel(sched.focus || sched.period)}. Use the
+            month picker to look at another month.
           </p>
         ) : (
           <div className="fin-tablewrap">
-            <table className="fin-table ct-table">
+            <table className="fin-table ct-month">
               <thead>
                 <tr>
-                  <th className="ct-who">Contract</th>
-                  {sched.periods.map((p) => (
-                    <th key={p} className={`num${p === sched.period ? " now" : ""}`}>
-                      {monthLabel(p, true)}
-                    </th>
-                  ))}
+                  <th>Party</th><th>What</th><th>Due</th><th>Status</th>
+                  <th className="num">Amount</th><th />
                 </tr>
               </thead>
               <tbody>
-                {groups.map((g) => [
-                  // The party is named once, on its own row, rather than
-                  // repeated down every line of its own schedule.
-                  g.rows.length > 1 || g.name !== g.rows[0].label ? (
-                    <tr key={`g-${g.key}`} className="ct-group">
-                      <td className="ct-who" colSpan={sched.periods.length + 1}>
-                        <span className={`fc-dir ${g.direction}`}>
-                          {g.direction === "in" ? "In" : "Out"}
-                        </span>
-                        {g.name}
-                        <span className="fc-cat">
-                          {g.rows.length} commitment{g.rows.length === 1 ? "" : "s"}
-                        </span>
-                      </td>
-                    </tr>
-                  ) : null,
-                  ...g.rows.map((row) => (
-                  <tr key={row.id} className="ct-line">
-                    <td className="ct-who">
-                      {row.months.every((m) => !m.occurrences.length) && (
-                        <span className="ct-outside">nothing due in these months</span>
-                      )}
-                      {row.label}
-                      <span className="fc-cat">
-                        {FREQ_LABEL[row.frequency]} · {money.exact(row.amount)}
+                {rows.map((r) => (
+                  <tr key={`${r.id}-${r.occ.date}`}>
+                    <td>
+                      <span className={`fc-dir ${r.direction}`}>
+                        {r.direction === "in" ? "In" : "Out"}
                       </span>
+                      {r.counterparty || "Unattributed"}
                     </td>
-                    {row.months.map((cell) => (
-                      <Cell key={cell.period} row={row} cell={cell} money={money}
-                            onToggle={toggle} busy={busy} />
-                    ))}
+                    <td className="ct-what">{r.label}</td>
+                    <td className="fc-date">{r.occ.date}</td>
+                    <td>
+                      <span className={`vm-status s-${r.occ.status}`}>
+                        {LABEL[r.occ.status]}
+                      </span>
+                      {r.occ.status === "partial" && (
+                        <em className="ct-part">
+                          {money.round(r.occ.paid)} of {money.round(r.occ.scheduled)}
+                        </em>
+                      )}
+                    </td>
+                    <td className={`num fin-fig ${r.direction === "in" ? "fe-in" : "fe-out"}`}>
+                      {money.exact(r.occ.status === "paid" ? r.occ.paid : r.occ.outstanding)}
+                    </td>
+                    <td className="iv-actions">
+                      <button className="vm-rec" disabled={busy}
+                              onClick={() => toggle(r, r.occ)}>
+                        {r.occ.status === "paid" || r.occ.status === "partial"
+                          ? "Undo" : "Record"}
+                      </button>
+                    </td>
                   </tr>
-                  )),
-                ])}
+                ))}
               </tbody>
             </table>
           </div>
         )}
         <p className="fc-note">
-          A contract is agreed the day it is signed, owed on each due date, and
-          yours when it arrives. Recording a payment here writes it into the ledger
-          for the month it actually arrived — which is what moves your revenue, your
-          cash and your P&L. Until then it stays committed and counts toward none of
-          them.
+          A contract is agreed the day it is signed, owed on each due date, and yours
+          when it arrives. Recording a payment here writes it into the ledger for the
+          month it actually arrived — which is what moves your revenue, your cash and
+          your P&L. Until then it stays committed and counts toward none of them.
         </p>
       </Panel>
 

@@ -363,8 +363,7 @@ function CommitmentList({ commitments, money, onChange, busy }) {
   );
 }
 
-function AddCommitment({ entity, categories, currency, onAdded }) {
-  const [open, setOpen] = useState(false);
+export function CommitmentForm({ entity, categories, currency, onAdded }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const blank = {
@@ -405,17 +404,6 @@ function AddCommitment({ entity, categories, currency, onAdded }) {
   };
 
   return (
-    <div className="fin-manual">
-      <div className="fin-manual-head">
-        <div>
-          <strong>Commit something</strong>
-          <span>A rent, an EMI, a subscription, a signed retainer</span>
-        </div>
-        <button className="fin-link asbtn" onClick={() => setOpen((o) => !o)}>
-          {open ? "Hide" : "Add one"}
-        </button>
-      </div>
-      {open && (
         <form className="fin-form" onSubmit={submit}>
           <label><span>Books</span>
             <select value={form.entity}
@@ -470,8 +458,6 @@ function AddCommitment({ entity, categories, currency, onAdded }) {
             {msg && <span className={msg.ok ? "fin-ok" : "fin-error"}>{msg.text}</span>}
           </div>
         </form>
-      )}
-    </div>
   );
 }
 
@@ -595,8 +581,7 @@ export function ForecastView({ fc, commitments, money, categories, entity, onCha
         <CommitmentList commitments={commitments} money={money} onChange={remove} busy={busy} />
       </Panel>
 
-      <AddCommitment entity={entity === "both" ? "strideup" : entity}
-                     categories={categories} currency={money.currency} onAdded={onChange} />
+
     </>
   );
 }

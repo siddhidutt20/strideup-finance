@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api.js";
-import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS, FUTURE_CSS, CASHFLOW_AHEAD_CSS, CF_NONE_CSS, VENDORS_CSS, CASH_CSS, CONTRACTS_GROUP_CSS, SIDE_CSS, CASH_BAND_CSS, NARROW_FIX_CSS, INVOICE_CSS } from "./finance/styles.js";
+import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS, FUTURE_CSS, CASHFLOW_AHEAD_CSS, CF_NONE_CSS, VENDORS_CSS, CASH_CSS, CONTRACTS_GROUP_CSS, SIDE_CSS, CASH_BAND_CSS, NARROW_FIX_CSS, INVOICE_CSS, RECORD_CSS } from "./finance/styles.js";
 import {
   fmtAmount, monthLabel, readFile, shiftMonth, thisMonth, useMoney, ZERO_DECIMAL,
   ENTITY_LABEL, ENTITY_CHOICES, loadEntity, saveEntity,
@@ -13,7 +13,8 @@ import { ContractsView } from "./finance/contracts.jsx";
 import { VendorsView } from "./finance/vendors.jsx";
 import { CashView } from "./finance/cash.jsx";
 import { SideView } from "./finance/side.jsx";
-import { NewInvoice, PayInvoice, InvoiceList } from "./finance/invoice.jsx";
+import { PayInvoice, InvoiceList } from "./finance/invoice.jsx";
+import { NewRecord } from "./finance/record.jsx";
 import { DueSoon } from "./finance/spend.jsx";
 import { Panel, CapitalList } from "./finance/pieces.jsx";
 import { ICONS } from "./finance/icons.jsx";
@@ -42,6 +43,10 @@ const NEEDS_STATEMENTS = new Set(["revenue", "expenses", "cashflow", "pnl"]);
 // point of visiting one is to see what is already committed to land in it.
 const HORIZON_MONTHS = 18;
 
+// Where "+ New" and "Upload" appear, and which direction each page is about.
+const RECORD_VIEWS = { overview: "out", revenue: "in", expenses: "out",
+                       ledger: "out", vendors: "out" };
+
 export default function FinanceDashboard({ owner, onLogout }) {
   const [view, setView] = useState("overview");
   const [period, setPeriod] = useState(thisMonth());
@@ -62,9 +67,10 @@ export default function FinanceDashboard({ owner, onLogout }) {
   const [cash, setCash] = useState(null);
   const [sides, setSides] = useState(null);
   const [invoices, setInvoices] = useState(null);
-  const [raising, setRaising] = useState(false);
   const [paying, setPaying] = useState(null);
-  const [manualOpen, setManualOpen] = useState(0);
+  const [uploading, setUploading] = useState(false);
+  const [uploadKindPick, setUploadKindPick] = useState(null);
+  const [adding, setAdding] = useState(false);
   const setEntity = (v) => { saveEntity(v); setEntityState(v); };
   const [busy, setBusy] = useState(false);
 
@@ -118,7 +124,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
         api.finForecast(entity, 6),
         api.finCommitments(entity),
         api.finDue(entity, 30),
-        api.finSchedule(entity),
+        api.finSchedule(entity, period),
         api.finVendors(entity),
         api.finCash(entity, 3),
       ]);
@@ -274,7 +280,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
         {/* Joined in JS, not as three JSX children: a <style> element with
             several text children does not reliably end up with all of them in
             the DOM, and the symptom is a stylesheet that silently truncates. */}
-        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS}</style>
+        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS}</style>
         <div className="fin-boot"><div className="fin-spinner" /></div>
       </div>
     );
@@ -290,21 +296,11 @@ export default function FinanceDashboard({ owner, onLogout }) {
     (statements?.period !== period || statements?.entity !== entity);
   // Adding things belongs where you are looking at them: a sales invoice on
   // Revenue, a bill on Expenses.
-  const UPLOAD_VIEWS = { overview: "expense", revenue: "revenue", expenses: "expense",
-                         ledger: "expense", vendors: "contract" };
-  const uploadKind = UPLOAD_VIEWS[view];
-  const showUpload = !!uploadKind;
-  const MANUAL = {
-    revenue: { defaultDirection: "in", preferKinds: ["revenue", "capital"],
-               title: "Record revenue by hand", sub: "A payment that never had a document",
-               descPlaceholder: "Coaching programme — August cohort",
-               whoPlaceholder: "Customer name…", whoLabel: "Customer" },
-    expenses: { defaultDirection: "out", preferKinds: ["cogs", "opex", "capex", "tax"],
-                title: "Record an expense by hand", sub: "A cost that never had a document",
-                descPlaceholder: "Figma team seats",
-                whoPlaceholder: "Supplier name…", whoLabel: "Supplier" },
-    ledger: { defaultDirection: "out" },
-  };
+
+  // Which side "+ New" defaults to, and what a dropped file is assumed to be.
+  const recordSide = RECORD_VIEWS[view];
+  const uploadKind = uploadKindPick ??
+    (view === "revenue" ? "revenue" : view === "vendors" ? "contract" : "expense");
   const isEmpty = entityList.every(
     (e) => (data?.byEntity?.[e]?.summary?.entryCount ?? 0) === 0 &&
            !data?.byEntity?.[e]?.receivables?.total
@@ -312,7 +308,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
 
   return (
     <div className="fin-app">
-      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS}</style>
+      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS}</style>
 
       <aside className="fin-side" aria-label="Sections">
         <div className="fin-sidebrand">
@@ -364,19 +360,14 @@ export default function FinanceDashboard({ owner, onLogout }) {
             </p>
           </div>
           <div className="fin-headctl">
-            {(view === "revenue" || view === "expenses") && (
+            {RECORD_VIEWS[view] && (
               <span className="fin-headacts">
                 <a className="fin-btn ghost" href={api.finExportUrl()}
                    title="Every entry, as a spreadsheet">Export</a>
-                {view === "revenue" ? (
-                  <button className="fin-btn" onClick={() => setRaising(true)}>
-                    + New invoice
-                  </button>
-                ) : (
-                  <button className="fin-btn" onClick={() => setManualOpen((n) => n + 1)}>
-                    + New expense
-                  </button>
-                )}
+                <button className="fin-btn ghost" onClick={() => setUploading(true)}>
+                  Upload
+                </button>
+                <button className="fin-btn" onClick={() => setAdding(true)}>+ New</button>
               </span>
             )}
             <div className="fin-entnav" role="group" aria-label="Which books">
@@ -408,16 +399,10 @@ export default function FinanceDashboard({ owner, onLogout }) {
         </div>
       )}
 
-      {showUpload && (
-        <UploadZone kind={uploadKind} onFiles={handleFiles} busy={busy} feed={feed}
-                    money={money} onReplace={replaceFile} onDismiss={dismiss} />
-      )}
-
-      {MANUAL[view] && !waiting && (
-        <ManualEntry key={view} categories={categories} openSignal={manualOpen}
-                     currency={data?.baseCurrency || "USD"}
-                     entity={entity === "both" ? "strideup" : entity}
-                     onAdded={() => load(period)} {...MANUAL[view]} />
+      {/* The extraction feed follows the dialog out, but stays visible after it
+          closes — a document being read is worth watching finish. */}
+      {feed.length > 0 && !uploading && (
+        <UploadFeed feed={feed} money={money} onReplace={replaceFile} onDismiss={dismiss} />
       )}
 
       {view === "overview" && isEmpty ? (
@@ -543,7 +528,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
             (schedule.entities ?? [entity]).map((ent) => (
               <EntityBlock key={ent} show={(schedule.entities ?? []).length > 1}
                            label={schedule.byEntity[ent].label}>
-                <ContractsView sched={schedule.byEntity[ent]} money={money}
+                <ContractsView sched={schedule.byEntity[ent]} money={money} period={period}
                                onChange={() => { loadForecast(); load(period); }} />
               </EntityBlock>
             ))
@@ -556,10 +541,16 @@ export default function FinanceDashboard({ owner, onLogout }) {
         )}
       </div>
 
-      {raising && (
-        <NewInvoice entity={entity} currency={data?.baseCurrency || "USD"}
-                    onClose={() => setRaising(false)}
-                    onSaved={() => { setRaising(false); loadForecast(); load(period); }} />
+      {adding && (
+        <NewRecord side={recordSide === "in" ? "in" : "out"} entity={entity}
+                   currency={data?.baseCurrency || "USD"} categories={categories}
+                   onClose={() => setAdding(false)}
+                   onSaved={() => { loadForecast(); load(period); }} />
+      )}
+      {uploading && (
+        <UploadDialog kind={uploadKind} onKind={setUploadKindPick} onFiles={handleFiles}
+                      busy={busy} feed={feed} money={money} onReplace={replaceFile}
+                      onDismiss={dismiss} onClose={() => setUploading(false)} />
       )}
       {paying && (
         <PayInvoice invoice={paying} categories={categories} money={money}
@@ -646,6 +637,36 @@ const DROP_COPY = {
   },
 };
 
+// The drop zone used to sit permanently on four pages, taking a large block
+// of the screen to say the same thing each time. It is a button now; the
+// dialog it opens still accepts a drop, and asks what the file is rather than
+// inferring it from which page you happened to be on.
+function UploadDialog({ kind, onKind, onFiles, busy, feed, money, onReplace, onDismiss, onClose }) {
+  return (
+    <div className="ct-modal" role="dialog" aria-modal="true" aria-label="Upload documents">
+      <div className="ct-dialog up-dialog">
+        <h3>Upload a document</h3>
+        <div className="nr-kinds" role="group" aria-label="What kind of document">
+          {[["expense", "Bill or receipt", "Something you paid for"],
+            ["revenue", "Proof of payment", "Money that arrived"],
+            ["contract", "Contract or agreement", "Future payments, read into a schedule"]]
+            .map(([k, label, hint]) => (
+              <button key={k} type="button" className={`nr-kind${kind === k ? " on" : ""}`}
+                      onClick={() => onKind(k)}>
+                <b>{label}</b><em>{hint}</em>
+              </button>
+            ))}
+        </div>
+        <UploadZone kind={kind} onFiles={onFiles} busy={busy} feed={feed} money={money}
+                    onReplace={onReplace} onDismiss={onDismiss} />
+        <div className="ct-dialogactions">
+          <button type="button" className="fin-btn ghost" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function UploadZone({ kind = "expense", onFiles, busy, feed, money, onReplace, onDismiss }) {
   const copy = DROP_COPY[kind];
   const [over, setOver] = useState(false);
@@ -722,5 +743,48 @@ function UploadZone({ kind = "expense", onFiles, busy, feed, money, onReplace, o
         </ul>
       )}
     </section>
+  );
+}
+
+// The extraction feed, shown outside the upload dialog so a document being
+// read is still watchable after the dialog is dismissed.
+function UploadFeed({ feed, money, onReplace, onDismiss }) {
+  return (
+    <ul className="fin-feed fin-feed-loose">
+      {feed.map((f) => (
+        <li key={f.id} className={`fin-feed-item s-${f.state}`}>
+          <span className="ff-name">{f.name}</span>
+          {f.state === "reading" && <span className="ff-note">reading file…</span>}
+          {f.state === "reading-doc" && <span className="ff-note">extracting…</span>}
+          {f.state === "error" && <span className="ff-err">{f.message}</span>}
+          {f.state === "duplicate" && (
+            <>
+              <span className="ff-dup">
+                You have already uploaded this file. Replace what's recorded?
+              </span>
+              <span className="ff-actions">
+                <button className="ff-btn" onClick={() => onReplace(f)}>Replace</button>
+                <button className="ff-btn ghost" onClick={() => onDismiss(f.id)}>Keep existing</button>
+              </span>
+            </>
+          )}
+          {f.state === "done" && f.result?.contract && (
+            <span className="ff-ok">
+              Contract read · {f.result.commitments?.length ?? 0} commitment
+              {(f.result.commitments?.length ?? 0) === 1 ? "" : "s"} scheduled
+            </span>
+          )}
+          {f.state === "done" && f.result?.extraction && (
+            <span className="ff-ok">
+              {fmtAmount(f.result.currency || f.result.extraction.currency,
+                Math.round(f.result.extraction.total *
+                  (ZERO_DECIMAL.has(f.result.currency || f.result.extraction.currency) ? 1 : 100)))}
+              {" · "}{f.result.categoryName || "uncategorised"}
+              {f.result.needsReview && " · needs a look"}
+            </span>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }
