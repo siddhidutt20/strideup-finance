@@ -185,10 +185,12 @@ export function InvoiceList({ invoices, money, onPay, onDelete, busy }) {
                       Record
                     </button>
                   )}
-                  {v.paidMinor === 0 && (
-                    <button className="fin-x" disabled={busy} title="Remove this invoice"
-                            onClick={() => onDelete(v)}>×</button>
-                  )}
+                  {/* Hiding this the moment a payment lands is what made a
+                      part-paid invoice look undeletable. It is shown always;
+                      what it takes with it is spelled out before it runs. */}
+                  <button className="vm-rec danger" disabled={busy}
+                          title="Remove this invoice and anything recorded against it"
+                          onClick={() => onDelete(v)}>Remove</button>
                 </td>
               </tr>
             );

@@ -642,7 +642,7 @@ financeRouter.get(
       byEntity[ent] = {
         entity: ent,
         label: ENTITY_LABEL[ent],
-        commitments: (await activeCommitments(ent)).map(shapeCommitment),
+        commitments: markDuplicates((await activeCommitments(ent)).map(shapeCommitment)),
       };
     }
     res.json({
@@ -651,6 +651,22 @@ financeRouter.get(
     });
   })
 );
+
+// One contract read twice used to leave two schedules for one payment. New
+// readings are stopped at the door now, but the ones already on the books have
+// to be findable, so a row that another row already covers on the same day is
+// marked. Nothing is deleted here — which of two readings is the right one is
+// a judgement, and it belongs to whoever signed the contract.
+function markDuplicates(rows) {
+  const seen = new Map();
+  return rows.map((k) => {
+    const key = [k.entity, k.direction, k.counterparty ?? "", k.baseAmountMinor,
+                 k.startDate].join("|");
+    const first = seen.get(key);
+    if (first === undefined) { seen.set(key, k.id); return { ...k, duplicateOf: null }; }
+    return { ...k, duplicateOf: first };
+  });
+}
 
 const shapeCommitment = (k) => ({
   id: Number(k.id),
@@ -1300,16 +1316,49 @@ financeRouter.delete(
   ah(async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Bad id." });
-    const inv = await get("SELECT paid_minor FROM fin_invoices WHERE id = ?", [id]);
+    const inv = await get(
+      "SELECT paid_minor, entity FROM fin_invoices WHERE id = ?", [id]
+    );
     if (!inv) return res.status(404).json({ error: "That invoice is gone." });
-    if (Number(inv.paid_minor) > 0) {
-      return res.status(409).json({
-        error: "Money has been recorded against this invoice. Remove those ledger " +
-               "entries first if it really needs deleting.",
-      });
+
+    // A payment recorded against an invoice was posted to the ledger with a
+    // dedup key naming that invoice, so the entries it created can be found
+    // exactly rather than guessed at. Deleting the invoice takes them with it
+    // — leaving them behind is what made a deleted invoice keep showing up.
+    const entries = await all(
+      `SELECT e.id, e.period FROM fin_entries e
+        WHERE e.dedup_key LIKE ? AND e.entity = ?`,
+      [`invoice:${id}:%`, inv.entity]
+    );
+
+    // Except in a month that has been closed. Closed months are never
+    // rewritten, so this stops rather than quietly reopening settled history.
+    if (entries.length) {
+      const periods = [...new Set(entries.map((e) => isoDate(e.period)))];
+      const closed = await all(
+        `SELECT period FROM fin_periods
+          WHERE status = 'closed' AND entity = ?
+            AND period IN (${periods.map(() => "?").join(",")})`,
+        [inv.entity, ...periods]
+      );
+      if (closed.length) {
+        return res.status(409).json({
+          error:
+            `This invoice has money recorded in ${closed
+              .map((c) => isoDate(c.period).slice(0, 7))
+              .join(", ")}, which ${closed.length === 1 ? "is a closed month" : "are closed months"}. ` +
+            "Closed months are never rewritten. Reopen the month first, or leave " +
+            "the invoice in place and mark it cancelled.",
+        });
+      }
+      await run(
+        `DELETE FROM fin_entries WHERE id IN (${entries.map(() => "?").join(",")})`,
+        entries.map((e) => Number(e.id))
+      );
     }
+
     await run("DELETE FROM fin_invoices WHERE id = ?", [id]);
-    res.json({ ok: true });
+    res.json({ ok: true, removedEntries: entries.length });
   })
 );
 

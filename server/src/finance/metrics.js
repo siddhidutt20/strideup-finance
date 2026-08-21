@@ -1300,6 +1300,122 @@ export async function cashDashboard(entity, months = 3, today = new Date()) {
 // is everything else that actually happened. That is a real distinction this
 // system can prove, unlike a fixed/variable tag someone would have to
 // maintain by hand and would stop trusting within a month.
+// ── The two detail pages ─────────────────────────────────────
+// What each month actually did, split the way the page reads it. Fixed is what
+// came out of an agreement — provable from the dedup key an entry carries when
+// it was posted from a commitment — and variable is the rest. Months still
+// ahead have recorded nothing and carry what is committed instead, flagged so
+// the chart can draw them as the different claim they are.
+async function splitTrend(entity, direction, months, endPeriod, today) {
+  const from = addMonths(endPeriod, -(months - 1));
+  const rows = await all(
+    `SELECT e.period,
+            COALESCE(SUM(e.base_amount_minor), 0) AS total,
+            COALESCE(SUM(CASE WHEN e.dedup_key LIKE 'commitment:%'
+                              THEN e.base_amount_minor ELSE 0 END), 0) AS fixed
+       FROM fin_entries e
+      WHERE e.review_status <> 'rejected' AND e.direction = ?
+        AND e.period >= ? AND e.period <= ?${ENT(entity)}
+      GROUP BY 1`,
+    [direction, from, endPeriod, ...ENT_ARG(entity)]
+  );
+  const byPeriod = new Map(rows.map((r) => [isoDate(r.period), r]));
+  const out = [];
+  for (let i = 0; i < months; i++) {
+    const period = addMonths(from, i);
+    const r = byPeriod.get(period);
+    const total = Number(r?.total ?? 0);
+    const fixed = Number(r?.fixed ?? 0);
+    out.push({ period, total, fixed, variable: Math.max(0, total - fixed), ahead: false });
+  }
+  return out;
+}
+
+// The committed path forward, on the same shape as the recorded months so one
+// chart can carry both.
+function committedTrend(commitments, settled, fromPeriod, months, direction, asOf) {
+  const out = [];
+  for (let i = 0; i < months; i++) {
+    const period = addMonths(fromPeriod, i);
+    const c = commitmentsForMonth(commitments, period, i === 0 ? asOf : null, settled);
+    const total = direction === "in" ? c.committedIn : c.committedOut;
+    out.push({ period, total, fixed: total, variable: 0, ahead: true });
+  }
+  return out;
+}
+
+// What the invoice book says, month by month: raised, settled, and what that
+// leaves outstanding. Only meaningful on the money-in side.
+async function invoiceTrend(entity, months, endPeriod) {
+  const from = addMonths(endPeriod, -(months - 1));
+  const rows = await all(
+    `SELECT date_trunc('month', issue_date)::date AS period,
+            COALESCE(SUM(amount_minor), 0) AS invoiced,
+            COALESCE(SUM(paid_minor), 0) AS collected,
+            COUNT(*) AS n
+       FROM fin_invoices
+      WHERE issue_date >= ? AND issue_date < (?::date + interval '1 month')
+        ${entity && entity !== "both" ? "AND entity = ?" : ""}
+      GROUP BY 1`,
+    entity && entity !== "both" ? [from, endPeriod, entity] : [from, endPeriod]
+  );
+  const byPeriod = new Map(rows.map((r) => [isoDate(r.period), r]));
+  const out = [];
+  for (let i = 0; i < months; i++) {
+    const period = addMonths(from, i);
+    const r = byPeriod.get(period);
+    const invoiced = Number(r?.invoiced ?? 0);
+    const collected = Number(r?.collected ?? 0);
+    out.push({
+      period, invoiced, collected,
+      outstanding: Math.max(0, invoiced - collected),
+      count: Number(r?.n ?? 0),
+    });
+  }
+  return out;
+}
+
+// How the invoice book is performing. Every figure here is a count or a mean
+// over invoices actually on file — none of it is modelled.
+async function invoiceStats(entity, period, today) {
+  const next = addMonths(period, 1);
+  const ent = entity && entity !== "both" ? "AND entity = ?" : "";
+  const args = (a) => (entity && entity !== "both" ? [...a, entity] : a);
+  const issued = await get(
+    `SELECT COUNT(*) AS n, COALESCE(SUM(amount_minor),0) AS total,
+            COALESCE(SUM(paid_minor),0) AS paid
+       FROM fin_invoices WHERE issue_date >= ? AND issue_date < ? ${ent}`,
+    args([period, next])
+  );
+  const prev = await get(
+    `SELECT COUNT(*) AS n FROM fin_invoices
+      WHERE issue_date >= ? AND issue_date < ? ${ent}`,
+    args([addMonths(period, -1), period])
+  );
+  // Days to collect is only answerable for invoices that were actually
+  // settled; an unpaid one has no collection date to measure to.
+  const days = await get(
+    `SELECT AVG(EXTRACT(EPOCH FROM (updated_at::date - issue_date)) / 86400) AS d,
+            COUNT(*) AS n
+       FROM fin_invoices
+      WHERE paid_minor >= amount_minor AND amount_minor > 0
+        AND updated_at::date >= issue_date ${ent}`,
+    args([])
+  );
+  const n = Number(issued?.n ?? 0);
+  const total = Number(issued?.total ?? 0);
+  const paid = Number(issued?.paid ?? 0);
+  return {
+    issued: n,
+    issuedBefore: Number(prev?.n ?? 0),
+    invoicedTotal: total,
+    averageValue: n ? Math.round(total / n) : 0,
+    collectionRate: total ? paid / total : null,
+    daysToCollect: days?.n > 0 && days?.d != null ? Math.round(Number(days.d)) : null,
+    daysToCollectFrom: Number(days?.n ?? 0),
+  };
+}
+
 export async function sideDetail(entity, period, direction, today = new Date()) {
   const asOf = isoDate(today);
   const isIn = direction === "in";

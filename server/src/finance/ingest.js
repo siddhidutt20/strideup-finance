@@ -361,8 +361,9 @@ async function ingestContract({
               (SELECT COUNT(*) FROM fin_commitment_payments p
                 WHERE p.commitment_id = k.id) AS payments
          FROM fin_commitments k
-        WHERE k.source = 'contract' AND k.dedup_key LIKE ?`,
-      [`doc:${hash}:%`]
+        WHERE k.source = 'contract'
+          AND (k.dedup_key LIKE ? OR k.document_id = ?)`,
+      [`doc:${hash}:%`, documentId]
     );
     for (const row of existing) {
       if (Number(row.payments) > 0) { kept += 1; continue; }
@@ -398,6 +399,7 @@ async function ingestContract({
     .at(-1);
 
   const created = [];
+  let duplicates = 0;
   for (const [i, p] of plan.entries()) {
     const minor = toMinor(p.amount, ex.currency);
     const fx = await convertToBase(minor, ex.currency, p.start);
@@ -412,6 +414,19 @@ async function ingestContract({
     const agreementEnd =
       p.end ||
       (ex.contract_end && ex.contract_end >= p.start ? ex.contract_end : lastDue);
+
+    // The same party, the same money, the same date, the same rhythm, already
+    // on the books and active: that is the same obligation however it was
+    // read. Skipping it is what stops one contract read twice from becoming
+    // two schedules for one payment.
+    const twin = await get(
+      `SELECT id FROM fin_commitments
+        WHERE status = 'active' AND entity = ? AND direction = ?
+          AND counterparty_id IS NOT DISTINCT FROM ?
+          AND base_amount_minor = ? AND start_date = ? AND frequency = ?`,
+      [entity, direction, counterpartyId, fx.baseAmountMinor, p.start, p.frequency]
+    );
+    if (twin) { duplicates += 1; continue; }
 
     const rs = await run(
       `INSERT INTO fin_commitments
@@ -466,7 +481,7 @@ async function ingestContract({
     contractStart: ex.contract_start,
     contractEnd: ex.contract_end,
     commitments: created,
-    replaced, kept,
+    replaced, kept, duplicates,
     duplicate: created.length === 0,
     reviewReason: reason,
     confidence: ex.confidence,

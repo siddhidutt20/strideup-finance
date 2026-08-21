@@ -338,10 +338,18 @@ function CommitmentList({ commitments, money, onChange, busy }) {
         </thead>
         <tbody>
           {commitments.map((k) => (
-            <tr key={k.id}>
+            <tr key={k.id} className={k.duplicateOf ? "fc-dupe" : undefined}>
               <td>
                 <span className={`fc-dir ${k.direction}`}>{k.direction === "in" ? "In" : "Out"}</span>
                 {k.description}
+                {/* One contract read twice leaves two schedules for one
+                    payment. Which reading is right is the signer's call, so
+                    the row is marked, never removed. */}
+                {k.duplicateOf && (
+                  <span className="fc-dupetag" title={`Same party, amount and date as commitment ${k.duplicateOf}`}>
+                    same payment as another row
+                  </span>
+                )}
                 {k.categoryName && <span className="fc-cat">{k.categoryName}</span>}
               </td>
               <td className="fc-who">{k.counterparty || "—"}</td>

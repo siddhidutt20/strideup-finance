@@ -254,13 +254,27 @@ export default function FinanceDashboard({ owner, onLogout }) {
     }
   }
 
+  // An invoice and the money recorded against it are one thing, so they go
+  // together. What that means is said before it happens, not after.
   async function removeInvoice(inv) {
+    const paid = inv.paidMinor > 0;
     if (!window.confirm(
-      `Remove invoice ${inv.number} for ${inv.customer}?\n\nNothing has been ` +
-      `recorded against it, so no ledger entry is affected.`
+      `Remove invoice ${inv.number} for ${inv.customer || "no customer"}?\n\n` +
+      (paid
+        ? `${fmtAmount(inv.currency, inv.paidMinor)} has been recorded as ` +
+          `collected against it. Those ledger entries are removed too, so the ` +
+          `month goes down by that much. A closed month cannot be touched — if ` +
+          `any of it sits in one, nothing is deleted and you will be told which.`
+        : `Nothing has been recorded against it, so no ledger entry is affected.`)
     )) return;
-    try { await api.deleteInvoice(inv.id); loadForecast(); }
-    catch (err) { setError(err.message || "Could not remove that invoice."); }
+    try {
+      const r = await api.deleteInvoice(inv.id);
+      if (r?.removedEntries) {
+        setError(`Invoice ${inv.number} removed, along with ${r.removedEntries} ` +
+                 `ledger entr${r.removedEntries === 1 ? "y" : "ies"}.`);
+      }
+      loadForecast(); load(period);
+    } catch (err) { setError(err.message || "Could not remove that invoice."); }
   }
 
   async function removeEntry(entry) {
