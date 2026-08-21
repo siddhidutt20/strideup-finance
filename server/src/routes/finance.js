@@ -6,7 +6,7 @@ import { requireOwner } from "../auth.js";
 import { aiLimiter } from "../security.js";
 import { config } from "../config.js";
 import { ah, isoDate } from "../util.js";
-import { ACCEPTED_MIME, sniffMime, toMinor, fromMinor } from "../finance/extract.js";
+import { ACCEPTED_MIME, sniffMime, toMinor, fromMinor, ZERO_DECIMAL } from "../finance/extract.js";
 import { ENTITIES, ENTITY_LABEL, FREQUENCIES } from "../finance/schema.js";
 import { ingestDocument, learnRule, resolvePeriod, findOrCreateCounterparty, convertToBase } from "../finance/ingest.js";
 import { importGhlCsv } from "../finance/ghl.js";
@@ -587,26 +587,51 @@ financeRouter.get(
   ah(async (req, res) => {
     const rows = await all(
       `SELECT e.entity, e.entry_date, e.direction, e.amount_minor, e.currency,
+              e.base_amount_minor, e.fx_rate,
               COALESCE(c.name,'Uncategorised') AS category, COALESCE(c.kind,'') AS kind,
+              c.spend_group AS spend_group,
               COALESCE(p.name,'') AS counterparty, COALESCE(e.description,'') AS description,
-              COALESCE(e.reference,'') AS reference, e.review_status, e.document_id
+              COALESCE(e.reference,'') AS reference, e.review_status, e.document_id,
+              d.filename AS document_name
          FROM fin_entries e
          LEFT JOIN fin_categories c ON c.id = e.category_id
          LEFT JOIN fin_counterparties p ON p.id = e.counterparty_id
+         LEFT JOIN fin_documents d ON d.id = e.document_id
         WHERE e.review_status <> 'rejected'
         ORDER BY e.entry_date, e.id`
     );
     const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    // An absolute URL, because a spreadsheet has no page to be relative to.
+    // Behind the proxy `req.protocol` reads x-forwarded-proto, which is why
+    // `trust proxy` is set — without it every link would come out as http.
+    const origin = `${req.protocol}://${req.get("host")}`;
+    const base = config.finance.baseCurrency;
     const header = [
-      "entity", "date", "direction", "amount", "currency", "category", "kind",
-      "counterparty", "description", "reference", "status", "document_id",
+      "entity", "date", "direction", "amount", "currency",
+      `base_amount (${base})`, "fx_rate",
+      "category", "spend_group", "kind",
+      "counterparty", "description", "reference", "status",
+      "document", "document_link",
     ];
     const body = rows.map((r) =>
       [
         r.entity, isoDate(r.entry_date), r.direction,
-        (Number(r.amount_minor) / 100).toFixed(2),
-        r.currency, r.category, r.kind, r.counterparty, r.description,
-        r.reference, r.review_status, r.document_id ?? "",
+        // Not every currency has two decimal places, and dividing by 100
+        // regardless turned a ¥7,500 line into ¥75.00.
+        fromMinor(Number(r.amount_minor), r.currency).toFixed(
+          ZERO_DECIMAL.has(r.currency) ? 0 : 2
+        ),
+        r.currency,
+        // The column every total in the app is summed from. Without it a
+        // spreadsheet adding the `amount` column across currencies is wrong.
+        fromMinor(Number(r.base_amount_minor), base).toFixed(
+          ZERO_DECIMAL.has(base) ? 0 : 2
+        ),
+        r.fx_rate ?? "",
+        r.category, r.spend_group ?? "", r.kind,
+        r.counterparty, r.description, r.reference, r.review_status,
+        r.document_name ?? "",
+        r.document_id ? `${origin}/api/finance/documents/${r.document_id}` : "",
       ].map(esc).join(",")
     );
     res.setHeader("Content-Type", "text/csv; charset=utf-8");

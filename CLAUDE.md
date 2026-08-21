@@ -137,7 +137,7 @@ reaches all of them.
 
 ## Checking the numbers
 
-`scripts/audit.mjs` runs 174 cross-page reconciliations against a running
+`scripts/audit.mjs` runs 179 cross-page reconciliations against a running
 server: every headline figure against the ledger it came from, and against
 the same figure wherever else it appears. It catches the class of fault that
 matters most here — two pages disagreeing about one number — which no unit
@@ -231,6 +231,12 @@ different files per case.
   legible, and inside an `overflow-x:auto` wrapper that is meant to scroll. As
   a grid item, `.fin` grew to 736px on a 390px phone instead. `min-width:0` was
   not enough; `width:100%` with `box-sizing:border-box` is what pins it.
+- **`amount_minor / 100` is wrong for a third of the world.** The CSV export
+  divided by 100 whatever the currency, so a ¥7,500 line came out as ¥75.00.
+  `fromMinor(minor, currency)` exists for this; nothing should divide by 100 by
+  hand. The export also omitted `base_amount_minor` entirely — the only column
+  every total in the app is summed from — so a spreadsheet adding the `amount`
+  column across currencies got a number the app would never agree with.
 - **A total row under a single row is that row again.** "Tech $7,500" above
   "Total $7,500" reads as one payment counted twice, and the reader is right to
   ask. A footer that adds up one number is noise; it appears only from two rows

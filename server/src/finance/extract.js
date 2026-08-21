@@ -32,7 +32,7 @@ export function sniffMime(buffer) {
 }
 
 // Currencies without minor units — "1000 JPY" is 1000, not 100000.
-const ZERO_DECIMAL = new Set(["JPY", "KRW", "VND", "CLP", "ISK", "XAF", "XOF"]);
+export const ZERO_DECIMAL = new Set(["JPY", "KRW", "VND", "CLP", "ISK", "XAF", "XOF"]);
 
 export function toMinor(amount, currency) {
   const factor = ZERO_DECIMAL.has(currency) ? 1 : 100;

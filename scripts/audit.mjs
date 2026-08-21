@@ -209,5 +209,37 @@ for (const ent of ["strideup","personal"]) {
   check("breakdown net row = in rows − out rows",
         netFromRows.reduce((t,v)=>t+v,0), bd.netTotal);
 }
+// ── The export ───────────────────────────────────────────────
+// A downloaded ledger that does not add up to the ledger it came from is
+// worse than no download: it gets pasted into a board pack.
+console.log("\n══ export.csv ══");
+{
+  const text = await (await fetch(B + "/finance/export.csv", { headers: { cookie } })).text();
+  const lines = text.trim().split("\n");
+  const cells = (line) => line.match(/"(?:[^"]|"")*"/g).map((c) => c.slice(1, -1).replace(/""/g, '"'));
+  const head = cells(lines[0]);
+  const rows = lines.slice(1).map(cells);
+  const col = (n) => head.findIndex((h) => h === n || h.startsWith(n + " "));
+
+  const entries = (await g(`/finance/entries?limit=500`)).entries.filter((e) => e.review_status !== "rejected");
+  check("csv row count = live ledger entries", rows.length, entries.length);
+
+  const csvBase = rows.reduce((t, r) => t + Math.round(Number(r[col("base_amount")]) * 100), 0);
+  const ledgerBase = entries.reduce((t, e) => t + Number(e.base_amount_minor), 0);
+  check("csv base_amount sums to the ledger", csvBase, ledgerBase);
+
+  // Every link must be absolute and point at the document the row names.
+  const linked = rows.filter((r) => r[col("document_link")]);
+  const wellFormed = linked.filter((r) => /^https?:\/\/[^/]+\/api\/finance\/documents\/\d+$/.test(r[col("document_link")]));
+  check("csv document links are absolute urls", linked.length, wellFormed.length);
+  const named = linked.filter((r) => r[col("document")]);
+  check("csv every linked row names its document", linked.length, named.length);
+  // And one of them must actually serve a document.
+  if (linked.length) {
+    const res = await fetch(linked[0][col("document_link")], { headers: { cookie } });
+    check("csv first document link resolves", res.status, 200);
+  }
+}
+
 console.log(`\n  ${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);
