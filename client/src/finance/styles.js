@@ -617,6 +617,7 @@ export const VENDORS_CSS = `
 .vm-right b{font-size:13.5px;font-weight:600;font-variant-numeric:tabular-nums}
 .vm-right em{font-style:normal;font-size:11px;color:var(--fin-faint)}
 .vm-late{color:var(--fin-neg)!important;font-weight:600}
+.vm-rec.danger{color:var(--fin-out);border-color:color-mix(in srgb, var(--fin-out) 30%, var(--fin-line))}
 .vm-cat{flex:none;max-width:190px;border:1px solid var(--fin-line);
   background:var(--fin-surface);font-family:inherit;font-size:11.5px;
   color:var(--fin-muted);padding:5px 8px;border-radius:8px;cursor:pointer}

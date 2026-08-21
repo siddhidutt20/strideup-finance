@@ -793,6 +793,44 @@ financeRouter.delete(
   })
 );
 
+// Removing a contract from the folder. The agreement and its schedule go; the
+// payments already recorded against it stay, because they happened — deleting
+// the paperwork does not un-spend the money. The count of those is returned so
+// the page can say what was kept.
+financeRouter.delete(
+  "/contracts/:documentId",
+  ah(async (req, res) => {
+    const documentId = Number(req.params.documentId);
+    if (!Number.isInteger(documentId) || documentId <= 0) {
+      return res.status(400).json({ error: "Bad id." });
+    }
+    const rows = await all(
+      "SELECT id FROM fin_commitments WHERE document_id = ? AND source = 'contract'",
+      [documentId]
+    );
+    if (!rows.length) return res.status(404).json({ error: "No contract on that document." });
+    const ids = rows.map((r) => Number(r.id));
+
+    const settled = await get(
+      `SELECT COUNT(*) AS n FROM fin_commitment_payments
+        WHERE commitment_id IN (${ids.map(() => "?").join(",")})`,
+      ids
+    );
+    const kept = Number(settled?.n ?? 0);
+
+    // The payment rows cascade with the commitment; the ledger entries they
+    // point at do not, and must not — `entry_id` is ON DELETE SET NULL in the
+    // other direction for exactly this reason.
+    await run(
+      `DELETE FROM fin_commitments WHERE id IN (${ids.map(() => "?").join(",")})`,
+      ids
+    );
+    await run("DELETE FROM fin_documents WHERE id = ?", [documentId]);
+
+    res.json({ ok: true, removed: ids.length, keptPayments: kept });
+  })
+);
+
 // ── The forecast ─────────────────────────────────────────────
 // Committed money only. Nothing is extrapolated from past months; where
 // income is not under contract, the projection shows nothing rather than a

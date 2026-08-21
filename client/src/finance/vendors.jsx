@@ -174,7 +174,8 @@ function CategoryPick({ contract, categories, onChange }) {
   );
 }
 
-function Library({ library, money, showEntity, onReread, rereading, categories, onChange }) {
+function Library({ library, money, showEntity, onReread, rereading, onRemove, removing,
+                   categories, onChange }) {
   if (!library.count) {
     return (
       <p className="fc-none">
@@ -214,6 +215,11 @@ function Library({ library, money, showEntity, onReread, rereading, categories, 
                         onClick={() => onReread(c)}>
                   {rereading === c.documentId ? "Reading…" : "Read again"}
                 </button>
+                <button className="vm-rec danger" disabled={removing === c.documentId}
+                        title="Remove this agreement and its schedule"
+                        onClick={() => onRemove(c)}>
+                  {removing === c.documentId ? "Removing…" : "Remove"}
+                </button>
               </li>
             ))}
           </ul>
@@ -226,7 +232,31 @@ function Library({ library, money, showEntity, onReread, rereading, categories, 
 export function VendorsView({ vm, money, entity, categories, onUpload, onRecord, busy, showEntity, onChange }) {
   const t = vm.totals;
   const [rereading, setRereading] = useState(null);
+  const [removing, setRemoving] = useState(null);
   const [note, setNote] = useState("");
+
+  // Removing a contract removes the agreement and everything still scheduled
+  // under it. Payments already recorded against it are not touched — they
+  // happened, and deleting the paperwork does not un-spend the money.
+  const remove = async (c) => {
+    const what = c.counterparty || c.filename || `document ${c.documentId}`;
+    if (!window.confirm(
+      `Remove the agreement with ${what}?\n\n` +
+      `Its ${c.installments} scheduled payment${c.installments === 1 ? "" : "s"} and the ` +
+      `document itself go. Anything already recorded as paid stays in the ledger.`
+    )) return;
+    setRemoving(c.documentId); setNote("");
+    try {
+      const r = await api.deleteContract(c.documentId);
+      setNote(`${what}: agreement removed` +
+        (r.keptPayments
+          ? `, ${r.keptPayments} recorded payment${r.keptPayments === 1 ? "" : "s"} kept in the ledger`
+          : ""));
+      onChange?.();
+    } catch (err) {
+      setNote(err.message || "Could not remove that.");
+    } finally { setRemoving(null); }
+  };
 
   // Reading a contract again is how a schedule that came out wrong gets
   // fixed — the document is already stored, so nothing needs re-uploading.
@@ -382,6 +412,7 @@ export function VendorsView({ vm, money, entity, categories, onUpload, onRecord,
         {note && <p className="fin-ok">{note}</p>}
         <Library library={vm.library} money={money} showEntity={showEntity}
                  categories={categories} onChange={onChange}
+                 onRemove={remove} removing={removing}
                  onReread={reread} rereading={rereading} />
       </Panel>
     </>
