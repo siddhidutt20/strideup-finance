@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api.js";
-import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS, FUTURE_CSS, CASHFLOW_AHEAD_CSS, CF_NONE_CSS, VENDORS_CSS, CASH_CSS, CONTRACTS_GROUP_CSS, SIDE_CSS, CASH_BAND_CSS, NARROW_FIX_CSS, INVOICE_CSS, RECORD_CSS } from "./finance/styles.js";
+import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS, FUTURE_CSS, CASHFLOW_AHEAD_CSS, CF_NONE_CSS, VENDORS_CSS, CASH_CSS, CONTRACTS_GROUP_CSS, SIDE_CSS, CASH_BAND_CSS, NARROW_FIX_CSS, INVOICE_CSS, RECORD_CSS, OVERVIEW_CSS } from "./finance/styles.js";
 import {
   fmtAmount, monthLabel, readFile, shiftMonth, thisMonth, useMoney, ZERO_DECIMAL,
   ENTITY_LABEL, ENTITY_CHOICES, loadEntity, saveEntity,
@@ -12,6 +12,7 @@ import { ForecastView } from "./finance/forecast.jsx";
 import { ContractsView } from "./finance/contracts.jsx";
 import { VendorsView } from "./finance/vendors.jsx";
 import { CashView } from "./finance/cash.jsx";
+import { OverviewDash } from "./finance/overview.jsx";
 import { SideView } from "./finance/side.jsx";
 import { PayInvoice, InvoiceList } from "./finance/invoice.jsx";
 import { NewRecord } from "./finance/record.jsx";
@@ -65,6 +66,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
   const [schedule, setSchedule] = useState(null);
   const [vendors, setVendors] = useState(null);
   const [cash, setCash] = useState(null);
+  const [dash, setDash] = useState(null);
   const [sides, setSides] = useState(null);
   const [invoices, setInvoices] = useState(null);
   const [paying, setPaying] = useState(null);
@@ -128,6 +130,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
         api.finVendors(entity),
         api.finCash(entity, 3),
       ]);
+      setDash(await api.finDashboard(entity));
       const [rin, rout, inv] = await Promise.all([
         api.finSide("in", entity, period),
         api.finSide("out", entity, period),
@@ -280,7 +283,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
         {/* Joined in JS, not as three JSX children: a <style> element with
             several text children does not reliably end up with all of them in
             the DOM, and the symptom is a stylesheet that silently truncates. */}
-        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS}</style>
+        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS}</style>
         <div className="fin-boot"><div className="fin-spinner" /></div>
       </div>
     );
@@ -308,7 +311,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
 
   return (
     <div className="fin-app">
-      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS}</style>
+      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS}</style>
 
       <aside className="fin-side" aria-label="Sections">
         <div className="fin-sidebrand">
@@ -417,7 +420,14 @@ export default function FinanceDashboard({ owner, onLogout }) {
         <div className="fin-boot"><div className="fin-spinner" /></div>
       ) : (
         <>
-          {view === "overview" && entityList.map((ent) => (
+          {view === "overview" && dash && (dash.entities ?? [entity]).map((ent) => (
+            <EntityBlock key={`ov-${ent}`} show={(dash.entities ?? []).length > 1}
+                         label={dash.byEntity[ent].label}>
+              <OverviewDash ov={dash.byEntity[ent]} money={money} period={period}
+                            onGo={setView} />
+            </EntityBlock>
+          ))}
+          {false && view === "overview" && entityList.map((ent) => (
             <EntityBlock key={ent} show={entityList.length > 1}
                          label={data.byEntity[ent].label}>
               <OverviewView data={data.byEntity[ent]} trend={trendFor(ent)}

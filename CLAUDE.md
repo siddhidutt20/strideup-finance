@@ -124,6 +124,19 @@ that table. There is no second store, so there is nothing to reconcile between.
 | `client/src/finance/pieces.jsx` | Panels, KPI tiles, charts, ranked lists |
 | `client/src/finance/styles.js` | All CSS |
 
+## Checking the numbers
+
+`scripts/audit.mjs` runs 56 cross-page reconciliations against a running
+server: every headline figure against the ledger it came from, and against
+the same figure wherever else it appears. It catches the class of fault that
+matters most here — two pages disagreeing about one number — which no unit
+test would see, because each page is individually self-consistent.
+
+    node scripts/audit.mjs
+
+It exits non-zero on any mismatch. Run it after touching anything in
+`metrics.js`.
+
 ## Running and testing locally
 
 ```bash

@@ -15,7 +15,7 @@ import {
   burnAndRunway, receivables, capitalPosition, reviewCount,
   profitAndLoss, cashflow, byCounterparty, forecast, activeCommitments, dueSoon,
   contractSchedule, occurrencesIn, occKey, statusOf, outstandingOn, commitmentsForMonth, paymentMap, committedRunUp,
-  vendorManagement, contractLibrary, cashDashboard, sideDetail,
+  vendorManagement, contractLibrary, cashDashboard, sideDetail, overviewDashboard,
 } from "../finance/metrics.js";
 
 export const financeRouter = express.Router();
@@ -1251,5 +1251,21 @@ financeRouter.delete(
     }
     await run("DELETE FROM fin_invoices WHERE id = ?", [id]);
     res.json({ ok: true });
+  })
+);
+
+// ── The overview ─────────────────────────────────────────────
+financeRouter.get(
+  "/dashboard",
+  ah(async (req, res) => {
+    const { choice, list } = resolveEntities(req.query.entity);
+    const byEntity = {};
+    for (const ent of list) {
+      byEntity[ent] = { label: ENTITY_LABEL[ent], ...(await overviewDashboard(ent)) };
+    }
+    res.json({
+      entity: choice, entities: list, byEntity,
+      baseCurrency: config.finance.baseCurrency,
+    });
   })
 );

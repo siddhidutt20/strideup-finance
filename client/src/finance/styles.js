@@ -836,3 +836,38 @@ export const RECORD_CSS = `
 .ct-part{display:block;font-style:normal;font-size:11px;color:var(--fin-faint);margin-top:3px}
 @media(max-width:520px){.nr-kinds{grid-template-columns:1fr}}
 `;
+
+export const OVERVIEW_CSS = `
+.ov-kpis{grid-template-columns:repeat(6,minmax(0,1fr))}
+@media(max-width:1500px){.ov-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:820px){.ov-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:460px){.ov-kpis{grid-template-columns:minmax(0,1fr)}}
+.ov-band{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(0,1fr);gap:16px;
+  align-items:start}
+.ov-band3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:start}
+@media(max-width:1200px){.ov-band3{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:900px){.ov-band,.ov-band3{grid-template-columns:minmax(0,1fr)}}
+/* In a third-width panel the donut and its legend side by side leave no room
+   for a category name, and every label truncated to one letter is a legend
+   that identifies nothing. Stacked, the names get the full width. */
+.ov-band3 .sp-wrap{grid-template-columns:minmax(0,1fr)}
+.ov-band3 .sp-donut{justify-self:center}
+.ov-band3 .sp-name{overflow:visible;white-space:normal}
+.ov-quad{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+.ov-quad div{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.ov-quad span{font-size:12.5px;color:var(--fin-muted)}
+.ov-quad b{font-size:17px;font-weight:600;letter-spacing:-.015em;font-variant-numeric:tabular-nums}
+.ov-quad-total{border-top:1px solid var(--fin-line);padding-top:8px}
+.ov-bar{display:flex;height:9px;border-radius:99px;overflow:hidden;gap:2px;margin-bottom:12px}
+.ov-bar span{display:block}
+.ov-ageing{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px}
+.ov-ageing li{display:flex;align-items:center;gap:8px;font-size:12.5px}
+.ov-ageing i{width:9px;height:9px;border-radius:3px;flex:none}
+.ov-ageing span{flex:1;color:var(--fin-muted)}
+.ov-ageing b{font-variant-numeric:tabular-nums;font-weight:600}
+.ov-ageing em{font-style:normal;font-size:11px;color:var(--fin-faint);min-width:30px;
+  text-align:right}
+.ag-ok{background:#1785a8}.ag-warn{background:#eda100}
+.ag-bad{background:#e07a3a}.ag-worst{background:#d03b3b}
+.ch-alerts li .vm-rec{margin-left:auto;align-self:center;flex:none}
+`;

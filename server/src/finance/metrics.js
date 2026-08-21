@@ -1361,3 +1361,68 @@ export async function sideDetail(entity, period, direction, today = new Date()) 
     receivables: isIn ? await receivables(today, entity) : null,
   };
 }
+
+// ── The overview ─────────────────────────────────────────────
+// The cockpit. Everything on it exists elsewhere in more detail; this is the
+// one page that answers "how are we doing" without asking a follow-up.
+//
+// It is assembled from the same functions the detail pages use rather than
+// its own queries, so a figure here and the figure you reach by clicking
+// through cannot disagree.
+export async function overviewDashboard(entity, today = new Date()) {
+  const thisPeriod = monthStart(today);
+  const [cash, summary, prev, series, breakdown, ar, cashDash, vendors] =
+    await Promise.all([
+      cashPosition(entity),
+      periodSummary(thisPeriod, entity),
+      periodSummary(addMonths(thisPeriod, -1), entity),
+      trend(13, thisPeriod, entity),
+      categoryBreakdown(thisPeriod, entity),
+      receivables(today, entity),
+      cashDashboard(entity, 3, today),
+      vendorManagement(entity, today, 30),
+    ]);
+
+  const pctChange = (now, before) =>
+    before ? (now - before) / Math.abs(before) : null;
+
+  // Fixed is what recurs under an agreement; variable is what the month
+  // actually spent beyond that. Both are monthly-equivalent so they add up.
+  const fixedMonthly = cashDash.recurringTotal;
+  const recent = series.slice(0, -1).slice(-3);
+  const avgSpend = recent.length
+    ? recent.reduce((t, m) => t + m.expenses, 0) / recent.length : 0;
+  const variableMonthly = Math.max(0, avgSpend - fixedMonthly);
+
+  const expenses = breakdown
+    .filter((r) => ["cogs", "opex", "tax"].includes(r.kind) && r.direction === "out")
+    .map((r) => ({ name: r.name, total: r.amount }));
+  const expenseTotal = expenses.reduce((t, e) => t + e.total, 0);
+
+  // Ninety days out on the committed path, plus the estimate where there is
+  // enough history for one.
+  const ninety = cashDash.forecast.months[3] ?? cashDash.forecast.months.at(-1);
+
+  return {
+    entity, asOf: isoDate(today), period: thisPeriod,
+    cash,
+    revenue: summary.revenue, expenses: summary.expenses, net: summary.net,
+    revenueChange: pctChange(summary.revenue, prev.revenue),
+    expensesChange: pctChange(summary.expenses, prev.expenses),
+    netChange: pctChange(summary.net, prev.net),
+    expectedIn90: ninety ? ninety.closing : cash.amount,
+    expectedIn90Expected: ninety?.expected ?? null,
+    runway: cashDash.runway,
+    alerts: cashDash.alerts,
+    trend: series,
+    forecast: cashDash.forecast,
+    expensesByCategory: expenses,
+    expenseTotal,
+    receivables: ar,
+    burn: { fixedMonthly, variableMonthly, total: fixedMonthly + variableMonthly,
+            recentMonths: recent.length },
+    upcoming: vendors.pending.slice(0, 6),
+    upcomingTotal: vendors.totals.pendingAmount,
+    needsReview: await reviewCount(entity),
+  };
+}
