@@ -7,13 +7,13 @@ import { aiLimiter } from "../security.js";
 import { config } from "../config.js";
 import { ah, isoDate } from "../util.js";
 import { ACCEPTED_MIME, sniffMime, toMinor } from "../finance/extract.js";
-import { ENTITIES, ENTITY_LABEL } from "../finance/schema.js";
+import { ENTITIES, ENTITY_LABEL, FREQUENCIES } from "../finance/schema.js";
 import { ingestDocument, learnRule, resolvePeriod, findOrCreateCounterparty, convertToBase } from "../finance/ingest.js";
 import { importGhlCsv } from "../finance/ghl.js";
 import {
   monthStart, periodSummary, categoryBreakdown, trend, cashPosition,
   burnAndRunway, receivables, capitalPosition, reviewCount,
-  profitAndLoss, cashflow, byCounterparty,
+  profitAndLoss, cashflow, byCounterparty, forecast, activeCommitments, dueSoon,
 } from "../finance/metrics.js";
 
 export const financeRouter = express.Router();
@@ -549,5 +549,203 @@ financeRouter.get(
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", 'attachment; filename="strideup-ledger.csv"');
     res.send([header.map(esc).join(","), ...body].join("\n"));
+  })
+);
+
+// ── Commitments ──────────────────────────────────────────────
+// Money already agreed, in either direction. A commitment is a rule, not a
+// row per payment: amount, how often, from when, until when (or open-ended).
+// The schedule is expanded on demand, so nothing here goes stale.
+const commitmentSchema = z.object({
+  entity: entityOnly.optional(),
+  direction: z.enum(["in", "out"]),
+  description: z.string().min(1).max(200),
+  counterparty: z.string().max(120).optional(),
+  categoryId: z.coerce.number().int().positive().optional(),
+  amount: z.coerce.number().positive(),
+  currency: z.string().length(3).optional(),
+  frequency: z.enum(FREQUENCIES),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
+  dayOfMonth: z.coerce.number().int().min(1).max(31).nullish(),
+});
+
+financeRouter.get(
+  "/commitments",
+  ah(async (req, res) => {
+    const { choice, list } = resolveEntities(req.query.entity);
+    const byEntity = {};
+    for (const ent of list) {
+      byEntity[ent] = {
+        entity: ent,
+        label: ENTITY_LABEL[ent],
+        commitments: (await activeCommitments(ent)).map(shapeCommitment),
+      };
+    }
+    res.json({
+      entity: choice, entities: list, byEntity,
+      baseCurrency: config.finance.baseCurrency,
+    });
+  })
+);
+
+const shapeCommitment = (k) => ({
+  id: Number(k.id),
+  entity: k.entity,
+  direction: k.direction,
+  description: k.description,
+  counterparty: k.counterparty,
+  categoryId: k.category_id,
+  categoryName: k.category_name,
+  amountMinor: Number(k.amount_minor),
+  baseAmountMinor: Number(k.base_amount_minor),
+  currency: k.currency,
+  frequency: k.frequency,
+  dayOfMonth: k.day_of_month,
+  startDate: isoDate(k.start_date),
+  endDate: k.end_date ? isoDate(k.end_date) : null,
+  status: k.status,
+  source: k.source,
+  reviewStatus: k.review_status,
+  reviewReason: k.review_reason,
+});
+
+financeRouter.post(
+  "/commitments",
+  ah(async (req, res) => {
+    const parsed = commitmentSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: "Fill in what it is, how much, how often, and when it starts.",
+      });
+    }
+    const b = parsed.data;
+    if (b.endDate && b.endDate < b.startDate) {
+      return res.status(400).json({ error: "The end date is before the start date." });
+    }
+    const currency = (b.currency || config.finance.baseCurrency).toUpperCase();
+    const minor = toMinor(b.amount, currency);
+
+    // A commitment entered twice does not look wrong anywhere — it just makes
+    // every future month quietly wrong by that amount. Same books, same
+    // description, same amount and same schedule is refused rather than
+    // silently doubled; two genuinely separate ones can be told apart in the
+    // description.
+    const twin = await get(
+      `SELECT id FROM fin_commitments
+        WHERE status = 'active' AND entity = ? AND direction = ?
+          AND lower(description) = lower(?) AND amount_minor = ?
+          AND currency = ? AND frequency = ? AND start_date = ?`,
+      [b.entity || "strideup", b.direction, b.description, minor,
+       currency, b.frequency, b.startDate]
+    );
+    if (twin) {
+      return res.status(409).json({
+        error: `"${b.description}" is already committed on those exact terms. ` +
+               `Adding it twice would double it in every future month — if this ` +
+               `really is a second one, give it a name that tells them apart.`,
+      });
+    }
+
+    // Converted at today's rate: a commitment in a foreign currency is an
+    // estimate in base terms until it is actually paid, and saying so is
+    // better than pretending a future rate is known.
+    const fx = await convertToBase(minor, currency, isoDate(new Date()));
+
+    const rs = await run(
+      `INSERT INTO fin_commitments
+         (entity, direction, description, counterparty_id, category_id,
+          amount_minor, currency, fx_rate, base_amount_minor,
+          frequency, day_of_month, start_date, end_date, source, dedup_key)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'manual',?) RETURNING id`,
+      [
+        b.entity || "strideup", b.direction, b.description,
+        b.counterparty ? await findOrCreateCounterparty(b.counterparty) : null,
+        b.categoryId ?? null,
+        minor, currency, fx.fxRate, fx.baseAmountMinor,
+        b.frequency, b.dayOfMonth ?? null, b.startDate, b.endDate || null,
+        `manual:${crypto.randomUUID()}`,
+      ]
+    );
+    res.status(201).json({ id: lastId(rs) });
+  })
+);
+
+// Ending a commitment is not deleting it. A retainer that ran for eight
+// months and stopped is history the forecast still needs when it looks at
+// those months, so `status` changes and the row stays.
+financeRouter.patch(
+  "/commitments/:id",
+  ah(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Bad id." });
+    const parsed = z
+      .object({
+        status: z.enum(["active", "ended"]).optional(),
+        endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
+      })
+      .safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Nothing to change." });
+    const { status, endDate } = parsed.data;
+
+    const existing = await get("SELECT id FROM fin_commitments WHERE id = ?", [id]);
+    if (!existing) return res.status(404).json({ error: "That commitment is gone." });
+
+    if (status) await run("UPDATE fin_commitments SET status = ? WHERE id = ?", [status, id]);
+    if (endDate !== undefined) {
+      await run("UPDATE fin_commitments SET end_date = ? WHERE id = ?", [endDate || null, id]);
+    }
+    res.json({ ok: true, id });
+  })
+);
+
+// Deleting is for something entered by mistake, which is why it is separate
+// from ending one.
+financeRouter.delete(
+  "/commitments/:id",
+  ah(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Bad id." });
+    await run("DELETE FROM fin_commitments WHERE id = ?", [id]);
+    res.json({ ok: true });
+  })
+);
+
+// ── The forecast ─────────────────────────────────────────────
+// Committed money only. Nothing is extrapolated from past months; where
+// income is not under contract, the projection shows nothing rather than a
+// guess, and reports how much of the picture that leaves out.
+financeRouter.get(
+  "/forecast",
+  ah(async (req, res) => {
+    const { choice, list } = resolveEntities(req.query.entity);
+    const months = Math.min(12, Math.max(1, Number(req.query.months) || 6));
+    const byEntity = {};
+    for (const ent of list) {
+      byEntity[ent] = { label: ENTITY_LABEL[ent], ...(await forecast(ent, months)) };
+    }
+    res.json({
+      entity: choice, entities: list, months, byEntity,
+      baseCurrency: config.finance.baseCurrency,
+    });
+  })
+);
+
+// ── Due soon ─────────────────────────────────────────────────
+// Scheduled commitments and genuinely outstanding invoices, kept separate:
+// one is a date that was agreed, the other is money actually owed.
+financeRouter.get(
+  "/due",
+  ah(async (req, res) => {
+    const { choice, list } = resolveEntities(req.query.entity);
+    const days = Math.min(120, Math.max(1, Number(req.query.days) || 30));
+    const byEntity = {};
+    for (const ent of list) {
+      byEntity[ent] = { label: ENTITY_LABEL[ent], ...(await dueSoon(ent, days)) };
+    }
+    res.json({
+      entity: choice, entities: list, days, byEntity,
+      baseCurrency: config.finance.baseCurrency,
+    });
   })
 );

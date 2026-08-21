@@ -50,6 +50,14 @@ export const api = {
   finImportGhl: (csv) => request("POST", "/finance/import/ghl", { csv }),
   finClosePeriod: (period, entity, reopen) =>
     request("POST", "/finance/periods/close", { period, entity, reopen }),
+  finForecast: (entity, months = 6) =>
+    request("GET", `/finance/forecast?entity=${entity}&months=${months}`),
+  finCommitments: (entity) =>
+    request("GET", `/finance/commitments?entity=${entity}`),
+  finDue: (entity, days = 30) =>
+    request("GET", `/finance/due?entity=${entity}&days=${days}`),
+  addCommitment: (b) => request("POST", "/finance/commitments", b),
+  deleteCommitment: (id) => request("DELETE", `/finance/commitments/${id}`),
   finDocUrl: (id) => `/api/finance/documents/${id}`,
   finExportUrl: () => "/api/finance/export.csv",
 };

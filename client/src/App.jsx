@@ -42,17 +42,7 @@ export default function App() {
   return (
     <div className="sf-shell">
       <style>{SHELL_CSS}</style>
-      <header className="sf-topbar">
-        <div className="sf-brand">
-          <span className="sf-mark" aria-hidden="true" />
-          StrideUp <em>Finance</em>
-        </div>
-        <div className="sf-right">
-          <span className="sf-who">{owner.name}</span>
-          <button className="sf-logout" onClick={logout}>Log out</button>
-        </div>
-      </header>
-      <FinanceDashboard />
+      <FinanceDashboard owner={owner} onLogout={logout} />
     </div>
   );
 }

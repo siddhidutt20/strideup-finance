@@ -133,6 +133,40 @@ export const FIN_SCHEMA = [
      closed_at timestamptz,
      PRIMARY KEY (period, entity)
    )`,
+
+  // ── Commitments ────────────────────────────────────────────
+  // A commitment is money already agreed: a retainer, a subscription, an EMI,
+  // a rental agreement, a signed client contract. It is a *rule* — amount,
+  // frequency, start, end — not a list of rows. Occurrences are expanded on
+  // demand in metrics.js, so an open-ended commitment needs no end date and
+  // nothing drifts out of date as months pass.
+  //
+  // This is deliberately not the ledger. A commitment is what is expected; an
+  // entry is what happened. They are only ever compared, never merged.
+  `CREATE TABLE IF NOT EXISTS fin_commitments (
+     id                bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+     entity            text NOT NULL DEFAULT 'strideup',
+     direction         text NOT NULL,
+     description       text NOT NULL,
+     counterparty_id   integer REFERENCES fin_counterparties(id),
+     category_id       integer REFERENCES fin_categories(id),
+     amount_minor      bigint NOT NULL,
+     currency          char(3) NOT NULL DEFAULT 'USD',
+     fx_rate           numeric(18,8) NOT NULL DEFAULT 1,
+     base_amount_minor bigint NOT NULL,
+     frequency         text NOT NULL DEFAULT 'monthly',
+     day_of_month      integer,
+     start_date        date NOT NULL,
+     end_date          date,
+     status            text NOT NULL DEFAULT 'active',
+     source            text NOT NULL DEFAULT 'manual',
+     document_id       bigint REFERENCES fin_documents(id) ON DELETE SET NULL,
+     confidence        numeric(4,3) NOT NULL DEFAULT 1,
+     review_status     text NOT NULL DEFAULT 'ok',
+     review_reason     text,
+     dedup_key         text UNIQUE,
+     created_at        timestamptz NOT NULL DEFAULT now()
+   )`,
 ];
 
 // ── Chart of accounts ────────────────────────────────────────
@@ -226,4 +260,19 @@ export const FIN_MIGRATIONS = [
   `ALTER TABLE fin_periods DROP CONSTRAINT IF EXISTS fin_periods_pkey`,
   `ALTER TABLE fin_periods ADD PRIMARY KEY (period, entity)`,
   `CREATE INDEX IF NOT EXISTS idx_fin_entries_entity ON fin_entries(entity, period)`,
+  `CREATE INDEX IF NOT EXISTS idx_fin_commitments_scope
+     ON fin_commitments(entity, status, start_date)`,
 ];
+
+// How often a commitment recurs. "once" is a single dated payment — a
+// milestone invoice, a deposit — which the schedule treats as a one-month
+// commitment rather than a special case.
+export const FREQUENCIES = ["once", "weekly", "monthly", "quarterly", "annual"];
+export const FREQUENCY_LABEL = {
+  once: "One-off", weekly: "Weekly", monthly: "Monthly",
+  quarterly: "Quarterly", annual: "Annual",
+};
+
+// Months per occurrence. `weekly` is not a month multiple, so it is expanded
+// by date rather than by this table.
+export const FREQUENCY_MONTHS = { monthly: 1, quarterly: 3, annual: 12 };

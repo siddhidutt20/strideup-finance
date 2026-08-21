@@ -39,7 +39,15 @@ that table. There is no second store, so there is nothing to reconcile between.
 7. **A closed month is not rewritten.** A late document dated inside it posts
    to the open month as an adjustment, with a note saying so. Each set of books
    closes on its own — `fin_periods` is keyed `(period, entity)`.
-8. **Two sets of books never mix.** Every entry carries `entity` — `'strideup'`
+8. **A forecast is arithmetic on committed money; anything else is labelled an
+   estimate.** `fin_commitments` holds what was agreed and drives the solid
+   line. The uncontracted side is estimated in `uncontractedHistory()` — the
+   median of recent months, quartiles for the band, no fitted trend — and is
+   drawn dashed, never merged into the committed figure. Committed money is
+   subtracted from history before the estimate is taken, or a signed contract
+   is counted twice: once as a commitment, again inside the average it already
+   contributed to.
+9. **Two sets of books never mix.** Every entry carries `entity` — `'strideup'`
    or `'personal'`. Every aggregate in `metrics.js` filters on it. Picking
    "Both" returns two separate blocks under `byEntity`; it never sums them.
    There is no entity whose profit a combined figure would represent.
@@ -126,15 +134,19 @@ different files per case.
 ### The current roadmap
 
 1. **Entity separation** — done. Two sets of books, never summed.
-2. **Contracts and commitments** — a contract is one document describing many
-   future payments; extract the terms, generate a schedule into a new
-   `fin_commitments` table, both directions.
+2. **Contracts and commitments** — the `fin_commitments` table, its schedule
+   and its UI are done; commitments are entered by hand. Still to build:
+   reading a contract document and filling the terms in automatically.
 3. **Matching and payment status** — match real payments to commitments by
-   party, amount and due date; paid / due / overdue; a party view.
-4. **Forecasting** — future months are confirmed commitments plus actuals to
-   date. Contracted revenue is shown as contracted. Where revenue is not
-   contracted, show nothing rather than a guess. No trend extrapolation
-   presented as fact.
+   party, amount and due date; paid / due / overdue; a party view. Nothing in
+   "Scheduled in the next 30 days" is marked paid until this exists, and the
+   panel says so.
+4. **Forecasting** — done, in two layers. Committed money is exact. The
+   uncontracted side (the B2C half) is estimated from history and drawn
+   dashed with a good/bad band; the method is shown in full on the page. The
+   original rule was "show nothing rather than a guess"; it was relaxed
+   deliberately, because a committed-only forecast for a business that mostly
+   bills without contracts shows every cost and almost none of the income.
 5. **Gmail sync** — read-only OAuth, poll for invoice and receipt attachments,
    into the existing pipeline with the same sha256 dedup and confidence gating.
    Never act on email content beyond extracting financial documents.
@@ -146,6 +158,20 @@ different files per case.
   effect's deps were still `[period, ledgerScope]`. Symptom: the control
   responds, the data does not. If a control visibly works but nothing reloads,
   read the deps before reading anything else.
+- **A `<style>` element with several JSX children.** `{A}{B}{C}` reliably put
+  only the first two in the DOM, so the last stylesheet vanished with no error
+  — the symptom was raw unstyled SVG and cards that were not cards. Concatenate
+  in JS: `{A + B + C}`. There are two `<style>` tags in `FinanceDashboard.jsx`
+  (the boot branch and the main render); both need every stylesheet.
+- **CSS custom properties are scoped to the element that declares them.** The
+  sidebar is a sibling of `.fin`, not a child, so a token block on `.fin` alone
+  left every surface in it transparent and every border invisible, silently.
+  Tokens are declared on `.fin, .fin-app` for that reason.
+- **A grid item defaults to `min-width:auto`, which is min-content.** The
+  ledger and commitment tables carry `min-width:660px` so their columns stay
+  legible, and inside an `overflow-x:auto` wrapper that is meant to scroll. As
+  a grid item, `.fin` grew to 736px on a 390px phone instead. `min-width:0` was
+  not enough; `width:100%` with `box-sizing:border-box` is what pins it.
 - **A scripted `.replace()` that silently matched nothing.** This has produced
   a 17-placeholder / 16-column insert and an index in the wrong file. After any
   scripted edit, grep for the *result*, not for something nearby.

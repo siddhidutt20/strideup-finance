@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api.js";
-import { FIN_CSS, STATEMENT_CSS } from "./finance/styles.js";
+import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS } from "./finance/styles.js";
 import {
   fmtAmount, monthLabel, readFile, shiftMonth, thisMonth, useMoney, ZERO_DECIMAL,
   ENTITY_LABEL, ENTITY_CHOICES, loadEntity, saveEntity,
@@ -9,6 +9,10 @@ import {
   OverviewView, RevenueView, ExpensesView, CashflowView, PnlView, LedgerView,
   ToolsView, ManualEntry,
 } from "./finance/views.jsx";
+import { ForecastView } from "./finance/forecast.jsx";
+import { DueSoon } from "./finance/spend.jsx";
+import { Panel } from "./finance/pieces.jsx";
+import { ICONS } from "./finance/icons.jsx";
 
 // ── StrideUp finances ────────────────────────────────────────
 // One section per question. Overview answers "how is the month going" at a
@@ -20,13 +24,14 @@ const VIEWS = [
   ["revenue", "Revenue", "Revenue", "Where the money came from in"],
   ["expenses", "Expenses", "Expenses", "Where the money went in"],
   ["cashflow", "Cash flow", "Cash flow", "What actually moved in"],
+  ["forecast", "Forecast", "Forecast", "What is already committed, from"],
   ["pnl", "P&L", "Profit and loss", "The statement for"],
   ["ledger", "Ledger", "Ledger", "Every entry in"],
   ["tools", "Import & close", "Import and close", "Bring in revenue, and settle"],
 ];
 const NEEDS_STATEMENTS = new Set(["revenue", "expenses", "cashflow", "pnl"]);
 
-export default function FinanceDashboard() {
+export default function FinanceDashboard({ owner, onLogout }) {
   const [view, setView] = useState("overview");
   const [period, setPeriod] = useState(thisMonth());
   const [data, setData] = useState(null);
@@ -38,6 +43,9 @@ export default function FinanceDashboard() {
   const [feed, setFeed] = useState([]);
   const [ledgerScope, setLedgerScope] = useState("month");
   const [entity, setEntityState] = useState(loadEntity);
+  const [forecast, setForecast] = useState(null);
+  const [commitments, setCommitments] = useState(null);
+  const [due, setDue] = useState(null);
   const setEntity = (v) => { saveEntity(v); setEntityState(v); };
   const [busy, setBusy] = useState(false);
 
@@ -82,6 +90,34 @@ export default function FinanceDashboard() {
       .catch((err) => { if (!cancelled) setError(err.message || "Could not load that view."); });
     return () => { cancelled = true; };
   }, [view, period, entity, statements]);
+
+  // Forecast data is fetched only when its section is open — three more calls
+  // on every dashboard load would be paid by everyone to serve one view.
+  const loadForecast = useCallback(async () => {
+    try {
+      const [fc, cm, dd] = await Promise.all([
+        api.finForecast(entity, 6),
+        api.finCommitments(entity),
+        api.finDue(entity, 30),
+      ]);
+      setForecast(fc); setCommitments(cm); setDue(dd);
+    } catch (err) {
+      setError(err.message || "Could not load the forecast.");
+    }
+  }, [entity]);
+
+  useEffect(() => {
+    if (view !== "forecast" && view !== "overview") return;
+    loadForecast();
+  }, [view, entity, loadForecast]);
+
+  // How many committed payments fall due in the next 30 days, across whichever
+  // books are in view. Shown on the nav so it is visible without opening it.
+  const duePending = useMemo(() => {
+    if (!due?.byEntity) return 0;
+    return Object.values(due.byEntity)
+      .reduce((n, d) => n + d.payable.length + d.incoming.length, 0);
+  }, [due]);
 
   const entityList = data?.entities ?? [entity];
   // Trailing months are trimmed per set of books — StrideUp and personal do
@@ -183,7 +219,10 @@ export default function FinanceDashboard() {
   if (loading) {
     return (
       <div className="fin">
-        <style>{FIN_CSS}{STATEMENT_CSS}</style>
+        {/* Joined in JS, not as three JSX children: a <style> element with
+            several text children does not reliably end up with all of them in
+            the DOM, and the symptom is a stylesheet that silently truncates. */}
+        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS}</style>
         <div className="fin-boot"><div className="fin-spinner" /></div>
       </div>
     );
@@ -219,46 +258,73 @@ export default function FinanceDashboard() {
   );
 
   return (
-    <div className="fin">
-      <style>{FIN_CSS}{STATEMENT_CSS}</style>
+    <div className="fin-app">
+      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS}</style>
 
-      <nav className="fin-nav" aria-label="Sections">
-        <div className="fin-nav-inner">
+      <aside className="fin-side" aria-label="Sections">
+        <div className="fin-sidebrand">
+          <span className="fin-mark" aria-hidden="true" />
+          <span>StrideUp <em>Finance</em></span>
+        </div>
+        <p className="fin-sidelabel">Menu</p>
+        <nav>
           <ul>
             {VIEWS.map(([id, label]) => (
               <li key={id}>
                 <button className={view === id ? "on" : ""}
                         aria-current={view === id ? "page" : undefined}
-                        onClick={() => setView(id)}>{label}</button>
+                        onClick={() => setView(id)}>
+                  {ICONS[id]}<span>{label}</span>
+                  {id === "forecast" && duePending > 0 && (
+                    <b className="fin-badge" title={`${duePending} due in the next 30 days`}>
+                      {duePending}
+                    </b>
+                  )}
+                </button>
               </li>
             ))}
           </ul>
-          <div className="fin-entnav" role="group" aria-label="Which books">
-            {ENTITY_CHOICES.map((e) => (
-              <button key={e} className={entity === e ? "on" : ""}
-                      aria-pressed={entity === e}
-                      onClick={() => setEntity(e)}>{ENTITY_LABEL[e]}</button>
-            ))}
+        </nav>
+        {owner && (
+          <div className="fin-sideuser">
+            <span className="fin-avatar" aria-hidden="true">
+              {String(owner.name || "?").trim().charAt(0).toUpperCase()}
+            </span>
+            <span className="fin-sidewho">
+              <b>{owner.name}</b>
+              <em>{owner.email}</em>
+            </span>
+            <button className="fin-sideout" onClick={onLogout} title="Log out">↪</button>
           </div>
-          <div className="fin-monthnav">
-            <button onClick={() => setPeriod(shiftMonth(period, -1))} aria-label="Previous month">‹</button>
-            <strong>{monthLabel(period)}</strong>
-            <button onClick={() => setPeriod(shiftMonth(period, 1))}
-                    disabled={period >= thisMonth()} aria-label="Next month">›</button>
-          </div>
-        </div>
-      </nav>
+        )}
+      </aside>
 
-      <header className="fin-viewhead">
-        <div>
-          <h1>{heading}</h1>
-          <p>
-            {view === "ledger" && ledgerScope === "all"
-              ? `${blurb}.`
-              : `${blurb} ${monthLabel(period)}.`}
-          </p>
-        </div>
-      </header>
+      <div className="fin">
+        <header className="fin-viewhead">
+          <div>
+            <h1>{heading}</h1>
+            <p>
+              {view === "ledger" && ledgerScope === "all"
+                ? `${blurb}.`
+                : `${blurb} ${monthLabel(period)}.`}
+            </p>
+          </div>
+          <div className="fin-headctl">
+            <div className="fin-entnav" role="group" aria-label="Which books">
+              {ENTITY_CHOICES.map((e) => (
+                <button key={e} className={entity === e ? "on" : ""}
+                        aria-pressed={entity === e}
+                        onClick={() => setEntity(e)}>{ENTITY_LABEL[e]}</button>
+              ))}
+            </div>
+            <div className="fin-monthnav">
+              <button onClick={() => setPeriod(shiftMonth(period, -1))} aria-label="Previous month">‹</button>
+              <strong>{monthLabel(period)}</strong>
+              <button onClick={() => setPeriod(shiftMonth(period, 1))}
+                      disabled={period >= thisMonth()} aria-label="Next month">›</button>
+            </div>
+          </div>
+        </header>
 
       {error && <div className="fin-error">{error}</div>}
       {data && !data.aiEnabled && view === "overview" && (
@@ -297,6 +363,10 @@ export default function FinanceDashboard() {
                          label={data.byEntity[ent].label}>
               <OverviewView data={data.byEntity[ent]} trend={trendFor(ent)}
                             money={money} period={period} />
+              <Panel title="Scheduled in the next 30 days"
+                     sub="Committed payments falling due — invoices are in Outstanding, above">
+                <DueSoon due={due?.byEntity?.[ent]} money={money} />
+              </Panel>
             </EntityBlock>
           ))}
           {view === "revenue" && statements && entityList.map((ent) => (
@@ -340,12 +410,26 @@ export default function FinanceDashboard() {
                         scope={ledgerScope} onScope={setLedgerScope}
                         onFix={fixEntry} onRemove={removeEntry} onCurrency={fixCurrency} />
           )}
+          {view === "forecast" && (forecast && commitments ? (
+            <div className={entityList.length > 1 ? "" : ""}>
+              {(forecast.entities ?? [entity]).map((ent) => (
+                <EntityBlock key={ent} show={(forecast.entities ?? []).length > 1}
+                             label={forecast.byEntity[ent].label}>
+                  <ForecastView fc={forecast.byEntity[ent]}
+                                commitments={commitments.byEntity[ent]?.commitments ?? []}
+                                money={money} categories={categories} entity={ent}
+                                onChange={loadForecast} />
+                </EntityBlock>
+              ))}
+            </div>
+          ) : <div className="fin-boot"><div className="fin-spinner" /></div>)}
           {view === "tools" && (
             <ToolsView period={period} entity={entity} entityList={entityList}
                        byEntity={data?.byEntity} onDone={() => load(period)} />
           )}
-        </>
-      )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { all, get } from "../db.js";
 import { isoDate } from "../util.js";
+import { FREQUENCY_MONTHS } from "./schema.js";
 
 // ── Metric definitions ───────────────────────────────────────
 // Every figure the dashboard shows is defined here, in SQL, in version
@@ -328,4 +329,355 @@ export async function byCounterparty(period, direction, limit = 12, entity) {
       [period, direction, ...ENT_ARG(entity)]
     )
   ).map((r) => ({ name: r.name, amount: Number(r.total), count: Number(r.n) }));
+}
+
+// ── Commitments and the forecast ─────────────────────────────
+// A forecast here is not a prediction. It is the arithmetic of money already
+// agreed: retainers, subscriptions, EMIs, rental agreements, signed client
+// contracts. Nothing is extrapolated from past months, because a trend line
+// through three months of invoices is a guess wearing a suit.
+//
+// The consequence is that the projection is *incomplete on purpose*. Revenue
+// that has not been contracted does not appear. That is the honest shape of
+// the question "what do I already owe and what am I already owed", and the
+// view says so plainly rather than quietly filling the gap.
+
+const lastDayOf = (y, m) => new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+
+// The occurrence date inside a given month, clamped so a commitment due on
+// the 31st still lands in February rather than silently skipping it.
+function occurrenceDate(period, dayOfMonth) {
+  const [y, m] = period.split("-").map(Number);
+  const day = Math.min(dayOfMonth || 1, lastDayOf(y, m - 1));
+  return `${period.slice(0, 7)}-${String(day).padStart(2, "0")}`;
+}
+
+// Does a commitment fall due in this month, and how many times?
+// Monthly, quarterly and annual are aligned to the start date, so a quarterly
+// retainer beginning in February falls in May, August and November — not on
+// calendar quarters it was never agreed to.
+export function occurrencesIn(commitment, period) {
+  const start = isoDate(commitment.start_date);
+  const end = commitment.end_date ? isoDate(commitment.end_date) : null;
+  const startPeriod = `${start.slice(0, 7)}-01`;
+  const endPeriod = end ? `${end.slice(0, 7)}-01` : null;
+
+  if (period < startPeriod) return [];
+  if (endPeriod && period > endPeriod) return [];
+
+  const freq = commitment.frequency;
+  const day = commitment.day_of_month || Number(start.slice(8, 10));
+
+  if (freq === "once") {
+    return period === startPeriod ? [{ date: start }] : [];
+  }
+
+  if (freq === "weekly") {
+    // Expanded by date. Jumped straight to the first occurrence inside the
+    // month rather than walked from the start date — a two-year-old weekly
+    // commitment would otherwise cost a hundred iterations per month queried.
+    const out = [];
+    const [y, m] = period.split("-").map(Number);
+    const monthEnd = `${period.slice(0, 7)}-${String(lastDayOf(y, m - 1)).padStart(2, "0")}`;
+    const startMs = Date.parse(`${start}T00:00:00Z`);
+    const firstMs = Date.parse(`${period}T00:00:00Z`);
+    const week = 7 * 86400000;
+    const skipped = Math.max(0, Math.ceil((firstMs - startMs) / week));
+    for (let ms = startMs + skipped * week; ; ms += week) {
+      const iso = isoDate(new Date(ms));
+      if (iso > monthEnd) break;
+      if (iso >= period && (!end || iso <= end)) out.push({ date: iso });
+    }
+    return out;
+  }
+
+  const step = FREQUENCY_MONTHS[freq] ?? 1;
+  const monthsApart =
+    (Number(period.slice(0, 4)) - Number(startPeriod.slice(0, 4))) * 12 +
+    (Number(period.slice(5, 7)) - Number(startPeriod.slice(5, 7)));
+  if (monthsApart % step !== 0) return [];
+
+  const date = occurrenceDate(period, day);
+  if (end && date > end) return [];
+  return [{ date }];
+}
+
+export async function activeCommitments(entity) {
+  return await all(
+    `SELECT k.*, c.name AS category_name, c.kind AS category_kind,
+            p.name AS counterparty
+       FROM fin_commitments k
+       LEFT JOIN fin_categories c     ON c.id = k.category_id
+       LEFT JOIN fin_counterparties p ON p.id = k.counterparty_id
+      WHERE k.status = 'active'${entity && entity !== "both" ? " AND k.entity = ?" : ""}
+      ORDER BY k.direction DESC, k.base_amount_minor DESC`,
+    entity && entity !== "both" ? [entity] : []
+  );
+}
+
+// What a single month already owes and is already owed.
+export function commitmentsForMonth(commitments, period, afterDate = null) {
+  let committedIn = 0, committedOut = 0;
+  const items = [];
+  for (const k of commitments) {
+    for (const occ of occurrencesIn(k, period)) {
+      if (afterDate && occ.date <= afterDate) continue; // already in the ledger
+      const amount = Number(k.base_amount_minor);
+      if (k.direction === "in") committedIn += amount;
+      else committedOut += amount;
+      items.push({
+        id: k.id, date: occ.date, direction: k.direction,
+        description: k.description, counterparty: k.counterparty,
+        categoryName: k.category_name, amount,
+        currency: k.currency, amountMinor: Number(k.amount_minor),
+        frequency: k.frequency,
+      });
+    }
+  }
+  items.sort((a, b) => a.date.localeCompare(b.date));
+  return { committedIn, committedOut, items };
+}
+
+// ── The projection ───────────────────────────────────────────
+// Starts from the position recorded today, adds only what is committed, and
+// reports separately how much of it is actually known. `months` counts whole
+// months *after* the current one; the current month is returned as a partial
+// with only its remaining commitments applied.
+export async function forecast(entity, months = 6, today = new Date()) {
+  const asOf = isoDate(today);
+  const thisPeriod = monthStart(today);
+  const commitments = await activeCommitments(entity);
+  const cash = await cashPosition(entity);
+  const est = await uncontractedHistory(entity, commitments, today);
+
+  // Three running positions, not one. `committed` counts only money already
+  // agreed; `expected`, `low` and `high` add an estimate of the uncontracted
+  // side on top. They are kept apart all the way to the chart so that the
+  // certain part is never silently blended into the guessed part.
+  const rest = commitmentsForMonth(commitments, thisPeriod, asOf);
+  const run = {
+    committed: cash.amount + rest.committedIn - rest.committedOut,
+  };
+  // The remainder of the current month is prorated: two thirds through August,
+  // only a third of a typical month's uncontracted trade is still to come.
+  const daysInMonth = new Date(Date.UTC(
+    Number(thisPeriod.slice(0, 4)), Number(thisPeriod.slice(5, 7)), 0)).getUTCDate();
+  const leftOfMonth = Math.max(0, (daysInMonth - Number(asOf.slice(8, 10))) / daysInMonth);
+
+  const scenario = (net, mult = 1) => (est.available ? net * mult : 0);
+  run.expected = run.committed +
+    scenario(est.available ? est.in.mid - est.out.mid : 0, leftOfMonth);
+  run.low = run.committed +
+    scenario(est.available ? est.in.low - est.out.high : 0, leftOfMonth);
+  run.high = run.committed +
+    scenario(est.available ? est.in.high - est.out.low : 0, leftOfMonth);
+
+  const rows = [{
+    period: thisPeriod,
+    partial: true,
+    asOf,
+    opening: cash.amount,
+    committedIn: rest.committedIn,
+    committedOut: rest.committedOut,
+    movement: rest.committedIn - rest.committedOut,
+    closing: run.committed,
+    predictedIn: est.available ? est.in.mid * leftOfMonth : 0,
+    predictedOut: est.available ? est.out.mid * leftOfMonth : 0,
+    expected: run.expected, low: run.low, high: run.high,
+    items: rest.items,
+  }];
+
+  for (let i = 1; i <= months; i++) {
+    const period = addMonths(thisPeriod, i);
+    const m = commitmentsForMonth(commitments, period);
+    const opening = run.committed;
+    run.committed += m.committedIn - m.committedOut;
+    const flow = m.committedIn - m.committedOut;
+    run.expected += flow + (est.available ? est.in.mid - est.out.mid : 0);
+    run.low += flow + (est.available ? est.in.low - est.out.high : 0);
+    run.high += flow + (est.available ? est.in.high - est.out.low : 0);
+    rows.push({
+      period, partial: false, opening,
+      committedIn: m.committedIn, committedOut: m.committedOut,
+      movement: flow,
+      closing: run.committed,
+      predictedIn: est.available ? est.in.mid : 0,
+      predictedOut: est.available ? est.out.mid : 0,
+      expected: run.expected, low: run.low, high: run.high,
+      items: m.items,
+    });
+  }
+
+  return {
+    entity,
+    asOf,
+    openingSource: cash.source,
+    opening: cash.amount,
+    months: rows,
+    coverage: await coverage(entity, rows, today),
+    prediction: {
+      available: est.available,
+      monthsUsed: est.monthsUsed,
+      minimum: est.minimum,
+      method: "median of recent months, with the quartile spread as the range",
+      perMonth: est.available
+        ? { in: est.in, out: est.out }
+        : null,
+      history: est.months,
+    },
+  };
+}
+
+// ── How much of the picture is actually committed ────────────
+// Without this the projection is easy to misread. If a business bills monthly
+// against no signed contract, a committed-only view shows the costs and none
+// of the income, and looks like a company two months from death.
+//
+// So: state what the last three complete months actually did, label it as
+// history, and let the reader do the comparison themselves. This is not added
+// to the projection and is never presented as a future figure.
+async function coverage(entity, rows, today) {
+  const t = await trend(4, monthStart(today), entity);
+  const closed = t.slice(0, 3);
+  const n = closed.length || 1;
+  const avgRevenue = closed.reduce((s, m) => s + m.revenue, 0) / n;
+  const avgExpenses = closed.reduce((s, m) => s + m.expenses, 0) / n;
+
+  // A whole month ahead, so the partial current month does not understate it.
+  const nextFull = rows[1] ?? rows[0];
+  const committedRevenue = nextFull.committedIn;
+  const committedCosts = nextFull.committedOut;
+
+  return {
+    monthsOfHistory: closed.length,
+    avgRevenue, avgExpenses,
+    committedRevenue, committedCosts,
+    // Share of a typical month's income that is under contract. Null when
+    // there is no history to compare against — an honest "unknown" beats 0%.
+    revenueCovered: avgRevenue > 0 ? committedRevenue / avgRevenue : null,
+    costsCovered: avgExpenses > 0 ? committedCosts / avgExpenses : null,
+  };
+}
+
+// ── What is due soon ─────────────────────────────────────────
+// Two different kinds of certainty, kept apart on purpose.
+//
+// Committed payments are *scheduled*: the date is known because it was
+// agreed. Whether one has actually been paid is not known here — matching a
+// payment to a commitment is a separate job — so nothing in this list is
+// called paid or unpaid, only due on a date.
+//
+// Receivables are *outstanding*: a real invoice with a real balance, where
+// overdue is a fact rather than an inference.
+export async function dueSoon(entity, days = 30, today = new Date()) {
+  const asOf = isoDate(today);
+  const horizon = isoDate(new Date(today.getTime() + days * 86400000));
+  const commitments = await activeCommitments(entity);
+
+  // Occurrences can straddle a month boundary inside the window, so both this
+  // month and the next are expanded and then filtered by date.
+  const thisPeriod = monthStart(today);
+  const periods = [thisPeriod, addMonths(thisPeriod, 1), addMonths(thisPeriod, 2)];
+  const upcoming = [];
+  for (const period of periods) {
+    for (const k of commitments) {
+      for (const occ of occurrencesIn(k, period)) {
+        if (occ.date < asOf || occ.date > horizon) continue;
+        upcoming.push({
+          commitmentId: Number(k.id),
+          entity: k.entity,
+          date: occ.date,
+          direction: k.direction,
+          description: k.description,
+          counterparty: k.counterparty,
+          categoryName: k.category_name,
+          amount: Number(k.base_amount_minor),
+          currency: k.currency,
+          amountMinor: Number(k.amount_minor),
+          frequency: k.frequency,
+          daysAway: Math.round((Date.parse(occ.date) - Date.parse(asOf)) / 86400000),
+        });
+      }
+    }
+  }
+  upcoming.sort((a, b) => a.date.localeCompare(b.date));
+
+  const payable = upcoming.filter((u) => u.direction === "out");
+  const incoming = upcoming.filter((u) => u.direction === "in");
+  const ar = await receivables(today, entity);
+
+  return {
+    asOf, days, horizon,
+    payable, incoming,
+    payableTotal: payable.reduce((s, u) => s + u.amount, 0),
+    incomingTotal: incoming.reduce((s, u) => s + u.amount, 0),
+    receivables: ar,
+  };
+}
+
+// ── Predicting the part that is not contracted ───────────────
+// Contracted money is arithmetic. Everything else — the B2C side, the work
+// that recurs without a signature — can only be estimated from what actually
+// happened, and an estimate is a different kind of claim. So it is computed
+// separately, carried separately, and drawn separately (dashed, with a band).
+//
+// The method is deliberately dull and explainable: the median of recent
+// months, with the observed spread as the range. Not a regression — fitting a
+// trend line to six noisy points manufactures a slope out of nothing, and the
+// slope is the part people would act on.
+
+const quantile = (sorted, q) => {
+  if (!sorted.length) return 0;
+  const pos = (sorted.length - 1) * q;
+  const lo = Math.floor(pos), hi = Math.ceil(pos);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+};
+
+// At least this many complete months before anything is predicted. Below it
+// the honest output is "not enough history", not a number with a wide band.
+export const MIN_HISTORY = 3;
+const LOOKBACK = 6;
+
+export async function uncontractedHistory(entity, commitments, today = new Date()) {
+  const thisPeriod = monthStart(today);
+  const series = await trend(13, thisPeriod, entity);
+
+  // Drop the current month (incomplete) and any leading months from before
+  // there was a business to record.
+  const complete = series.slice(0, -1);
+  const firstReal = complete.findIndex((m) => m.revenue || m.expenses);
+  const usable = firstReal < 0 ? [] : complete.slice(firstReal).slice(-LOOKBACK);
+
+  // What each of those months earned and spent *beyond* what was committed.
+  // Subtracting the committed part is what stops a signed contract from being
+  // counted twice: once as a commitment and again inside the historical
+  // average that the commitment already contributed to.
+  const months = usable.map((m) => {
+    const c = commitmentsForMonth(commitments, m.period);
+    return {
+      period: m.period,
+      revenue: m.revenue,
+      expenses: m.expenses,
+      uncontractedIn: Math.max(0, m.revenue - c.committedIn),
+      uncontractedOut: Math.max(0, m.expenses - c.committedOut),
+    };
+  });
+
+  if (months.length < MIN_HISTORY) {
+    return { available: false, months, monthsUsed: months.length, minimum: MIN_HISTORY };
+  }
+
+  const ins = months.map((m) => m.uncontractedIn).sort((a, b) => a - b);
+  const outs = months.map((m) => m.uncontractedOut).sort((a, b) => a - b);
+
+  return {
+    available: true,
+    months,
+    monthsUsed: months.length,
+    minimum: MIN_HISTORY,
+    in: { low: quantile(ins, 0.25), mid: quantile(ins, 0.5), high: quantile(ins, 0.75),
+          min: ins[0], max: ins[ins.length - 1] },
+    out: { low: quantile(outs, 0.25), mid: quantile(outs, 0.5), high: quantile(outs, 0.75),
+           min: outs[0], max: outs[outs.length - 1] },
+  };
 }

@@ -3,6 +3,7 @@ import { api } from "../api.js";
 import { Panel, Kpi, TrendChart, CategoryBars, Ranked, Receivables, CapitalList } from "./pieces.jsx";
 import { CURRENCIES, delta, fmtAmount, monthLabel, today, ZERO_DECIMAL,
          ENTITY_LABEL } from "./format.js";
+import { SpendByCategory } from "./spend.jsx";
 
 // ── Overview ─────────────────────────────────────────────────
 // The one question this page answers: how is the month going. Detail lives
@@ -40,8 +41,14 @@ export function OverviewView({ data, trend, money, period }) {
 
       <div className="fin-grid">
         <Panel title="Where the money went" sub={`Expenses · ${monthLabel(period)}`}>
-          <CategoryBars rows={data.breakdown.filter((r) => r.direction === "out")} money={money}
-                        empty="No expenses recorded this month." />
+          {/* Selected by category kind rather than by the sign of this month's
+              net: a cost line that happens to net inward — a refund, a credit
+              note — is still a cost line. */}
+          <SpendByCategory
+            rows={data.breakdown
+              .filter((r) => ["cogs", "opex", "tax"].includes(r.kind) && r.direction === "out")
+              .map((r) => ({ name: r.name, total: r.amount }))}
+            money={money} period={period} />
         </Panel>
         <Panel title="Outstanding payments" sub="Invoices not yet settled">
           <Receivables ar={{ ...data.receivables, invoices: data.receivables.invoices.slice(0, 5) }}
