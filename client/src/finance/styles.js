@@ -20,7 +20,7 @@ export const FIN_CSS = `
    min-content, so a wide table inside an overflow-x:auto wrapper stretches
    the whole column instead of scrolling within it. Only the views with
    tables showed it, which is what made it look like a table bug. */
-.fin{min-width:0;width:100%;max-width:1180px;margin:0 auto;padding:0 28px 96px;
+.fin{min-width:0;width:100%;max-width:1480px;margin:0 auto;padding:0 28px 96px;
   color:var(--fin-ink);font-size:15px;line-height:1.6;box-sizing:border-box}
 .fin-boot{display:flex;justify-content:center;padding:96px}
 .fin-spinner{width:32px;height:32px;border-radius:50%;border:2.5px solid var(--fin-line);
@@ -98,7 +98,10 @@ export const FIN_CSS = `
   .fin-wordmark{height:28px}
   .fin-product{font-size:15px;padding:0}
   .fin-sidelabel{display:none}
-  .fin-side nav{flex:1 0 100%;overflow-x:auto}
+  /* min-width:0 so the scroller actually contains its row. Without it the
+     nav's own content width leaks out and the page picks up a few pixels of
+     horizontal scroll that nothing on screen explains. */
+  .fin-side nav{flex:1 0 100%;min-width:0;max-width:100%;overflow-x:auto}
   .fin-side nav ul{flex-direction:row;gap:4px}
   .fin-side nav button{width:auto;white-space:nowrap;padding:8px 12px}
   .fin-sideuser{margin:0}
@@ -583,7 +586,10 @@ export const CF_NONE_CSS = `
 
 // ── Vendor management ────────────────────────────────────────
 export const VENDORS_CSS = `
-.vm-kpis{grid-template-columns:repeat(auto-fit,minmax(165px,1fr))}
+.vm-kpis{grid-template-columns:repeat(6,minmax(0,1fr))}
+@media(max-width:1500px){.vm-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:820px){.vm-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:460px){.vm-kpis{grid-template-columns:minmax(0,1fr)}}
 .vm-stack{display:flex;flex-direction:column;gap:16px}
 .vm-actions{display:inline-flex;align-items:center;gap:8px}
 .vm-search{font-family:inherit;font-size:12.5px;padding:7px 11px;border-radius:9px;
@@ -652,7 +658,13 @@ export const VENDORS_CSS = `
 
 // ── Cash flow dashboard ──────────────────────────────────────
 export const CASH_CSS = `
-.ch-kpis{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+/* Fixed column counts, not auto-fit. auto-fit packs as many as will fit and
+   drops the rest onto a second row, which on a six-card row leaves most of a
+   row empty — the exact complaint that started this. */
+.ch-kpis{grid-template-columns:repeat(6,minmax(0,1fr))}
+@media(max-width:1500px){.ch-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:820px){.ch-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:460px){.ch-kpis{grid-template-columns:minmax(0,1fr)}}
 .ch-kpi-spark{margin-top:6px}
 .ch-spark{display:block;width:100%;height:24px;margin-top:8px;overflow:visible}
 .ch-sparkline{fill:none;stroke:var(--fin-in);stroke-width:1.6;stroke-linejoin:round;
@@ -716,7 +728,10 @@ export const CONTRACTS_GROUP_CSS = `
 `;
 
 export const SIDE_CSS = `
-.sd-kpis{grid-template-columns:repeat(auto-fit,minmax(178px,1fr))}
+.sd-kpis{grid-template-columns:repeat(6,minmax(0,1fr))}
+@media(max-width:1500px){.sd-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:820px){.sd-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:460px){.sd-kpis{grid-template-columns:minmax(0,1fr)}}
 .sd-up{color:#12657F;font-weight:600}
 .sd-down{color:var(--fin-neg);font-weight:600}
 .sd-flat{color:var(--fin-faint)}
@@ -734,4 +749,45 @@ export const SIDE_CSS = `
 .sd-windows strong{font-size:18px;font-weight:600;letter-spacing:-.02em}
 .sd-upcoming{border-top:1px solid var(--fin-hair);padding-top:8px!important}
 @media(max-width:520px){.sd-windows{grid-template-columns:1fr}}
+`;
+
+export const CASH_BAND_CSS = `
+/* The reference packs the chart, the summary and the alerts into one band
+   rather than stacking a full-width chart above two half-width panels. */
+.ch-band{display:grid;grid-template-columns:minmax(0,1.85fr) minmax(0,1.05fr) minmax(0,1fr);
+  gap:16px;align-items:start}
+.ch-band2{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:16px;
+  align-items:start}
+@media(max-width:1280px){
+  .ch-band{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .ch-band > :first-child{grid-column:1 / -1}
+}
+@media(max-width:820px){
+  .ch-band,.ch-band2{grid-template-columns:minmax(0,1fr)}
+  .ch-band > :first-child{grid-column:auto}
+}
+.ch-summary{display:flex;flex-direction:column;gap:12px}
+.ch-summary .sp-donut{align-self:center}
+.ch-summary .sp-donut svg{width:170px;height:170px}
+.sp-centre-fig.neg{fill:var(--fin-out)}
+.ch-spark.s-accent .ch-sparkline{stroke:var(--fin-accent)}
+.ch-spark.s-accent .ch-sparkfill{fill:var(--fin-accent)}
+.ch-spark.s-out .ch-sparkline{stroke:var(--fin-out)}
+.ch-spark.s-out .ch-sparkfill{fill:var(--fin-out)}
+.ch-runway div em{font-style:normal;font-size:11px;font-weight:600}
+`;
+
+export const NARROW_FIX_CSS = `
+/* Both of these are flex rows that never wrapped, so on a narrow screen they
+   pushed the page sideways by a few pixels — small enough to look like a
+   rendering quirk rather than a layout fault. */
+.fin-legend{flex-wrap:wrap}
+/* A panel header carrying a title plus controls has to be allowed to stack. */
+.fin-panel-head{flex-wrap:wrap;gap:10px}
+.vm-actions{flex-wrap:wrap}
+.vm-search{flex:1 1 130px;min-width:0;width:auto}
+.cf-row{flex-wrap:wrap;gap:2px 12px}
+.cf-row > span:first-child{min-width:0;flex:1 1 60%}
+.cf-row > span:last-child{flex:0 0 auto;margin-left:auto}
+.fin-chart,.fin-svg{max-width:100%}
 `;

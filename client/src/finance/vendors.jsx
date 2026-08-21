@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Panel } from "./pieces.jsx";
+import { segment as seg } from "./spend.jsx";
 import { api } from "../api.js";
 import { monthLabel, ENTITY_LABEL } from "./format.js";
 
@@ -25,17 +26,7 @@ const STATUS_LABEL = {
   overdue: "Overdue", waived: "Waived",
 };
 
-const polar = (cx, cy, r, deg) => {
-  const a = ((deg - 90) * Math.PI) / 180;
-  return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
-};
-function seg(cx, cy, ro, ri, from, to) {
-  const large = to - from > 180 ? 1 : 0;
-  const [x1, y1] = polar(cx, cy, ro, from), [x2, y2] = polar(cx, cy, ro, to);
-  const [x3, y3] = polar(cx, cy, ri, to), [x4, y4] = polar(cx, cy, ri, from);
-  return `M${x1},${y1} A${ro},${ro} 0 ${large} 1 ${x2},${y2}
-          L${x3},${y3} A${ri},${ri} 0 ${large} 0 ${x4},${y4} Z`;
-}
+
 
 function PaymentStatus({ tally, money }) {
   const [hover, setHover] = useState(null);

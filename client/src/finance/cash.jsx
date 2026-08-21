@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Panel } from "./pieces.jsx";
+import { segment as seg } from "./spend.jsx";
 import { monthLabel } from "./format.js";
 
 // ── Cash flow and forecast ───────────────────────────────────
@@ -180,6 +181,65 @@ function CashLine({ history, months, money, prediction, scenario }) {
   );
 }
 
+// Where the next few months' money comes from and goes to. Committed and
+// estimated stay as separate slices rather than being merged into "inflow" —
+// an agreed payment and an estimate are not interchangeable, and a donut that
+// blends them would be the one place on this page that pretends they are.
+const SUMMARY_COLOUR = ["#2a78d6", "#eb6834", "#1baf7a", "#4a3aa7"];
+
+function Summary({ breakdown, money, months }) {
+  const [hover, setHover] = useState(null);
+  const parts = breakdown.rows
+    .map((r, i) => ({ key: r.label, label: r.label, value: r.total,
+                      colour: SUMMARY_COLOUR[i % SUMMARY_COLOUR.length], group: r.group }))
+    .filter((p) => p.value > 0);
+  const total = parts.reduce((t, p) => t + p.value, 0);
+  if (!total) return <p className="fc-none">Nothing committed or estimated in this window.</p>;
+
+  const S = 190, C = S / 2, R = 84, RI = 56, GAP = parts.length > 1 ? 2 : 0;
+  let angle = 0;
+  const arcs = parts.map((p) => {
+    const sweep = (p.value / total) * 360;
+    const from = angle + GAP / 2, to = angle + sweep - GAP / 2;
+    angle += sweep;
+    return { ...p, from, to: Math.max(from + 0.4, to), share: p.value / total };
+  });
+  const focus = hover ? arcs.find((a) => a.key === hover) : null;
+  const net = breakdown.netTotal;
+
+  return (
+    <div className="ch-summary">
+      <div className="sp-donut">
+        <svg viewBox={`0 0 ${S} ${S}`} role="img"
+             aria-label={`Money in and out over the next ${months} months`}>
+          {arcs.map((a) => (
+            <path key={a.key} d={seg(C, C, focus?.key === a.key ? R + 4 : R, RI, a.from, a.to)}
+                  fill={a.colour} className="sp-seg"
+                  onMouseEnter={() => setHover(a.key)} onMouseLeave={() => setHover(null)} />
+          ))}
+          <text x={C} y={C - 4} className={`sp-centre-fig${net < 0 ? " neg" : ""}`}>
+            {money.round(focus ? focus.value : net)}
+          </text>
+          <text x={C} y={C + 16} className="sp-centre-lab">
+            {focus ? `${Math.round(focus.share * 100)}% of the window` : "net movement"}
+          </text>
+        </svg>
+      </div>
+      <ul className="sp-list">
+        {arcs.map((a) => (
+          <li key={a.key} className={hover === a.key ? "on" : ""}
+              onMouseEnter={() => setHover(a.key)} onMouseLeave={() => setHover(null)}>
+            <i style={{ background: a.colour }} aria-hidden="true" />
+            <span className="sp-name">{a.label}</span>
+            <span className="sp-share">{Math.round(a.share * 100)}%</span>
+            <span className="sp-amt fin-fig">{money.round(a.value)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function Alerts({ alerts }) {
   if (!alerts.length) {
     return (
@@ -269,19 +329,27 @@ export function CashView({ ch, money, period, onGo }) {
         <article className="fc-kpi">
           <header><span>Projected, 30 days</span></header>
           <p className={`fin-fig${ch.projected30 < 0 ? " fe-out" : ""}`}>{money.round(ch.projected30)}</p>
-          <footer>
-            {ch.committed30 >= 0 ? "+" : "−"}{money.round(Math.abs(ch.committed30))} committed to move
-          </footer>
+          <footer>on {ch.forecast.months[1]?.period ?? "next month"}</footer>
+          <Spark series={ch.forecast.months.map((m) => m.closing)} tone="accent" />
         </article>
         <article className="fc-kpi">
-          <header><span>Expected in</span></header>
+          <header><span>Net, 30 days</span></header>
+          <p className={`fin-fig${ch.committed30 < 0 ? " fe-out" : " fe-in"}`}>
+            {ch.committed30 >= 0 ? "+" : "−"}{money.round(Math.abs(ch.committed30))}
+          </p>
+          <footer>committed to move, either way</footer>
+        </article>
+        <article className="fc-kpi">
+          <header><span>Total in, {ch.months} months</span></header>
           <p className="fin-fig fe-in">{money.round(ch.inflow)}</p>
-          <footer>over {ch.months} months, committed and estimated</footer>
+          <footer>committed and estimated</footer>
+          <Spark series={trend.map((m) => m.revenue)} tone="in" />
         </article>
         <article className="fc-kpi">
-          <header><span>Expected out</span></header>
+          <header><span>Total out, {ch.months} months</span></header>
           <p className="fin-fig fe-out">{money.round(ch.outflow)}</p>
-          <footer>over {ch.months} months, committed and estimated</footer>
+          <footer>committed and estimated</footer>
+          <Spark series={trend.map((m) => m.expenses)} tone="out" />
         </article>
         <article className={`fc-kpi${r.burning && r.current != null && r.current < 3 ? " warn" : ""}`}>
           <header><span>Runway</span></header>
@@ -294,65 +362,70 @@ export function CashView({ ch, money, period, onGo }) {
         </article>
       </div>
 
-      <Panel
-        title="Cash position"
-        sub="Recorded months, then what is agreed and what is estimated"
-        action={canPredict && (
-          <div className="fc-scen" role="group" aria-label="Which projection">
-            <button className={scenario === "committed" ? "on" : ""}
-                    onClick={() => setScenario("committed")}>Committed only</button>
-            <button className={scenario === "expected" ? "on" : ""}
-                    onClick={() => setScenario("expected")}>Expected</button>
-          </div>
-        )}>
-        <CashLine history={ch.history} months={ch.forecast.months} money={money}
-                  prediction={ch.prediction} scenario={showing} />
-        {ch.belowZero.committed && (
-          <p className="fc-flag">
-            On agreed payments alone the position goes below zero in{" "}
-            <strong>{monthLabel(ch.belowZero.committed)}</strong>. That is arithmetic —
-            income you have not contracted is not in that line.
-          </p>
-        )}
-      </Panel>
-
-      <div className="fin-twocol">
-        <Panel title="What needs attention" sub="Conditions that are true right now">
-          <Alerts alerts={ch.alerts} />
-        </Panel>
-        <Panel title="Runway" sub="How long the recorded position lasts under each case">
-          {!r.burning ? (
-            <p className="fc-none">
-              Recorded months are net positive, so there is no burn rate and no
-              runway to run out of. This changes the moment a month costs more
-              than it earns.
+      <div className="ch-band">
+        <Panel
+          title="Cash position"
+          sub="Recorded months, then what is agreed and what is estimated"
+          action={canPredict && (
+            <div className="fc-scen" role="group" aria-label="Which projection">
+              <button className={scenario === "committed" ? "on" : ""}
+                      onClick={() => setScenario("committed")}>Committed only</button>
+              <button className={scenario === "expected" ? "on" : ""}
+                      onClick={() => setScenario("expected")}>Expected</button>
+            </div>
+          )}>
+          <CashLine history={ch.history} months={ch.forecast.months} money={money}
+                    prediction={ch.prediction} scenario={showing} />
+          {ch.belowZero.committed && (
+            <p className="fc-flag">
+              On agreed payments alone the position goes below zero in{" "}
+              <strong>{monthLabel(ch.belowZero.committed)}</strong>. That is arithmetic —
+              income you have not contracted is not in that line.
             </p>
-          ) : (
-            <>
-              <div className="ch-runway">
-                {[["Worst case", r.worst], ["Current", r.current], ["Best case", r.best]].map(
-                  ([label, v]) => (
-                    <div key={label}>
-                      <span>{label}</span>
-                      <strong className="fin-fig">{runwayText(r, v)}</strong>
-                    </div>
-                  )
-                )}
-              </div>
-              <p className="fc-note">
-                Best and worst are the quartiles of what your recent months actually
-                did — not multipliers applied to a guess. Where there is not enough
-                history to say, the figure is left blank rather than filled in.
-              </p>
-            </>
           )}
+        </Panel>
+
+        <Panel title="Summary" sub={`Next ${ch.months} months`}>
+          <Summary breakdown={ch.breakdown} money={money} months={ch.months} />
+        </Panel>
+
+        <Panel title="Key alerts" sub="Conditions that are true right now">
+          <Alerts alerts={ch.alerts} />
         </Panel>
       </div>
 
-      <Panel title="Month by month"
-             sub="Committed and estimated kept apart, because they are different claims">
-        <Breakdown breakdown={ch.breakdown} money={money} />
-      </Panel>
+      <div className="ch-band2">
+        <Panel title="Month by month"
+               sub="Committed and estimated kept apart — different claims">
+          <Breakdown breakdown={ch.breakdown} money={money} />
+        </Panel>
+
+        <Panel title="Runway"
+               sub={r.burning ? "How long the position lasts" : "Monthly net under each case"}>
+          <div className="ch-runway">
+            {[["Worst", r.worst, r.scenarios?.worst],
+              ["Current", r.current, r.burning ? r.monthlyBurn : null],
+              ["Best", r.best, r.scenarios?.best]].map(([label, months, net]) => (
+              <div key={label}>
+                <span>{label}</span>
+                <strong className="fin-fig">
+                  {months != null ? runwayText(r, months) : net == null ? "—" : "no burn"}
+                </strong>
+                {net != null && (
+                  <em className={net > 0 ? "fe-out" : "fe-in"}>
+                    {net > 0 ? "−" : "+"}{money.round(Math.abs(net))}/mo
+                  </em>
+                )}
+              </div>
+            ))}
+          </div>
+          <p className="fc-note">
+            {r.burning
+              ? "Best and worst are the quartiles of what recent months actually did — not multipliers on a guess."
+              : "Recorded months are net positive, so nothing is being burned and there is no runway to run out of. The monthly figures are what each case would do."}
+          </p>
+        </Panel>
+      </div>
 
       <div className="fin-twocol">
         <Panel title="Largest recurring costs"

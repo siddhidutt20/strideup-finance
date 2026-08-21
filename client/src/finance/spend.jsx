@@ -21,7 +21,9 @@ const polar = (cx, cy, r, deg) => {
 
 // An annulus segment. Drawn as a path rather than a stroked circle so the 2px
 // surface gap between neighbouring slices is a real gap, not a colour blend.
-function segment(cx, cy, rOuter, rInner, from, to) {
+// Exported: every donut in the app uses this one, rather than each file
+// carrying its own copy of the same trigonometry.
+export function segment(cx, cy, rOuter, rInner, from, to) {
   const large = to - from > 180 ? 1 : 0;
   const [x1, y1] = polar(cx, cy, rOuter, from);
   const [x2, y2] = polar(cx, cy, rOuter, to);
