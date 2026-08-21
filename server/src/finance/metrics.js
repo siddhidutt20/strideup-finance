@@ -1242,3 +1242,122 @@ export async function cashDashboard(entity, months = 3, today = new Date()) {
     prediction: est,
   };
 }
+
+// ── One side of the ledger, in detail ────────────────────────
+// Revenue and expenses ask the same questions in mirror image: how much this
+// month, how it compares, what is still owed, what is coming, where it is
+// concentrated, and how much of it is locked in. One function answers both
+// rather than two that drift apart.
+//
+// "Fixed" here means committed — there is an agreement behind it. "Variable"
+// is everything else that actually happened. That is a real distinction this
+// system can prove, unlike a fixed/variable tag someone would have to
+// maintain by hand and would stop trusting within a month.
+export async function sideDetail(entity, period, direction, today = new Date()) {
+  const asOf = isoDate(today);
+  const isIn = direction === "in";
+  const kinds = isIn ? ["revenue"] : ["cogs", "opex", "tax", "capex"];
+
+  const [breakdown, byParty, series, prev, summary] = await Promise.all([
+    categoryBreakdown(period, entity),
+    byCounterparty(period, direction, 20, entity),
+    trend(13, monthStart(today), entity),
+    periodSummary(addMonths(period, -1), entity),
+    periodSummary(period, entity),
+  ]);
+
+  const categories = breakdown
+    .filter((r) => kinds.includes(r.kind) && r.direction === direction)
+    .map((r) => ({ name: r.name, total: r.amount, count: r.count }));
+  const categoryTotal = categories.reduce((t, c) => t + c.total, 0);
+
+  const thisMonth = isIn ? summary.revenue : summary.expenses;
+  const lastMonth = isIn ? prev.revenue : prev.expenses;
+
+  // What is committed to arrive or leave, over three windows.
+  const commitments = await activeCommitments(entity);
+  const settled = await paymentMap(entity);
+  const thisPeriod = monthStart(today);
+  const windowTotal = (days) => {
+    const until = isoDate(new Date(today.getTime() + days * 86400000));
+    let total = 0;
+    for (let i = 0; i <= 4; i++) {
+      for (const k of commitments) {
+        if (k.direction !== direction) continue;
+        for (const occ of occurrencesIn(k, addMonths(thisPeriod, i))) {
+          if (occ.date <= asOf || occ.date > until) continue;
+          total += outstandingOn(Number(k.base_amount_minor), settled.get(occKey(k.id, occ.date)));
+        }
+      }
+    }
+    return total;
+  };
+
+  // Fixed against variable, of what actually happened this month.
+  //
+  // The split has to come from recorded entries, not from the schedule.
+  // Comparing what was *scheduled* against what was *recorded* and calling the
+  // remainder variable gives nonsense the moment a scheduled payment has not
+  // been marked as arrived: committed comes out larger than the month itself
+  // and variable clamps to zero. An entry that came from a commitment carries
+  // a dedup key saying so, which is the only provable version of this split.
+  const linked = await get(
+    `SELECT COALESCE(SUM(e.base_amount_minor), 0) AS total
+       FROM fin_entries e
+      WHERE e.review_status <> 'rejected' AND e.period = ?
+        AND e.direction = ? AND e.dedup_key LIKE 'commitment:%'${ENT(entity)}`,
+    [period, direction, ...ENT_ARG(entity)]
+  );
+  const fixed = Number(linked?.total ?? 0);
+  const variable = Math.max(0, thisMonth - fixed);
+
+  // What the schedule said should happen this month, recorded or not. Kept
+  // separate from the above because it answers a different question.
+  const monthCommitted = commitmentsForMonth(commitments, period, null, settled);
+  const scheduled = isIn ? monthCommitted.committedIn : monthCommitted.committedOut;
+
+  const recurring = commitments
+    .filter((k) => k.direction === direction && k.frequency !== "once")
+    .map((k) => {
+      const perMonth = { weekly: 52 / 12, monthly: 1, quarterly: 1 / 3, annual: 1 / 12 };
+      return {
+        description: k.description,
+        counterparty: k.counterparty,
+        categoryName: k.category_name,
+        frequency: k.frequency,
+        monthlyEquivalent: Math.round(Number(k.base_amount_minor) * (perMonth[k.frequency] ?? 1)),
+      };
+    })
+    .sort((a, b) => b.monthlyEquivalent - a.monthlyEquivalent);
+
+  const due = await dueSoon(entity, 30, today);
+  const upcoming = (isIn ? due.incoming : due.payable);
+
+  return {
+    entity, period, direction, asOf,
+    thisMonth, lastMonth,
+    change: lastMonth ? (thisMonth - lastMonth) / Math.abs(lastMonth) : null,
+    categories: categories.map((c) => ({
+      ...c, share: categoryTotal ? c.total / categoryTotal : 0,
+    })),
+    categoryTotal,
+    parties: byParty.map((p) => ({
+      ...p, total: Number(p.total),
+      share: categoryTotal ? Number(p.total) / categoryTotal : 0,
+    })),
+    trend: series.map((m) => ({
+      period: m.period, value: isIn ? m.revenue : m.expenses,
+    })),
+    expected: { d30: windowTotal(30), d60: windowTotal(60), d90: windowTotal(90) },
+    fixed, variable, scheduled,
+    fixedShare: thisMonth ? fixed / thisMonth : null,
+    recurring: recurring.slice(0, 8),
+    recurringMonthly: recurring.reduce((t, r) => t + r.monthlyEquivalent, 0),
+    upcoming: upcoming.slice(0, 8),
+    upcomingTotal: upcoming.reduce((t, u) => t + u.amount, 0),
+    overdue: upcoming.filter((u) => u.status === "overdue"),
+    overdueTotal: upcoming.filter((u) => u.status === "overdue")
+                          .reduce((t, u) => t + u.amount, 0),
+    receivables: isIn ? await receivables(today, entity) : null,
+  };
+}

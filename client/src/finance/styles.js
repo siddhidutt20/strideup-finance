@@ -714,3 +714,24 @@ export const CONTRACTS_GROUP_CSS = `
 .ct-line .ct-who{padding-left:26px!important;font-size:12.5px}
 .ct-line .fc-cat{display:block;margin-top:2px}
 `;
+
+export const SIDE_CSS = `
+.sd-kpis{grid-template-columns:repeat(auto-fit,minmax(178px,1fr))}
+.sd-up{color:#12657F;font-weight:600}
+.sd-down{color:var(--fin-neg);font-weight:600}
+.sd-flat{color:var(--fin-faint)}
+.sd-table{min-width:380px}
+.sd-table td:last-child{white-space:nowrap}
+.sd-bar{display:inline-block;width:60px;height:6px;border-radius:99px;
+  background:var(--fin-sunk);margin-right:8px;vertical-align:middle;overflow:hidden}
+.sd-bar i{display:block;height:100%;border-radius:99px}
+.sd-bar i.in{background:var(--fin-in)}
+.sd-bar i.out{background:var(--fin-out)}
+.sd-windows{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
+.sd-windows div{background:var(--fin-sunk);border:1px solid var(--fin-hair);
+  border-radius:12px;padding:11px 13px;display:flex;flex-direction:column;gap:3px}
+.sd-windows span{font-size:11px;font-weight:600;color:var(--fin-muted)}
+.sd-windows strong{font-size:18px;font-weight:600;letter-spacing:-.02em}
+.sd-upcoming{border-top:1px solid var(--fin-hair);padding-top:8px!important}
+@media(max-width:520px){.sd-windows{grid-template-columns:1fr}}
+`;

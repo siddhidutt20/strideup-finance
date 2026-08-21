@@ -62,6 +62,8 @@ export const api = {
     request("GET", `/finance/due?entity=${entity}&days=${days}`),
   addCommitment: (b) => request("POST", "/finance/commitments", b),
   deleteCommitment: (id) => request("DELETE", `/finance/commitments/${id}`),
+  finSide: (direction, entity, period) =>
+    request("GET", `/finance/side/${direction}?entity=${entity}&period=${period}`),
   finCash: (entity, months = 3) =>
     request("GET", `/finance/cash?entity=${entity}&months=${months}`),
   finVendors: (entity) => request("GET", `/finance/vendors?entity=${entity}`),

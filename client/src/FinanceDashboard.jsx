@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api.js";
-import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS, FUTURE_CSS, CASHFLOW_AHEAD_CSS, CF_NONE_CSS, VENDORS_CSS, CASH_CSS, CONTRACTS_GROUP_CSS } from "./finance/styles.js";
+import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS, FUTURE_CSS, CASHFLOW_AHEAD_CSS, CF_NONE_CSS, VENDORS_CSS, CASH_CSS, CONTRACTS_GROUP_CSS, SIDE_CSS } from "./finance/styles.js";
 import {
   fmtAmount, monthLabel, readFile, shiftMonth, thisMonth, useMoney, ZERO_DECIMAL,
   ENTITY_LABEL, ENTITY_CHOICES, loadEntity, saveEntity,
@@ -13,6 +13,7 @@ import { ForecastView } from "./finance/forecast.jsx";
 import { ContractsView } from "./finance/contracts.jsx";
 import { VendorsView } from "./finance/vendors.jsx";
 import { CashView } from "./finance/cash.jsx";
+import { SideView } from "./finance/side.jsx";
 import { DueSoon } from "./finance/spend.jsx";
 import { Panel } from "./finance/pieces.jsx";
 import { ICONS } from "./finance/icons.jsx";
@@ -59,6 +60,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
   const [schedule, setSchedule] = useState(null);
   const [vendors, setVendors] = useState(null);
   const [cash, setCash] = useState(null);
+  const [sides, setSides] = useState(null);
   const setEntity = (v) => { saveEntity(v); setEntityState(v); };
   const [busy, setBusy] = useState(false);
 
@@ -116,15 +118,20 @@ export default function FinanceDashboard({ owner, onLogout }) {
         api.finVendors(entity),
         api.finCash(entity, 3),
       ]);
+      const [rin, rout] = await Promise.all([
+        api.finSide("in", entity, period),
+        api.finSide("out", entity, period),
+      ]);
+      setSides({ in: rin, out: rout });
       setForecast(fc); setCommitments(cm); setDue(dd);
       setSchedule(sc); setVendors(vn); setCash(cs);
     } catch (err) {
       setError(err.message || "Could not load the forecast.");
     }
-  }, [entity]);
+  }, [entity, period]);
 
   useEffect(() => {
-    if (!["forecast", "contracts", "vendors", "cashflow", "overview"].includes(view)
+    if (!["forecast", "contracts", "vendors", "cashflow", "revenue", "expenses", "overview"].includes(view)
         && period <= thisMonth()) return;
     loadForecast();
   }, [view, entity, period, loadForecast]);
@@ -252,7 +259,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
         {/* Joined in JS, not as three JSX children: a <style> element with
             several text children does not reliably end up with all of them in
             the DOM, and the symptom is a stylesheet that silently truncates. */}
-        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS}</style>
+        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS}</style>
         <div className="fin-boot"><div className="fin-spinner" /></div>
       </div>
     );
@@ -290,7 +297,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
 
   return (
     <div className="fin-app">
-      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS}</style>
+      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS}</style>
 
       <aside className="fin-side" aria-label="Sections">
         <div className="fin-sidebrand">
@@ -406,18 +413,18 @@ export default function FinanceDashboard({ owner, onLogout }) {
               </Panel>
             </EntityBlock>
           ))}
-          {view === "revenue" && statements && entityList.map((ent) => (
-            <EntityBlock key={ent} show={entityList.length > 1}
-                         label={statements.byEntity[ent].label}>
-              <RevenueView st={statements.byEntity[ent]} trend={trendFor(ent)}
-                           money={money} period={period} />
+          {view === "revenue" && sides?.in && (sides.in.entities ?? [entity]).map((ent) => (
+            <EntityBlock key={ent} show={(sides.in.entities ?? []).length > 1}
+                         label={sides.in.byEntity[ent].label}>
+              <SideView sd={sides.in.byEntity[ent]} money={money} period={period}
+                        trend={trendFor(ent)} />
             </EntityBlock>
           ))}
-          {view === "expenses" && statements && entityList.map((ent) => (
-            <EntityBlock key={ent} show={entityList.length > 1}
-                         label={statements.byEntity[ent].label}>
-              <ExpensesView st={statements.byEntity[ent]} trend={trendFor(ent)}
-                            money={money} period={period} />
+          {view === "expenses" && sides?.out && (sides.out.entities ?? [entity]).map((ent) => (
+            <EntityBlock key={ent} show={(sides.out.entities ?? []).length > 1}
+                         label={sides.out.byEntity[ent].label}>
+              <SideView sd={sides.out.byEntity[ent]} money={money} period={period}
+                        trend={trendFor(ent)} />
             </EntityBlock>
           ))}
           {view === "cashflow" && (

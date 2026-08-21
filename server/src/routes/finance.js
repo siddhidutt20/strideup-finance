@@ -15,7 +15,7 @@ import {
   burnAndRunway, receivables, capitalPosition, reviewCount,
   profitAndLoss, cashflow, byCounterparty, forecast, activeCommitments, dueSoon,
   contractSchedule, occurrencesIn, occKey, statusOf, outstandingOn, commitmentsForMonth, paymentMap, committedRunUp,
-  vendorManagement, contractLibrary, cashDashboard,
+  vendorManagement, contractLibrary, cashDashboard, sideDetail,
 } from "../finance/metrics.js";
 
 export const financeRouter = express.Router();
@@ -1062,6 +1062,26 @@ financeRouter.get(
     }
     res.json({
       entity: choice, entities: list, months, byEntity,
+      baseCurrency: config.finance.baseCurrency,
+    });
+  })
+);
+
+// ── Revenue and expenses in detail ───────────────────────────
+financeRouter.get(
+  "/side/:direction",
+  ah(async (req, res) => {
+    const direction = req.params.direction === "in" ? "in" : "out";
+    const period = periodParam.safeParse(req.query.period).success
+      ? req.query.period
+      : monthStart();
+    const { choice, list } = resolveEntities(req.query.entity);
+    const byEntity = {};
+    for (const ent of list) {
+      byEntity[ent] = { label: ENTITY_LABEL[ent], ...(await sideDetail(ent, period, direction)) };
+    }
+    res.json({
+      entity: choice, entities: list, period, direction, byEntity,
       baseCurrency: config.finance.baseCurrency,
     });
   })
