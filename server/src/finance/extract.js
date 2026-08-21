@@ -43,11 +43,28 @@ export function fromMinor(minor, currency) {
   return Number(minor) / factor;
 }
 
+// An installment is one dated payment a contract promises. Contracts rarely
+// pay on a tidy monthly cycle — "half on signature, half on completion" is
+// two dates six months apart — so the schedule is a list of dates rather than
+// a recurrence rule wherever the document actually names the dates.
+const installment = z.object({
+  due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  amount: z.number().finite().positive(),
+  label: z.string().trim().max(120).catch(""),
+});
+
 const extraction = z.object({
   vendor_name: z.string().trim().min(1).max(160),
   document_type: z
-    .enum(["invoice", "receipt", "credit_note", "statement", "other"])
+    .enum(["invoice", "receipt", "credit_note", "statement", "contract", "other"])
     .catch("receipt"),
+  // ── Contract terms, present only when document_type is "contract" ──
+  installments: z.array(installment).max(60).catch([]),
+  contract_start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().catch(null),
+  contract_end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().catch(null),
+  // Which way the money moves under this agreement, from the point of view of
+  // the business keeping these books.
+  direction: z.enum(["in", "out"]).nullable().catch(null),
   issue_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD"),
   currency: z
     .string()
@@ -86,8 +103,12 @@ Extract the following and reply with ONLY a JSON object, no prose and no code fe
 
 {
   "vendor_name": "${kind === "revenue" ? "the CUSTOMER being billed" : "the supplier/merchant name as printed"}",
-  "document_type": "invoice | receipt | credit_note | statement | other",
+  "document_type": "invoice | receipt | credit_note | statement | contract | other",
   "issue_date": "YYYY-MM-DD — the document date, not today's date",
+  "installments": [],
+  "contract_start": null,
+  "contract_end": null,
+  "direction": null,
   "currency": "ISO-4217 code, e.g. USD, GBP, EUR, INR",
   "subtotal": number or null,
   "tax_amount": number or null,
@@ -99,6 +120,36 @@ Extract the following and reply with ONLY a JSON object, no prose and no code fe
   "summary": "at most 12 words describing what was bought",
   "confidence": number between 0 and 1
 }
+
+Is this a CONTRACT rather than a bill?
+
+A contract, agreement, order form, retainer or subscription plan describes
+payments that will happen in the FUTURE. A bill, invoice or receipt records
+one payment that has already been agreed for work already identified. The
+difference matters more than anything else on this page: a signed agreement
+worth 100,000 is not 100,000 of income on the day it is signed, it is a
+promise of payments on the dates it names.
+
+If the document sets out future payments, set "document_type" to "contract"
+and fill in:
+
+- "installments": one entry per payment the document names, as
+  [{"due_date":"YYYY-MM-DD","amount":number,"label":"short description"}].
+  Read the payment clause carefully and work the dates out:
+    · "50% on execution, 50% on completion, invoiced on or after 15 March
+      2027" with an effective date of 15 September 2026 and a total of 100,000
+      is TWO installments: 50,000 on 2026-09-15 and 50,000 on 2027-03-15.
+    · "12 monthly payments of 2,000 from 1 April" is twelve entries, one a
+      month, each 2,000.
+  The installment amounts must add up to the total. If the document states a
+  total but you cannot work out the dates, return an empty list and give a low
+  confidence — do not invent dates.
+- "contract_start" / "contract_end": the service period, or null if open-ended.
+- "direction": "in" if this business RECEIVES the money under the agreement,
+  "out" if it PAYS.
+- "total": the full contract value.
+
+For anything that is not a contract, leave installments empty and direction null.
 
 Whose books does this belong to?
 - "strideup" — ${hints.strideup}

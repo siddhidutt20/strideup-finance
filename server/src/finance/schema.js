@@ -167,6 +167,30 @@ export const FIN_SCHEMA = [
      dedup_key         text UNIQUE,
      created_at        timestamptz NOT NULL DEFAULT now()
    )`,
+
+  // ── Settled occurrences ────────────────────────────────────
+  // A commitment's schedule is computed, not stored, so this table records
+  // only the occurrences that have actually been settled. One row per
+  // (commitment, due date) — the unique key is what makes "mark paid"
+  // idempotent, and what stops a payment being recorded twice.
+  //
+  // Marking one paid is what turns a promise into money: it writes a real
+  // ledger entry. Until then the contract is visible everywhere as committed,
+  // and counts toward nothing that claims to be revenue or cash.
+  `CREATE TABLE IF NOT EXISTS fin_commitment_payments (
+     id             bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+     commitment_id  bigint NOT NULL REFERENCES fin_commitments(id) ON DELETE CASCADE,
+     due_date       date NOT NULL,
+     paid_date      date,
+     entry_id       bigint REFERENCES fin_entries(id) ON DELETE SET NULL,
+     status         text NOT NULL DEFAULT 'paid',
+     amount_minor   bigint,
+     base_amount_minor bigint,
+     matched_by     text NOT NULL DEFAULT 'manual',
+     note           text,
+     created_at     timestamptz NOT NULL DEFAULT now(),
+     UNIQUE (commitment_id, due_date)
+   )`,
 ];
 
 // ── Chart of accounts ────────────────────────────────────────
@@ -262,6 +286,8 @@ export const FIN_MIGRATIONS = [
   `CREATE INDEX IF NOT EXISTS idx_fin_entries_entity ON fin_entries(entity, period)`,
   `CREATE INDEX IF NOT EXISTS idx_fin_commitments_scope
      ON fin_commitments(entity, status, start_date)`,
+  `CREATE INDEX IF NOT EXISTS idx_fin_commitment_payments_due
+     ON fin_commitment_payments(due_date)`,
 ];
 
 // How often a commitment recurs. "once" is a single dated payment — a

@@ -486,3 +486,72 @@ export const FORECAST_CSS = `
 .du-sub{font-size:11.5px;color:var(--fin-faint)}
 .du-amt{font-weight:600;font-variant-numeric:tabular-nums;font-size:13px}
 `;
+
+// ── Contracts grid ───────────────────────────────────────────
+// Status is never carried by colour alone: every chip has a word on it, so
+// paid, due and overdue survive greyscale and colour vision deficiency.
+export const CONTRACTS_CSS = `
+.ct-table{min-width:820px}
+.ct-table th.num{text-align:center;min-width:96px}
+.ct-table th.now{color:var(--fin-accent)}
+.ct-who{min-width:230px;vertical-align:top}
+.ct-cell{text-align:center;vertical-align:middle;padding:6px 4px!important}
+.ct-cell.empty span{color:#DCD8E6}
+.ct-chip{display:flex;flex-direction:column;align-items:center;gap:1px;width:100%;
+  border:1px solid transparent;background:none;font-family:inherit;cursor:pointer;
+  padding:5px 6px;border-radius:9px;transition:.14s;line-height:1.2}
+.ct-chip:disabled{cursor:wait;opacity:.6}
+.ct-chip i{display:none}
+.ct-chipamt{font-size:12.5px;font-weight:600;font-variant-numeric:tabular-nums}
+.ct-chip em{font-style:normal;font-size:9.5px;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase}
+.ct-chip.paid{background:#E4F6FA;border-color:#BEE7F0;color:#0B7C97}
+.ct-chip.paid:hover{background:#D5F0F7}
+.ct-chip.due{background:var(--fin-sunk);border-color:var(--fin-line);color:var(--fin-muted)}
+.ct-chip.due:hover{border-color:var(--fin-accent);color:var(--fin-accent)}
+.ct-chip.overdue{background:#FCE9F2;border-color:#F5CDE0;color:#A8225F}
+.ct-chip.overdue:hover{background:#F9DDEA}
+.ct-chip.waived{background:transparent;border-color:var(--fin-hair);color:var(--fin-faint);
+  text-decoration:line-through}
+
+/* Recording a payment asks two questions, because "it arrived" is rarely
+   exactly the due date and not always exactly the amount. */
+.ct-modal{position:fixed;inset:0;z-index:40;display:grid;place-items:center;padding:20px;
+  background:rgba(23,19,38,.42);backdrop-filter:blur(3px)}
+.ct-dialog{width:100%;max-width:400px;background:var(--fin-surface);border-radius:18px;
+  padding:22px;box-shadow:0 30px 70px -25px rgba(23,19,38,.5);display:flex;
+  flex-direction:column;gap:12px}
+.ct-dialog h3{margin:0;font-family:var(--fin-display);font-weight:600;font-size:19px}
+.ct-dialogsub{margin:-6px 0 2px;font-size:12.5px;color:var(--fin-muted);line-height:1.5}
+.ct-dialog label{display:flex;flex-direction:column;gap:5px;font-size:12.5px;
+  font-weight:600;color:var(--fin-muted)}
+.ct-dialog input{font-family:inherit;font-size:14px;padding:9px 11px;border-radius:10px;
+  border:1px solid var(--fin-line);background:var(--fin-surface);color:var(--fin-ink)}
+.ct-dialog input:focus{outline:none;border-color:var(--fin-accent)}
+.ct-dialognote{margin:0;font-size:11.5px;color:var(--fin-faint);line-height:1.55}
+.ct-dialogactions{display:flex;gap:8px;justify-content:flex-end;margin-top:2px}
+`;
+
+export const CONTRACTS_EXTRA_CSS = `
+.fc-empty{background:#F6F2FE;border:1px solid #E3D8FA;border-radius:14px;
+  padding:15px 18px;margin:0 0 18px}
+.fc-empty strong{display:block;font-size:14px;font-weight:600;color:var(--fin-accent);
+  margin-bottom:5px}
+.fc-empty p{margin:0 0 6px;font-size:13px;line-height:1.6;color:var(--fin-muted)}
+.fc-empty p:last-child{margin-bottom:0}
+.ct-outside{display:block;font-size:10.5px;font-weight:700;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--fin-faint);margin-bottom:4px}
+`;
+
+export const LEDGER_EDIT_CSS = `
+.fe-amtbtn{border:1px solid transparent;background:none;font-family:inherit;font-size:inherit;
+  font-weight:600;padding:2px 6px;margin:-2px -6px;border-radius:7px;cursor:pointer;
+  font-variant-numeric:tabular-nums;transition:.13s}
+.fe-amtbtn:hover{border-color:var(--fin-line);background:var(--fin-sunk)}
+.fe-amtbtn.amt-in{color:var(--fin-in)}
+.fe-amtbtn.amt-out{color:var(--fin-ink)}
+.fe-amtin{width:120px;font-family:inherit;font-size:13px;font-weight:600;text-align:right;
+  padding:4px 7px;border-radius:8px;border:1px solid var(--fin-accent);
+  background:var(--fin-surface);color:var(--fin-ink);font-variant-numeric:tabular-nums}
+.fe-amtin:focus{outline:none;box-shadow:0 0 0 3px #EDE4FC}
+`;

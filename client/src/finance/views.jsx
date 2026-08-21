@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { api } from "../api.js";
 import { Panel, Kpi, TrendChart, CategoryBars, Ranked, Receivables, CapitalList } from "./pieces.jsx";
-import { CURRENCIES, delta, fmtAmount, monthLabel, today, ZERO_DECIMAL,
+import { CURRENCIES, delta, fmtAmount, majorOf, monthLabel, today, ZERO_DECIMAL,
          ENTITY_LABEL } from "./format.js";
 import { SpendByCategory } from "./spend.jsx";
 
@@ -227,7 +227,7 @@ export function PnlView({ st, money, period }) {
 // ── Ledger ───────────────────────────────────────────────────
 export function LedgerView({
   entries, categories, money, baseCurrency, period, scope, onScope, showEntity,
-  onFix, onRemove, onCurrency,
+  onFix, onRemove, onCurrency, onAmount,
 }) {
   return (
     <>
@@ -244,14 +244,51 @@ export function LedgerView({
              }>
         <LedgerTable entries={entries} categories={categories} money={money}
                      baseCurrency={baseCurrency} showEntity={showEntity} onFix={onFix}
-                     onRemove={onRemove} onCurrency={onCurrency} />
+                     onRemove={onRemove} onCurrency={onCurrency} onAmount={onAmount} />
       </Panel>
     </>
   );
 }
 
+// The figure a document was read from is not always the figure that belongs
+// in the books — a contract's total read as one payment, a tip added by hand,
+// a partial settlement. Correcting it is a click on the number itself; the
+// server re-converts the currency for the entry's own date, so the base
+// figure that every total is summed from moves with it.
+function AmountCell({ entry, onAmount }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState("");
+  const major = majorOf(entry.amount_minor, entry.currency);
+
+  const start = () => { setValue(String(major)); setEditing(true); };
+  const commit = async () => {
+    setEditing(false);
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0 || n === major) return;
+    await onAmount(entry.id, n);
+  };
+
+  if (editing) {
+    return (
+      <input className="fe-amtin" type="number" step="0.01" min="0.01" autoFocus
+             value={value} onChange={(ev) => setValue(ev.target.value)}
+             onBlur={commit}
+             onKeyDown={(ev) => {
+               if (ev.key === "Enter") { ev.preventDefault(); ev.currentTarget.blur(); }
+               if (ev.key === "Escape") setEditing(false);
+             }} />
+    );
+  }
+  return (
+    <button className={`fe-amtbtn ${entry.direction === "in" ? "amt-in" : "amt-out"}`}
+            onClick={start} title="Click to correct this amount">
+      {entry.direction === "in" ? "+" : "−"}{fmtAmount(entry.currency, entry.amount_minor)}
+    </button>
+  );
+}
+
 function LedgerTable({ entries, categories, money, baseCurrency, showEntity,
-                      onFix, onRemove, onCurrency }) {
+                      onFix, onRemove, onCurrency, onAmount }) {
   if (!entries.length) return <p className="fin-none">No entries for this month yet.</p>;
   return (
     <div className="fin-tablewrap">
@@ -289,9 +326,7 @@ function LedgerTable({ entries, categories, money, baseCurrency, showEntity,
                   </select>
                 </td>
                 <td className="r nowrap fe-amt">
-                  <span className={e.direction === "in" ? "amt-in" : "amt-out"}>
-                    {e.direction === "in" ? "+" : "−"}{fmtAmount(e.currency, e.amount_minor)}
-                  </span>
+                  <AmountCell entry={e} onAmount={onAmount} />
                   <span className="fe-fx">
                     <select className="fe-cur" value={e.currency}
                             title="Currency on the document"

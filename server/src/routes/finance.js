@@ -14,6 +14,7 @@ import {
   monthStart, periodSummary, categoryBreakdown, trend, cashPosition,
   burnAndRunway, receivables, capitalPosition, reviewCount,
   profitAndLoss, cashflow, byCounterparty, forecast, activeCommitments, dueSoon,
+  contractSchedule, occurrencesIn,
 } from "../finance/metrics.js";
 
 export const financeRouter = express.Router();
@@ -214,7 +215,10 @@ financeRouter.post(
       if (result.duplicate) {
         return res.status(200).json({
           duplicate: true,
-          message: "You have already uploaded this file.",
+          contract: result.contract === true,
+          message: result.contract
+            ? "That contract's schedule is already recorded."
+            : "You have already uploaded this file.",
           entry: result.entry,
         });
       }
@@ -747,5 +751,160 @@ financeRouter.get(
       entity: choice, entities: list, days, byEntity,
       baseCurrency: config.finance.baseCurrency,
     });
+  })
+);
+
+// ── Contracts and their payment status ───────────────────────
+financeRouter.get(
+  "/schedule",
+  ah(async (req, res) => {
+    const { choice, list } = resolveEntities(req.query.entity);
+    const clamp = (raw, dflt, lo, hi) => {
+      const n = Number(raw);
+      return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt;
+    };
+    const back = clamp(req.query.back, 2, 0, 12);
+    const ahead = clamp(req.query.ahead, 9, 1, 18);
+    const byEntity = {};
+    for (const ent of list) {
+      byEntity[ent] = { label: ENTITY_LABEL[ent], ...(await contractSchedule(ent, back, ahead)) };
+    }
+    res.json({
+      entity: choice, entities: list, byEntity,
+      baseCurrency: config.finance.baseCurrency,
+    });
+  })
+);
+
+// Marking an occurrence paid is what turns a promise into money. It writes a
+// real ledger entry — so the payment lands in revenue or expenses, in the
+// month it actually arrived, and moves the recorded position. Until then the
+// contract is visible as committed and counts toward nothing else.
+//
+// The dedup key is the (commitment, due date) pair, so pressing this twice
+// records one payment, exactly like every other way money enters the ledger.
+financeRouter.post(
+  "/commitments/:id/payments",
+  ah(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Bad id." });
+    const parsed = z
+      .object({
+        dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        paidDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        amount: z.coerce.number().positive().optional(),
+        status: z.enum(["paid", "waived"]).optional(),
+      })
+      .safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Which payment, and when?" });
+    const { dueDate, paidDate, amount, status = "paid" } = parsed.data;
+
+    const k = await get(
+      `SELECT k.*, c.name AS category_name FROM fin_commitments k
+         LEFT JOIN fin_categories c ON c.id = k.category_id
+        WHERE k.id = ?`, [id]
+    );
+    if (!k) return res.status(404).json({ error: "That commitment is gone." });
+
+    // The date must be one the schedule actually produces — otherwise a typo
+    // creates a payment against an occurrence that does not exist.
+    const period = `${dueDate.slice(0, 7)}-01`;
+    const scheduled = occurrencesIn(k, period).some((o) => o.date === dueDate);
+    if (!scheduled) {
+      return res.status(422).json({
+        error: `${dueDate} is not a date this commitment falls due.`,
+      });
+    }
+
+    const already = await get(
+      "SELECT id FROM fin_commitment_payments WHERE commitment_id = ? AND due_date = ?",
+      [id, dueDate]
+    );
+    if (already) return res.status(409).json({ error: "That payment is already recorded." });
+
+    const when = paidDate || dueDate;
+    let entryId = null;
+    let minor = Number(k.amount_minor);
+    let baseMinor = Number(k.base_amount_minor);
+
+    if (status === "paid") {
+      // A payment can land for a different amount than the schedule said —
+      // a part payment, a rounded transfer, a rate that moved. What is
+      // recorded is what arrived, not what was expected.
+      if (amount != null) minor = toMinor(amount, k.currency);
+      const { period: entryPeriod } = await resolvePeriod(when, k.entity);
+      const fx = await convertToBase(minor, k.currency, when);
+      const rs = await run(
+        `INSERT INTO fin_entries
+           (entry_date, direction, amount_minor, currency, fx_rate, base_amount_minor,
+            counterparty_id, category_id, description, dedup_key, confidence,
+            review_status, period, entity)
+         VALUES (?,?,?,?,?,?,?,?,?,?,1,'approved',?,?)
+         ON CONFLICT (dedup_key) DO NOTHING
+         RETURNING id`,
+        [
+          when, k.direction, minor, k.currency, fx.fxRate, fx.baseAmountMinor,
+          k.counterparty_id, k.category_id, k.description,
+          `commitment:${id}:${dueDate}`, entryPeriod, k.entity,
+        ]
+      );
+      entryId = lastId(rs);
+      baseMinor = fx.baseAmountMinor;
+      if (entryId == null) {
+        const found = await get("SELECT id FROM fin_entries WHERE dedup_key = ?",
+                                [`commitment:${id}:${dueDate}`]);
+        entryId = found ? Number(found.id) : null;
+      }
+    }
+
+    await run(
+      `INSERT INTO fin_commitment_payments
+         (commitment_id, due_date, paid_date, entry_id, status,
+          amount_minor, base_amount_minor, matched_by)
+       VALUES (?,?,?,?,?,?,?, 'manual')`,
+      [id, dueDate, status === "paid" ? when : null, entryId, status, minor, baseMinor]
+    );
+    res.status(201).json({ ok: true, id, dueDate, status, entryId });
+  })
+);
+
+// Undoing it removes the ledger entry too — otherwise unmarking a payment
+// would leave the money behind in the books with nothing pointing at it.
+financeRouter.delete(
+  "/commitments/:id/payments/:dueDate",
+  ah(async (req, res) => {
+    const id = Number(req.params.id);
+    const dueDate = String(req.params.dueDate);
+    if (!Number.isInteger(id) || id <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+      return res.status(400).json({ error: "Bad payment reference." });
+    }
+    const row = await get(
+      "SELECT entry_id FROM fin_commitment_payments WHERE commitment_id = ? AND due_date = ?",
+      [id, dueDate]
+    );
+    if (!row) return res.status(404).json({ error: "No payment recorded for that date." });
+
+    // A closed month is not rewritten. The entry stays and so does the record.
+    if (row.entry_id != null) {
+      const entry = await get("SELECT period, entity FROM fin_entries WHERE id = ?", [row.entry_id]);
+      if (entry) {
+        const closed = await get(
+          "SELECT status FROM fin_periods WHERE period = ? AND entity = ?",
+          [isoDate(entry.period), entry.entity]
+        );
+        if (closed?.status === "closed") {
+          return res.status(409).json({
+            error: `That payment is in ${isoDate(entry.period).slice(0, 7)}, which is closed. ` +
+                   `Reopen the month first if it really needs changing.`,
+          });
+        }
+      }
+      await run("DELETE FROM fin_entries WHERE id = ?", [row.entry_id]);
+    }
+    await run(
+      "DELETE FROM fin_commitment_payments WHERE commitment_id = ? AND due_date = ?",
+      [id, dueDate]
+    );
+    res.json({ ok: true });
   })
 );

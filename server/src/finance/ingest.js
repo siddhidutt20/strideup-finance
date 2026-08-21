@@ -259,6 +259,18 @@ export async function ingestDocument({
           kind === "revenue" ? "customer" : "supplier"
         );
 
+  // ── A contract is a schedule, not a transaction ────────────
+  // Booking a signed agreement's total value as one ledger entry states that
+  // the money has already been earned and received. It has not: the document
+  // is a promise of payments on the dates it names. So a contract writes
+  // commitments — one per installment — and touches the ledger not at all
+  // until each payment is actually recorded as arrived.
+  if (ex.document_type === "contract" && ex.installments?.length) {
+    return await ingestContract({
+      ex, documentId, entity, counterpartyId, categoryId, categoryName, kind, filename,
+    });
+  }
+
   const amountMinor = toMinor(ex.total, ex.currency);
   const fx = await convertToBase(amountMinor, ex.currency, ex.issue_date);
 
@@ -314,5 +326,92 @@ export async function ingestDocument({
     needsReview: !!(reason || fx.note),
     reviewReason: storedReason,
     adjustedPeriod: adjusted ? period : null,
+  };
+}
+
+// ── Contracts ────────────────────────────────────────────────
+// One commitment per installment, all linked to the document they came from.
+// Two installments six months apart is the normal shape of a service
+// agreement and does not fit a monthly recurrence, so each is stored as a
+// single dated commitment rather than a rule.
+//
+// The dedup key is the document hash plus the installment's date, so
+// re-reading the same contract cannot produce a second copy of its schedule.
+async function ingestContract({
+  ex, documentId, entity, counterpartyId, categoryId, categoryName, kind, filename,
+}) {
+  const direction = ex.direction ?? (kind === "revenue" ? "in" : "out");
+  const doc = await get("SELECT content_hash FROM fin_documents WHERE id = ?", [documentId]);
+  const hash = doc?.content_hash ?? String(documentId);
+
+  // The installments must account for the contract's stated total. When they
+  // do not, the reading is recorded anyway and flagged — a schedule that is
+  // nearly right is far more useful than no schedule, but nobody should have
+  // to discover the gap themselves.
+  const stated = Number(ex.total) || 0;
+  const summed = ex.installments.reduce((t, i) => t + Number(i.amount || 0), 0);
+  const mismatch = stated > 0 && Math.abs(summed - stated) > Math.max(1, stated * 0.01);
+
+  const reasons = [];
+  if (mismatch) {
+    reasons.push(
+      `installments add up to ${summed.toFixed(2)} but the contract states ` +
+      `${stated.toFixed(2)}`
+    );
+  }
+  if (ex.confidence < config.finance.confidenceFloor) reasons.push("unsure reading");
+  if (!categoryId) reasons.push("no matching category");
+  const reason = reasons.join("; ") || null;
+
+  const created = [];
+  for (const [i, inst] of ex.installments.entries()) {
+    const minor = toMinor(inst.amount, ex.currency);
+    const fx = await convertToBase(minor, ex.currency, inst.due_date);
+    const label = inst.label?.trim()
+      ? `${ex.vendor_name} — ${inst.label.trim()}`
+      : `${ex.vendor_name} — installment ${i + 1} of ${ex.installments.length}`;
+    const rs = await run(
+      `INSERT INTO fin_commitments
+         (entity, direction, description, counterparty_id, category_id,
+          amount_minor, currency, fx_rate, base_amount_minor,
+          frequency, start_date, end_date, source, document_id,
+          confidence, review_status, review_reason, dedup_key)
+       VALUES (?,?,?,?,?,?,?,?,?, 'once', ?, ?, 'contract', ?, ?, ?, ?, ?)
+       ON CONFLICT (dedup_key) DO NOTHING
+       RETURNING id`,
+      [
+        entity, direction, label.slice(0, 200), counterpartyId, categoryId,
+        minor, ex.currency, fx.fxRate, fx.baseAmountMinor,
+        inst.due_date, inst.due_date, documentId,
+        ex.confidence, reason ? "needs_review" : "ok", reason,
+        `doc:${hash}:${inst.due_date}:${i}`,
+      ]
+    );
+    const id = lastId(rs);
+    if (id != null) {
+      created.push({ id: Number(id), dueDate: inst.due_date, amount: inst.amount, label });
+    }
+  }
+
+  await run(
+    "UPDATE fin_documents SET parse_error = NULL WHERE id = ?", [documentId]
+  );
+
+  return {
+    contract: true,
+    documentId,
+    filename,
+    entity,
+    direction,
+    vendor: ex.vendor_name,
+    currency: ex.currency,
+    total: ex.total,
+    categoryName,
+    contractStart: ex.contract_start,
+    contractEnd: ex.contract_end,
+    commitments: created,
+    duplicate: created.length === 0,
+    reviewReason: reason,
+    confidence: ex.confidence,
   };
 }

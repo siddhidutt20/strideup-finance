@@ -416,12 +416,19 @@ export async function activeCommitments(entity) {
 }
 
 // What a single month already owes and is already owed.
-export function commitmentsForMonth(commitments, period, afterDate = null) {
+//
+// `settled` is the payment map. An occurrence that has been marked paid is a
+// real ledger entry now, so it must not also be counted as money still to
+// come — that would show it twice, once in the recorded position and again as
+// a future commitment. Waived ones are dropped for the same reason in reverse:
+// they are not arriving at all.
+export function commitmentsForMonth(commitments, period, afterDate = null, settled = null) {
   let committedIn = 0, committedOut = 0;
   const items = [];
   for (const k of commitments) {
     for (const occ of occurrencesIn(k, period)) {
       if (afterDate && occ.date <= afterDate) continue; // already in the ledger
+      if (settled?.has(occKey(k.id, occ.date))) continue;
       const amount = Number(k.base_amount_minor);
       if (k.direction === "in") committedIn += amount;
       else committedOut += amount;
@@ -448,13 +455,14 @@ export async function forecast(entity, months = 6, today = new Date()) {
   const thisPeriod = monthStart(today);
   const commitments = await activeCommitments(entity);
   const cash = await cashPosition(entity);
+  const settled = await paymentMap(entity);
   const est = await uncontractedHistory(entity, commitments, today);
 
   // Three running positions, not one. `committed` counts only money already
   // agreed; `expected`, `low` and `high` add an estimate of the uncontracted
   // side on top. They are kept apart all the way to the chart so that the
   // certain part is never silently blended into the guessed part.
-  const rest = commitmentsForMonth(commitments, thisPeriod, asOf);
+  const rest = commitmentsForMonth(commitments, thisPeriod, asOf, settled);
   const run = {
     committed: cash.amount + rest.committedIn - rest.committedOut,
   };
@@ -489,7 +497,7 @@ export async function forecast(entity, months = 6, today = new Date()) {
 
   for (let i = 1; i <= months; i++) {
     const period = addMonths(thisPeriod, i);
-    const m = commitmentsForMonth(commitments, period);
+    const m = commitmentsForMonth(commitments, period, null, settled);
     const opening = run.committed;
     run.committed += m.committedIn - m.committedOut;
     const flow = m.committedIn - m.committedOut;
@@ -573,20 +581,28 @@ export async function dueSoon(entity, days = 30, today = new Date()) {
   const asOf = isoDate(today);
   const horizon = isoDate(new Date(today.getTime() + days * 86400000));
   const commitments = await activeCommitments(entity);
+  const settled = await paymentMap(entity);
 
-  // Occurrences can straddle a month boundary inside the window, so both this
-  // month and the next are expanded and then filtered by date.
+  // Looks back as well as forward. Something that fell due last month and was
+  // never recorded is the most important thing on this list, and a window that
+  // only looked forward would hide it.
   const thisPeriod = monthStart(today);
-  const periods = [thisPeriod, addMonths(thisPeriod, 1), addMonths(thisPeriod, 2)];
+  const periods = [];
+  for (let i = -3; i <= 2; i++) periods.push(addMonths(thisPeriod, i));
+
   const upcoming = [];
   for (const period of periods) {
     for (const k of commitments) {
       for (const occ of occurrencesIn(k, period)) {
-        if (occ.date < asOf || occ.date > horizon) continue;
+        if (occ.date > horizon) continue;
+        const s = settled.get(occKey(k.id, occ.date));
+        const status = statusOf(occ.date, asOf, s);
+        if (status === "paid" || status === "waived") continue;
         upcoming.push({
           commitmentId: Number(k.id),
           entity: k.entity,
           date: occ.date,
+          status,
           direction: k.direction,
           description: k.description,
           counterparty: k.counterparty,
@@ -605,12 +621,14 @@ export async function dueSoon(entity, days = 30, today = new Date()) {
   const payable = upcoming.filter((u) => u.direction === "out");
   const incoming = upcoming.filter((u) => u.direction === "in");
   const ar = await receivables(today, entity);
+  const sum = (xs) => xs.reduce((t, u) => t + u.amount, 0);
 
   return {
     asOf, days, horizon,
     payable, incoming,
-    payableTotal: payable.reduce((s, u) => s + u.amount, 0),
-    incomingTotal: incoming.reduce((s, u) => s + u.amount, 0),
+    payableTotal: sum(payable), incomingTotal: sum(incoming),
+    overduePayable: sum(payable.filter((u) => u.status === "overdue")),
+    overdueIncoming: sum(incoming.filter((u) => u.status === "overdue")),
     receivables: ar,
   };
 }
@@ -653,6 +671,9 @@ export async function uncontractedHistory(entity, commitments, today = new Date(
   // counted twice: once as a commitment and again inside the historical
   // average that the commitment already contributed to.
   const months = usable.map((m) => {
+    // Deliberately the schedule, not the payment record. The question here is
+    // how much of that month was under contract, which the schedule answers
+    // whether or not that particular payment was marked off on time.
     const c = commitmentsForMonth(commitments, m.period);
     return {
       period: m.period,
@@ -680,4 +701,122 @@ export async function uncontractedHistory(entity, commitments, today = new Date(
     out: { low: quantile(outs, 0.25), mid: quantile(outs, 0.5), high: quantile(outs, 0.75),
            min: outs[0], max: outs[outs.length - 1] },
   };
+}
+
+// ── Settled occurrences ──────────────────────────────────────
+// Keyed by commitment and due date, which is how an occurrence is identified
+// everywhere — the schedule itself is computed, so there is no occurrence id
+// to refer to.
+export const occKey = (commitmentId, dueDate) => `${commitmentId}:${isoDate(dueDate)}`;
+
+export async function paymentMap(entity) {
+  const rows = await all(
+    `SELECT p.commitment_id, p.due_date, p.paid_date, p.status, p.entry_id,
+            p.amount_minor, p.base_amount_minor, p.matched_by
+       FROM fin_commitment_payments p
+       JOIN fin_commitments k ON k.id = p.commitment_id
+      ${entity && entity !== "both" ? "WHERE k.entity = ?" : ""}`,
+    entity && entity !== "both" ? [entity] : []
+  );
+  const m = new Map();
+  for (const r of rows) {
+    m.set(occKey(r.commitment_id, r.due_date), {
+      dueDate: isoDate(r.due_date),
+      paidDate: r.paid_date ? isoDate(r.paid_date) : null,
+      status: r.status,
+      entryId: r.entry_id == null ? null : Number(r.entry_id),
+      amount: r.base_amount_minor == null ? null : Number(r.base_amount_minor),
+      matchedBy: r.matched_by,
+    });
+  }
+  return m;
+}
+
+// paid — settled, and now a real ledger entry.
+// waived — written off deliberately; it is not coming and is not a debt.
+// overdue — the date has passed and nothing was recorded.
+// due — still ahead.
+export function statusOf(dueDate, asOf, settled) {
+  if (settled?.status === "paid") return "paid";
+  if (settled?.status === "waived") return "waived";
+  return dueDate < asOf ? "overdue" : "due";
+}
+
+// ── The contract schedule ────────────────────────────────────
+// One row per commitment, one cell per month, for the grid that answers
+// "which of these has actually paid this month".
+// The window reaches far enough ahead to cover a contract's later
+// installments — a service agreement paid half on signature and half on
+// completion six months later is the normal case, and a row whose only other
+// payment sits past the last column reads as an empty row rather than a
+// scheduled one.
+export async function contractSchedule(entity, monthsBack = 2, monthsAhead = 9, today = new Date()) {
+  const asOf = isoDate(today);
+  const commitments = await activeCommitments(entity);
+  const paid = await paymentMap(entity);
+  const start = addMonths(monthStart(today), -monthsBack);
+  const periods = [];
+  for (let i = 0; i <= monthsBack + monthsAhead; i++) periods.push(addMonths(start, i));
+
+  const rows = commitments.map((k) => {
+    const cells = periods.map((period) => {
+      const occs = occurrencesIn(k, period);
+      if (!occs.length) return { period, occurrences: [] };
+      return {
+        period,
+        occurrences: occs.map((o) => {
+          const settled = paid.get(occKey(k.id, o.date));
+          return {
+            date: o.date,
+            status: statusOf(o.date, asOf, settled),
+            paidDate: settled?.paidDate ?? null,
+            amount: settled?.amount ?? Number(k.base_amount_minor),
+            matchedBy: settled?.matchedBy ?? null,
+          };
+        }),
+      };
+    });
+    return {
+      id: Number(k.id),
+      entity: k.entity,
+      direction: k.direction,
+      description: k.description,
+      counterparty: k.counterparty,
+      categoryName: k.category_name,
+      amount: Number(k.base_amount_minor),
+      amountMinor: Number(k.amount_minor),
+      currency: k.currency,
+      frequency: k.frequency,
+      startDate: isoDate(k.start_date),
+      endDate: k.end_date ? isoDate(k.end_date) : null,
+      months: cells,
+    };
+  });
+
+  // Totals for the month in view, split by what is actually known.
+  const thisPeriod = monthStart(today);
+  const tally = { dueIn: 0, dueOut: 0, paidIn: 0, paidOut: 0, overdueIn: 0, overdueOut: 0 };
+  for (const r of rows) {
+    const cell = r.months.find((m) => m.period === thisPeriod);
+    for (const o of cell?.occurrences ?? []) {
+      const dir = r.direction === "in" ? "In" : "Out";
+      if (o.status === "paid") tally[`paid${dir}`] += o.amount;
+      else if (o.status === "overdue") tally[`overdue${dir}`] += o.amount;
+      else if (o.status === "due") tally[`due${dir}`] += o.amount;
+    }
+  }
+  // Everything still owed from before this month, unpaid.
+  let arrearsIn = 0, arrearsOut = 0;
+  for (const r of rows) {
+    for (const m of r.months) {
+      if (m.period >= thisPeriod) continue;
+      for (const o of m.occurrences) {
+        if (o.status !== "overdue") continue;
+        if (r.direction === "in") arrearsIn += o.amount; else arrearsOut += o.amount;
+      }
+    }
+  }
+
+  return { entity, asOf, period: thisPeriod, periods, rows, tally,
+           arrears: { in: arrearsIn, out: arrearsOut } };
 }

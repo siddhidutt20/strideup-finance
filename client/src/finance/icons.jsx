@@ -18,6 +18,8 @@ export const ICONS = {
                    <path d="M16 13H7" /><path d="M9.5 10.5 7 13l2.5 2.5" /></>),
   forecast: wrap(<><path d="M2.5 15.5h15" /><path d="M4 12.5 8 8l3 2.5 5-6" />
                    <circle cx="8" cy="8" r="1.1" /><circle cx="11" cy="10.5" r="1.1" /></>),
+  contracts: wrap(<><path d="M5 2.5h7l3.5 3.5v11a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5v-13A1.5 1.5 0 0 1 5 2.5Z" />
+                    <path d="M11.5 2.5v4h4" /><path d="M6.5 11.5l2 2 4.5-4.5" /></>),
   pnl: wrap(<><rect x="3.5" y="2.5" width="13" height="15" rx="2" />
               <path d="M6.5 7h7M6.5 10h7M6.5 13h4" /></>),
   ledger: wrap(<><rect x="3" y="3" width="14" height="14" rx="2" />

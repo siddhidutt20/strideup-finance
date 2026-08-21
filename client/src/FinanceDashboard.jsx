@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api.js";
-import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS } from "./finance/styles.js";
+import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS } from "./finance/styles.js";
 import {
   fmtAmount, monthLabel, readFile, shiftMonth, thisMonth, useMoney, ZERO_DECIMAL,
   ENTITY_LABEL, ENTITY_CHOICES, loadEntity, saveEntity,
@@ -10,6 +10,7 @@ import {
   ToolsView, ManualEntry,
 } from "./finance/views.jsx";
 import { ForecastView } from "./finance/forecast.jsx";
+import { ContractsView } from "./finance/contracts.jsx";
 import { DueSoon } from "./finance/spend.jsx";
 import { Panel } from "./finance/pieces.jsx";
 import { ICONS } from "./finance/icons.jsx";
@@ -25,6 +26,7 @@ const VIEWS = [
   ["expenses", "Expenses", "Expenses", "Where the money went in"],
   ["cashflow", "Cash flow", "Cash flow", "What actually moved in"],
   ["forecast", "Forecast", "Forecast", "What is already committed, from"],
+  ["contracts", "Contracts", "Contracts", "Every agreed payment, around"],
   ["pnl", "P&L", "Profit and loss", "The statement for"],
   ["ledger", "Ledger", "Ledger", "Every entry in"],
   ["tools", "Import & close", "Import and close", "Bring in revenue, and settle"],
@@ -46,6 +48,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
   const [forecast, setForecast] = useState(null);
   const [commitments, setCommitments] = useState(null);
   const [due, setDue] = useState(null);
+  const [schedule, setSchedule] = useState(null);
   const setEntity = (v) => { saveEntity(v); setEntityState(v); };
   const [busy, setBusy] = useState(false);
 
@@ -95,19 +98,20 @@ export default function FinanceDashboard({ owner, onLogout }) {
   // on every dashboard load would be paid by everyone to serve one view.
   const loadForecast = useCallback(async () => {
     try {
-      const [fc, cm, dd] = await Promise.all([
+      const [fc, cm, dd, sc] = await Promise.all([
         api.finForecast(entity, 6),
         api.finCommitments(entity),
         api.finDue(entity, 30),
+        api.finSchedule(entity),
       ]);
-      setForecast(fc); setCommitments(cm); setDue(dd);
+      setForecast(fc); setCommitments(cm); setDue(dd); setSchedule(sc);
     } catch (err) {
       setError(err.message || "Could not load the forecast.");
     }
   }, [entity]);
 
   useEffect(() => {
-    if (view !== "forecast" && view !== "overview") return;
+    if (!["forecast", "contracts", "overview"].includes(view)) return;
     loadForecast();
   }, [view, entity, loadForecast]);
 
@@ -202,6 +206,18 @@ export default function FinanceDashboard({ owner, onLogout }) {
     }
   }
 
+  // Correcting a misread amount. The server re-converts for the entry's own
+  // date, so base_amount_minor — the only column any total is summed from —
+  // moves with it rather than keeping the old figure.
+  async function fixAmount(id, amount) {
+    try {
+      await api.finPatchEntry(id, { amount });
+      load(period);
+    } catch (err) {
+      setError(err.message || "Could not change that amount.");
+    }
+  }
+
   async function removeEntry(entry) {
     const what = entry.description || entry.counterparty || "this entry";
     const amount = fmtAmount(entry.currency, entry.amount_minor);
@@ -222,7 +238,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
         {/* Joined in JS, not as three JSX children: a <style> element with
             several text children does not reliably end up with all of them in
             the DOM, and the symptom is a stylesheet that silently truncates. */}
-        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS}</style>
+        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS}</style>
         <div className="fin-boot"><div className="fin-spinner" /></div>
       </div>
     );
@@ -259,7 +275,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
 
   return (
     <div className="fin-app">
-      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS}</style>
+      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS}</style>
 
       <aside className="fin-side" aria-label="Sections">
         <div className="fin-sidebrand">
@@ -409,7 +425,8 @@ export default function FinanceDashboard({ owner, onLogout }) {
                         baseCurrency={data?.baseCurrency || "USD"} period={period}
                         showEntity={entityList.length > 1}
                         scope={ledgerScope} onScope={setLedgerScope}
-                        onFix={fixEntry} onRemove={removeEntry} onCurrency={fixCurrency} />
+                        onFix={fixEntry} onRemove={removeEntry} onCurrency={fixCurrency}
+                        onAmount={fixAmount} />
           )}
           {view === "forecast" && (forecast && commitments ? (
             <div className={entityList.length > 1 ? "" : ""}>
@@ -423,6 +440,15 @@ export default function FinanceDashboard({ owner, onLogout }) {
                 </EntityBlock>
               ))}
             </div>
+          ) : <div className="fin-boot"><div className="fin-spinner" /></div>)}
+          {view === "contracts" && (schedule ? (
+            (schedule.entities ?? [entity]).map((ent) => (
+              <EntityBlock key={ent} show={(schedule.entities ?? []).length > 1}
+                           label={schedule.byEntity[ent].label}>
+                <ContractsView sched={schedule.byEntity[ent]} money={money}
+                               onChange={() => { loadForecast(); load(period); }} />
+              </EntityBlock>
+            ))
           ) : <div className="fin-boot"><div className="fin-spinner" /></div>)}
           {view === "tools" && (
             <ToolsView period={period} entity={entity} entityList={entityList}
@@ -501,6 +527,17 @@ function UploadZone({ kind = "expense", onFiles, busy, feed, money, onReplace, o
                     <button className="ff-btn ghost" onClick={() => onDismiss(f.id)}>Keep existing</button>
                   </span>
                 </>
+              )}
+              {f.state === "done" && f.result?.contract && (
+                <span className="ff-ok">
+                  Contract read · {f.result.commitments?.length ?? 0} payment
+                  {(f.result.commitments?.length ?? 0) === 1 ? "" : "s"} scheduled
+                  {f.result.commitments?.length
+                    ? ` · ${f.result.commitments[0].dueDate} to ` +
+                      `${f.result.commitments[f.result.commitments.length - 1].dueDate}`
+                    : ""}
+                  {f.result.reviewReason && ` · ${f.result.reviewReason}`}
+                </span>
               )}
               {f.state === "done" && f.result?.extraction && (
                 <span className="ff-ok">

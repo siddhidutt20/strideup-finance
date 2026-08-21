@@ -54,6 +54,10 @@ export const api = {
     request("GET", `/finance/forecast?entity=${entity}&months=${months}`),
   finCommitments: (entity) =>
     request("GET", `/finance/commitments?entity=${entity}`),
+  finSchedule: (entity) => request("GET", `/finance/schedule?entity=${entity}`),
+  markPaid: (id, b) => request("POST", `/finance/commitments/${id}/payments`, b),
+  unmarkPaid: (id, dueDate) =>
+    request("DELETE", `/finance/commitments/${id}/payments/${dueDate}`),
   finDue: (entity, days = 30) =>
     request("GET", `/finance/due?entity=${entity}&days=${days}`),
   addCommitment: (b) => request("POST", "/finance/commitments", b),

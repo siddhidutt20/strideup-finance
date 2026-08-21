@@ -47,7 +47,17 @@ that table. There is no second store, so there is nothing to reconcile between.
    subtracted from history before the estimate is taken, or a signed contract
    is counted twice: once as a commitment, again inside the average it already
    contributed to.
-9. **Two sets of books never mix.** Every entry carries `entity` — `'strideup'`
+9. **A contract writes commitments, never a ledger entry.** A signed agreement
+   worth 100,000 is not 100,000 of revenue on signing day — it is a promise of
+   payments on the dates it names. `ingestContract()` writes one commitment per
+   installment, keyed `doc:<sha256>:<due date>:<i>` so re-reading cannot
+   duplicate a schedule, and touches `fin_entries` not at all.
+10. **Marking a commitment paid is what creates the money.** It writes a real
+   ledger entry keyed `commitment:<id>:<due date>`, and `commitmentsForMonth()`
+   then skips that occurrence — otherwise the same payment shows twice, once
+   in the recorded position and again as still to come. Undoing removes the
+   entry too, unless its month is closed.
+11. **Two sets of books never mix.** Every entry carries `entity` — `'strideup'`
    or `'personal'`. Every aggregate in `metrics.js` filters on it. Picking
    "Both" returns two separate blocks under `byEntity`; it never sums them.
    There is no entity whose profit a combined figure would represent.
@@ -151,10 +161,10 @@ different files per case.
 2. **Contracts and commitments** — the `fin_commitments` table, its schedule
    and its UI are done; commitments are entered by hand. Still to build:
    reading a contract document and filling the terms in automatically.
-3. **Matching and payment status** — match real payments to commitments by
-   party, amount and due date; paid / due / overdue; a party view. Nothing in
-   "Scheduled in the next 30 days" is marked paid until this exists, and the
-   panel says so.
+3. **Matching and payment status** — the Contracts grid, the paid/due/overdue
+   states and marking a payment arrived are done, by hand. Still to build:
+   matching an uploaded receipt or bank line to a commitment automatically by
+   party, amount and date, and a per-party view.
 4. **Forecasting** — done, in two layers. Committed money is exact. The
    uncontracted side (the B2C half) is estimated from history and drawn
    dashed with a good/bad band; the method is shown in full on the page. The

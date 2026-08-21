@@ -106,8 +106,18 @@ function ProjectionChart({ months, money, prediction, scenario }) {
         {hover ? (
           <>
             <strong>{monthLabel(hover.period)}{hover.partial ? " (rest of month)" : ""}</strong>
-            <span><i style={{ background: "var(--fin-in)" }} />in {money.exact(hover.committedIn)}</span>
-            <span><i style={{ background: "var(--fin-out)" }} />out {money.exact(hover.committedOut)}</span>
+            {hover.committedIn === 0 && hover.committedOut === 0 ? (
+              <span className="fin-tip-idle">
+                {hover.partial
+                  ? "nothing further falls due this month"
+                  : "nothing committed in this month"}
+              </span>
+            ) : (
+              <>
+                <span><i style={{ background: "var(--fin-in)" }} />in {money.exact(hover.committedIn)}</span>
+                <span><i style={{ background: "var(--fin-out)" }} />out {money.exact(hover.committedOut)}</span>
+              </>
+            )}
             <span className="fin-tip-net">committed {money.exact(hover.closing)}</span>
             {predicting && (
               <span className="fin-tip-net">
@@ -489,8 +499,27 @@ export function ForecastView({ fc, commitments, money, categories, entity, onCha
     (m) => (showing === "committed" ? m.closing : m.expected) < 0
   );
 
+  // Nothing committed at all is the most common reason this page looks empty,
+  // and a flat line with a column of zeroes does not explain itself.
+  const nothingCommitted = !commitments.length;
+
   return (
     <>
+      {nothingCommitted && (
+        <div className="fc-empty">
+          <strong>No commitments recorded yet</strong>
+          <p>
+            This page projects money that has already been agreed — retainers,
+            subscriptions, rent, loan payments, signed client contracts. You have
+            none on file, so there is nothing to project and the line simply holds
+            at today's position.
+          </p>
+          <p>
+            Add one below, or drop a signed contract into Revenue or Expenses and
+            its payment schedule is read off it automatically.
+          </p>
+        </div>
+      )}
       <div className="fc-kpis">
         <article className="fc-kpi">
           <header><span>Position today</span></header>
