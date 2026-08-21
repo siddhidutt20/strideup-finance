@@ -88,7 +88,10 @@ function Expenses({ sd, money, period }) {
       </div>
 
       <div className="fin-twocol">
-        <Panel title="Top categories" sub={`${monthLabel(period)}, against the month before`}>
+        <Panel title="Top categories"
+               sub={sd.ranked.length === 1
+                 ? `${monthLabel(period)} — everything recorded fell under one heading`
+                 : `${monthLabel(period)}, against the month before`}>
           <Ranked rows={sd.ranked} money={money} total={sd.categoryTotal} invert />
           <p className="fc-note">
             There is no budget column because there are no budgets. Set them and
@@ -338,11 +341,16 @@ function Ranked({ rows, money, total, invert }) {
             </tr>
           ))}
         </tbody>
-        <tfoot>
-          <tr><td>Total</td>
-              <td className="num fin-fig">{money.round(total)}</td>
-              <td /><td /><td className="num">100%</td></tr>
-        </tfoot>
+        {/* A total under a single row is that row again, and reads as the
+            same payment counted twice. It earns its place only once there is
+            something to add up. */}
+        {rows.length > 1 && (
+          <tfoot>
+            <tr><td>Total</td>
+                <td className="num fin-fig">{money.round(total)}</td>
+                <td /><td /><td className="num">100%</td></tr>
+          </tfoot>
+        )}
       </table>
     </div>
   );

@@ -128,9 +128,14 @@ for (const ent of ["strideup","personal"]) {
     check(`${label} variable parties sum to the variable half`,
           sd.variableParties.reduce((t, p) => t + p.total, 0), sd.variable);
 
-    // Ranked categories are the same rows the donut draws.
+    // Ranked categories are the same rows the donut draws. With one heading the
+    // total is that heading again, which reads as the same payment counted
+    // twice — the table drops the footer there, so the sum still has to hold.
     check(`${label} ranked = category total`,
           sd.ranked.reduce((t, r) => t + r.total, 0), sd.categoryTotal);
+    if (sd.ranked.length === 1) {
+      check(`${label} single heading = the whole month`, sd.ranked[0].total, sd.categoryTotal);
+    }
 
     // Due and late are disjoint, and together they are everything in the window.
     const both = [...sd.upcoming, ...sd.overdue];

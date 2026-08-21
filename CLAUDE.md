@@ -137,7 +137,7 @@ reaches all of them.
 
 ## Checking the numbers
 
-`scripts/audit.mjs` runs 172 cross-page reconciliations against a running
+`scripts/audit.mjs` runs 174 cross-page reconciliations against a running
 server: every headline figure against the ledger it came from, and against
 the same figure wherever else it appears. It catches the class of fault that
 matters most here — two pages disagreeing about one number — which no unit
@@ -231,6 +231,10 @@ different files per case.
   legible, and inside an `overflow-x:auto` wrapper that is meant to scroll. As
   a grid item, `.fin` grew to 736px on a 390px phone instead. `min-width:0` was
   not enough; `width:100%` with `box-sizing:border-box` is what pins it.
+- **A total row under a single row is that row again.** "Tech $7,500" above
+  "Total $7,500" reads as one payment counted twice, and the reader is right to
+  ask. A footer that adds up one number is noise; it appears only from two rows
+  up. The same shape is worth checking anywhere a summary sits beside detail.
 - **A one-sided figure with a two-sided label.** The payment schedule read
   arrived / still due / late / going out, where the first three counted only
   money coming IN and the fourth folded an overdue payment in with the ones
