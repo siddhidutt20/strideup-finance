@@ -6,13 +6,17 @@ import { monthLabel } from "./format.js";
 // answers "exactly how much on what". The list is the real record — the donut
 // is a summary of it, which is why every slice is also a labelled row.
 //
-// Four named slices, then Other. That is not an arbitrary cap: beyond four
-// hues the palette can no longer keep every pair of slices distinguishable
-// from every other, and a slice nobody can identify is decoration. The list
-// carries the full detail that the donut deliberately compresses.
-export const SLICE_COLOURS = ["#2a78d6", "#eb6834", "#1baf7a", "#4a3aa7"];
+// Five named slices, then Other. The cap is the palette's, not a preference:
+// every pair of slices has to stay distinguishable from every other pair,
+// including under colour-blindness, because a donut is read across the ring
+// and not only between neighbours. Five is what these five hues clear —
+// worst all-pairs ΔE 9.1 under protanopia, 15.6 under normal vision — and
+// orange had to go to get there: with orange in, yellow and orange fail the
+// normal-vision floor at 13.7. The labelled rows beside the donut carry the
+// contrast relief three of these hues need on a light surface.
+export const SLICE_COLOURS = ["#2a78d6", "#1baf7a", "#eda100", "#008300", "#4a3aa7"];
 const OTHER_COLOUR = "#9C96AE";
-const MAX_SLICES = 4;
+const MAX_SLICES = 5;
 
 const polar = (cx, cy, r, deg) => {
   const a = ((deg - 90) * Math.PI) / 180;
@@ -92,7 +96,15 @@ export function SpendByCategory({ rows, money, period, total, title }) {
           <li key={a.name} className={hover === a.name ? "on" : ""}
               onMouseEnter={() => setHover(a.name)} onMouseLeave={() => setHover(null)}>
             <i style={{ background: a.colour }} aria-hidden="true" />
-            <span className="sp-name">{a.name}</span>
+            <span className="sp-name">
+              {a.name}
+              {/* A heading you cannot open is a heading you have to trust.
+                  What is inside it is named here, so "Tech" is answerable
+                  without leaving the page. */}
+              {a.parts?.length > 1 && (
+                <em className="sp-parts">{a.parts.map((p) => p.name).join(" · ")}</em>
+              )}
+            </span>
             <span className="sp-share">{Math.round(a.share * 100)}%</span>
             <span className="sp-amt fin-fig">{money.round(a.total)}</span>
           </li>

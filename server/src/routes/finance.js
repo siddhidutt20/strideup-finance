@@ -182,7 +182,8 @@ financeRouter.get(
       baseCurrency: config.finance.baseCurrency,
       entities: ENTITIES.map((e) => ({ id: e, label: ENTITY_LABEL[e] })),
       categories: await all(
-        "SELECT id, name, kind, pnl_line, entity FROM fin_categories ORDER BY sort, name"
+        `SELECT id, name, kind, pnl_line, entity, spend_group AS "spendGroup"
+           FROM fin_categories ORDER BY sort, name`
       ),
     });
   })

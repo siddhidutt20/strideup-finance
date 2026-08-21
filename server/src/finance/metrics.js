@@ -73,22 +73,59 @@ export async function periodSummary(period, entity) {
 }
 
 // ── Where the month's money went, by category ────────────────
+// ── Spend groups ─────────────────────────────────────────────
+// Company money is read under five headings. They are a lens over the chart
+// of accounts, not a replacement for it: the entry keeps the category it was
+// coded to, `kind` still decides cost of sales from operating spend, and a
+// closed month keeps every value it closed with. Only the heading changes.
+//
+// Categories with no group — revenue, capital, transfers, and the whole
+// personal chart — are read under their own name, exactly as before.
+export const SPEND_GROUPS = ["Payroll", "Tech", "Marketing", "Operations", "G&A"];
+
+// Anything company spend that has no group of its own is general and
+// administrative, which is what G&A means.
+export function groupSpend(rows) {
+  const byGroup = new Map();
+  const ungrouped = [];
+  for (const r of rows) {
+    if (!r.group) { ungrouped.push(r); continue; }
+    const cur = byGroup.get(r.group) ?? { name: r.group, total: 0, count: 0, parts: [] };
+    cur.total += r.total;
+    cur.count += r.count ?? 0;
+    cur.parts.push({ name: r.name, total: r.total });
+    byGroup.set(r.group, cur);
+  }
+  if (!byGroup.size) return rows;
+  for (const r of ungrouped) {
+    const cur = byGroup.get("G&A") ?? { name: "G&A", total: 0, count: 0, parts: [] };
+    cur.total += r.total;
+    cur.count += r.count ?? 0;
+    cur.parts.push({ name: r.name, total: r.total });
+    byGroup.set("G&A", cur);
+  }
+  for (const g of byGroup.values()) g.parts.sort((a, b) => b.total - a.total);
+  return SPEND_GROUPS.filter((g) => byGroup.has(g)).map((g) => byGroup.get(g));
+}
+
 export async function categoryBreakdown(period, entity) {
   return (
     await all(
       `SELECT COALESCE(c.name, 'Uncategorised') AS name,
+              c.spend_group AS grp,
               ${KIND} AS kind,
               ${SIGNED} AS net,
               COUNT(*) AS n
          FROM fin_entries e
          LEFT JOIN fin_categories c ON c.id = e.category_id
         WHERE e.review_status <> 'rejected' AND e.period = ?${ENT(entity)}
-        GROUP BY 1, 2
+        GROUP BY 1, 2, 3
         ORDER BY ABS(${SIGNED}) DESC`,
       [period, ...ENT_ARG(entity)]
     )
   ).map((r) => ({
     name: r.name,
+    group: r.grp ?? null,
     kind: r.kind,
     amount: Math.abs(Number(r.net)),
     direction: Number(r.net) >= 0 ? "in" : "out",
@@ -405,6 +442,7 @@ export function occurrencesIn(commitment, period) {
 export async function activeCommitments(entity) {
   return await all(
     `SELECT k.*, c.name AS category_name, c.kind AS category_kind,
+            c.spend_group AS category_group,
             p.name AS counterparty
        FROM fin_commitments k
        LEFT JOIN fin_categories c     ON c.id = k.category_id
@@ -438,7 +476,7 @@ export function commitmentsForMonth(commitments, period, afterDate = null, settl
       items.push({
         id: k.id, date: occ.date, direction: k.direction,
         description: k.description, counterparty: k.counterparty,
-        categoryName: k.category_name, amount,
+        categoryName: k.category_name, categoryGroup: k.category_group, amount,
         currency: k.currency, amountMinor: Number(k.amount_minor),
         frequency: k.frequency,
       });
@@ -1269,9 +1307,12 @@ export async function sideDetail(entity, period, direction, today = new Date()) 
     periodSummary(period, entity),
   ]);
 
-  const categories = breakdown
+  const rows = breakdown
     .filter((r) => kinds.includes(r.kind) && r.direction === direction)
-    .map((r) => ({ name: r.name, total: r.amount, count: r.count }));
+    .map((r) => ({ name: r.name, group: r.group, total: r.amount, count: r.count }));
+  // Money going out is read under the five spend headings; money coming in
+  // keeps its own revenue lines, which is what a revenue page is for.
+  const categories = isIn ? rows : groupSpend(rows);
   const categoryTotal = categories.reduce((t, c) => t + c.total, 0);
 
   const thisMonth = isIn ? summary.revenue : summary.expenses;
@@ -1403,11 +1444,13 @@ export function projectedMonth(commitments, settled, period, thisPeriod, cash, a
   for (const it of c.items) {
     if (it.direction !== "out") continue;
     const name = it.categoryName || "Uncategorised";
-    byName.set(name, (byName.get(name) ?? 0) + it.amount);
+    const cur = byName.get(name) ?? { name, group: it.categoryGroup ?? null, total: 0, count: 0 };
+    cur.total += it.amount; cur.count += 1;
+    byName.set(name, cur);
   }
-  const byCategory = [...byName]
-    .map(([name, total]) => ({ name, total }))
-    .sort((a, b) => b.total - a.total);
+  const byCategory = groupSpend(
+    [...byName.values()].sort((a, b) => b.total - a.total)
+  );
 
   return {
     period, opening, runUp,
@@ -1465,9 +1508,11 @@ export async function overviewDashboard(entity, today = new Date(), period = nul
     ? recent.reduce((t, m) => t + m.expenses, 0) / recent.length : 0;
   const variableMonthly = Math.max(0, avgSpend - fixedMonthly);
 
-  const expenses = breakdown
-    .filter((r) => ["cogs", "opex", "tax"].includes(r.kind) && r.direction === "out")
-    .map((r) => ({ name: r.name, total: r.amount }));
+  const expenses = groupSpend(
+    breakdown
+      .filter((r) => ["cogs", "opex", "tax"].includes(r.kind) && r.direction === "out")
+      .map((r) => ({ name: r.name, group: r.group, total: r.amount, count: r.count }))
+  );
   const expenseTotal = expenses.reduce((t, e) => t + e.total, 0);
 
   // Ninety days out on the committed path, plus the estimate where there is

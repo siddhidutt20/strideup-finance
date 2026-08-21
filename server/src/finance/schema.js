@@ -199,27 +199,35 @@ export const FIN_SCHEMA = [
 // Two charts of accounts. `entity` is which books a category belongs to;
 // "both" is for the genuinely shared ones — a bank charge or an insurance
 // premium reads the same either side.
+//
+// The sixth column is the spend group: the five headings company money is
+// read under — Tech, Marketing, Operations, Payroll, G&A. It is a lens over
+// the chart of accounts, not a replacement for it: `kind` still decides what
+// is a cost of sales and what is operating spend, so the P&L keeps its shape
+// while the dashboards answer "where is it going" in five words. Categories
+// with no group (revenue, capital, transfers, and the personal books) are
+// read under their own name, as before.
 export const FIN_CATEGORIES = [
   // ── StrideUp ──
   ["Programme revenue", "revenue", "Revenue", 10, "strideup"],
   ["Coaching revenue", "revenue", "Revenue", 11, "strideup"],
   ["Other income", "revenue", "Revenue", 19, "strideup"],
 
-  ["Coach & contractor fees", "cogs", "Cost of sales", 20, "strideup"],
-  ["Programme delivery costs", "cogs", "Cost of sales", 21, "strideup"],
-  ["Payment processing fees", "cogs", "Cost of sales", 22, "strideup"],
+  ["Coach & contractor fees", "cogs", "Cost of sales", 20, "strideup", "Payroll"],
+  ["Programme delivery costs", "cogs", "Cost of sales", 21, "strideup", "Operations"],
+  ["Payment processing fees", "cogs", "Cost of sales", 22, "strideup", "Operations"],
 
-  ["Software & subscriptions", "opex", "Operating expenses", 30, "strideup"],
-  ["Marketing & advertising", "opex", "Operating expenses", 31, "strideup"],
-  ["Salaries & wages", "opex", "Operating expenses", 32, "strideup"],
-  ["Contractors (non-delivery)", "opex", "Operating expenses", 33, "strideup"],
-  ["Rent & facilities", "opex", "Operating expenses", 35, "strideup"],
-  ["Training & development", "opex", "Operating expenses", 40, "strideup"],
-  ["Office supplies", "opex", "Operating expenses", 41, "strideup"],
-  ["Other operating", "opex", "Operating expenses", 49, "strideup"],
-  ["Equipment & hardware", "capex", "Capital expenditure", 50, "strideup"],
-  ["Sales tax / VAT", "tax", "Tax", 60, "strideup"],
-  ["Corporation tax", "tax", "Tax", 61, "strideup"],
+  ["Software & subscriptions", "opex", "Operating expenses", 30, "strideup", "Tech"],
+  ["Marketing & advertising", "opex", "Operating expenses", 31, "strideup", "Marketing"],
+  ["Salaries & wages", "opex", "Operating expenses", 32, "strideup", "Payroll"],
+  ["Contractors (non-delivery)", "opex", "Operating expenses", 33, "strideup", "Payroll"],
+  ["Rent & facilities", "opex", "Operating expenses", 35, "strideup", "Operations"],
+  ["Training & development", "opex", "Operating expenses", 40, "strideup", "Payroll"],
+  ["Office supplies", "opex", "Operating expenses", 41, "strideup", "Operations"],
+  ["Other operating", "opex", "Operating expenses", 49, "strideup", "G&A"],
+  ["Equipment & hardware", "capex", "Capital expenditure", 50, "strideup", "Tech"],
+  ["Sales tax / VAT", "tax", "Tax", 60, "strideup", "G&A"],
+  ["Corporation tax", "tax", "Tax", 61, "strideup", "G&A"],
 
   ["Equity investment", "capital", "Capital", 70, "strideup"],
   ["Director's loan in", "capital", "Capital", 71, "strideup"],
@@ -229,12 +237,12 @@ export const FIN_CATEGORIES = [
   ["Processor payout", "transfer", "Transfers", 80, "strideup"],
 
   // ── Shared ──
-  ["Professional fees", "opex", "Operating expenses", 34, "both"],
-  ["Travel", "opex", "Operating expenses", 36, "both"],
-  ["Meals & entertainment", "opex", "Operating expenses", 37, "both"],
-  ["Telephone & internet", "opex", "Operating expenses", 38, "both"],
-  ["Insurance", "opex", "Operating expenses", 39, "both"],
-  ["Bank charges", "opex", "Operating expenses", 42, "both"],
+  ["Professional fees", "opex", "Operating expenses", 34, "both", "G&A"],
+  ["Travel", "opex", "Operating expenses", 36, "both", "G&A"],
+  ["Meals & entertainment", "opex", "Operating expenses", 37, "both", "G&A"],
+  ["Telephone & internet", "opex", "Operating expenses", 38, "both", "Tech"],
+  ["Insurance", "opex", "Operating expenses", 39, "both", "G&A"],
+  ["Bank charges", "opex", "Operating expenses", 42, "both", "G&A"],
   ["Bank transfer", "transfer", "Transfers", 81, "both"],
 
   // ── Personal ──
@@ -275,6 +283,10 @@ export const FIN_MIGRATIONS = [
   `ALTER TABLE fin_bank_txns    ADD COLUMN IF NOT EXISTS entity text NOT NULL DEFAULT 'strideup'`,
   `ALTER TABLE fin_rules        ADD COLUMN IF NOT EXISTS set_entity text`,
   `ALTER TABLE fin_categories   ADD COLUMN IF NOT EXISTS entity text NOT NULL DEFAULT 'strideup'`,
+  // The five headings company spend is read under. Nothing recorded moves:
+  // this labels the category, not the entry, so a closed month keeps every
+  // value it closed with and only the heading above it changes.
+  `ALTER TABLE fin_categories   ADD COLUMN IF NOT EXISTS spend_group text`,
   `ALTER TABLE fin_periods      ADD COLUMN IF NOT EXISTS entity text NOT NULL DEFAULT 'strideup'`,
   // Everything recorded before entities existed is StrideUp's.
   `UPDATE fin_entries   SET entity = 'strideup' WHERE entity IS NULL`,

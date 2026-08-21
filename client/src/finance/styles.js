@@ -461,6 +461,10 @@ export const FORECAST_CSS = `
 .sp-list i{width:9px;height:9px;border-radius:3px;flex:none}
 .sp-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   color:var(--fin-ink)}
+.sp-list li:has(.sp-parts){align-items:flex-start}
+.sp-list li:has(.sp-parts) .sp-name{overflow:visible;text-overflow:clip}
+.sp-parts{display:block;font-style:normal;font-size:11px;line-height:1.45;
+  color:var(--fin-faint);white-space:normal;margin-top:1px}
 .sp-share{color:var(--fin-faint);font-variant-numeric:tabular-nums;font-size:11.5px}
 .sp-amt{font-weight:600;font-variant-numeric:tabular-nums;min-width:74px;text-align:right}
 .sp-rest{display:flex!important;flex-wrap:wrap;gap:4px 12px;font-size:11.5px;

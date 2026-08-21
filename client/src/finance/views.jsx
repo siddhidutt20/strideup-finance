@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api.js";
 import { Panel, Kpi, TrendChart, CategoryBars, Ranked, Receivables, CapitalList } from "./pieces.jsx";
 import { CURRENCIES, delta, fmtAmount, majorOf, monthLabel, thisMonth, today, ZERO_DECIMAL,
-         ENTITY_LABEL } from "./format.js";
+         ENTITY_LABEL, SPEND_GROUPS } from "./format.js";
 import { SpendByCategory } from "./spend.jsx";
 
 // ── Overview ─────────────────────────────────────────────────
@@ -294,6 +294,25 @@ export function ManualEntryForm({
     const mine = categories.filter(
       (c) => !c.entity || c.entity === "both" || c.entity === form.entity
     );
+    // Money going out is filed under the five headings it is read under, so
+    // "where do I put a marketing spend" has one obvious answer. Money coming
+    // in, capital and transfers keep their accounting headings — they are not
+    // spend and do not belong under one.
+    const spend = mine.filter((c) => c.spendGroup);
+    if (spend.length) {
+      const groups = SPEND_GROUPS
+        .map((g) => ({ kind: g, label: g, items: spend.filter((c) => c.spendGroup === g) }))
+        .filter((g) => g.items.length);
+      const rest = order
+        .map((kind) => ({
+          kind, label: names[kind],
+          items: mine.filter((c) => c.kind === kind && !c.spendGroup),
+        }))
+        .filter((g) => g.items.length);
+      return preferKinds?.includes("revenue") || preferKinds?.includes("capital")
+        ? [...rest, ...groups]
+        : [...groups, ...rest];
+    }
     return order
       .map((kind) => ({ kind, label: names[kind], items: mine.filter((c) => c.kind === kind) }))
       .filter((g) => g.items.length);

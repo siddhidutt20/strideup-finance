@@ -90,6 +90,22 @@ for (const ent of ["strideup","personal"]) {
         sout.categories.reduce((t,c)=>t+c.total,0), sout.categoryTotal);
   check("overview expense donut = expenses page total", dash.expenseTotal, sout.categoryTotal);
 
+  // Company spend is read under five headings. Folding categories into them
+  // must not create or lose a cent, and must not invent a sixth heading.
+  const GROUPS = ["Payroll", "Tech", "Marketing", "Operations", "G&A"];
+  if (ent === "strideup") {
+    const names = dash.expensesByCategory.map((c) => c.name);
+    const stray = names.filter((n) => !GROUPS.includes(n));
+    check(`spend headings are the five and only the five (${names.join(", ") || "none"})`,
+          stray.length, 0);
+    for (const g of dash.expensesByCategory.filter((c) => c.parts)) {
+      check(`  "${g.name}" = the categories folded into it`,
+            g.parts.reduce((t, p) => t + p.total, 0), g.total);
+    }
+  }
+  check("spend headings sum to the month's expenses",
+        dash.expensesByCategory.reduce((t, c) => t + c.total, 0), dash.expenseTotal);
+
   // Receivables ageing must sum to the total.
   const b=dash.receivables.buckets;
   check("receivable buckets sum to total",

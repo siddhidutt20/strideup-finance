@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Panel } from "./pieces.jsx";
 import { api } from "../api.js";
-import { monthLabel, today, CURRENCIES, ENTITY_LABEL } from "./format.js";
+import { monthLabel, today, CURRENCIES, ENTITY_LABEL, SPEND_GROUPS } from "./format.js";
 
 // ── Forecast ─────────────────────────────────────────────────
 // Committed money only. Every figure here traces to something already agreed;
@@ -444,7 +444,20 @@ export function CommitmentForm({ entity, categories, currency, onAdded }) {
           <label><span>Category</span>
             <select value={form.categoryId} onChange={set("categoryId")}>
               <option value="">Uncategorised</option>
-              {usable.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {SPEND_GROUPS.map((g) => {
+                const items = usable.filter((c) => c.spendGroup === g);
+                return items.length ? (
+                  <optgroup key={g} label={g}>
+                    {items.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </optgroup>
+                ) : null;
+              })}
+              {usable.some((c) => !c.spendGroup) && (
+                <optgroup label="Everything else">
+                  {usable.filter((c) => !c.spendGroup)
+                         .map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </optgroup>
+              )}
             </select>
           </label>
           <label><span>First payment</span>

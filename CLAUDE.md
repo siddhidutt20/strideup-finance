@@ -126,7 +126,7 @@ that table. There is no second store, so there is nothing to reconcile between.
 
 ## Checking the numbers
 
-`scripts/audit.mjs` runs 98 cross-page reconciliations against a running
+`scripts/audit.mjs` runs 106 cross-page reconciliations against a running
 server: every headline figure against the ledger it came from, and against
 the same figure wherever else it appears. It catches the class of fault that
 matters most here — two pages disagreeing about one number — which no unit
@@ -220,6 +220,13 @@ different files per case.
   legible, and inside an `overflow-x:auto` wrapper that is meant to scroll. As
   a grid item, `.fin` grew to 736px on a 390px phone instead. `min-width:0` was
   not enough; `width:100%` with `box-sizing:border-box` is what pins it.
+- **Five headings, not five categories.** Company spend is read under Payroll,
+  Tech, Marketing, Operations and G&A. That is a lens over the chart of
+  accounts (`fin_categories.spend_group`), not a replacement for it: the entry
+  keeps the category it was coded to, `kind` still separates cost of sales from
+  operating spend, and no recorded row is rewritten — which is the only way to
+  regroup without touching a closed month. The personal books have no groups
+  and read under their own category names.
 - **Deleting a panel deletes whatever only that panel rendered.** The month
   statement was removed as a duplicate of the cash flow dashboard, and it was —
   but it was also the only thing on screen reading `committed.openingProjected`

@@ -78,3 +78,9 @@ export function loadEntity() {
 export function saveEntity(v) {
   try { localStorage.setItem(ENTITY_KEY, v); } catch { /* private window */ }
 }
+
+// The five headings company money is read under, in the order they are shown.
+// A lens over the chart of accounts, not a replacement: the entry keeps the
+// category it was coded to, and the P&L keeps cost of sales apart from
+// operating spend. Kept in step with FIN_CATEGORIES on the server.
+export const SPEND_GROUPS = ["Payroll", "Tech", "Marketing", "Operations", "G&A"];

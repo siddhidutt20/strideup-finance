@@ -102,14 +102,15 @@ export async function seedOwner() {
 }
 
 async function seedCategories() {
-  for (const [name, kind, pnlLine, sort, entity] of FIN_CATEGORIES) {
+  for (const [name, kind, pnlLine, sort, entity, spendGroup] of FIN_CATEGORIES) {
     await run(
-      `INSERT INTO fin_categories (name, kind, pnl_line, sort, entity)
-       VALUES (?, ?, ?, ?, ?)
+      `INSERT INTO fin_categories (name, kind, pnl_line, sort, entity, spend_group)
+       VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT (name) DO UPDATE SET
          kind = EXCLUDED.kind, pnl_line = EXCLUDED.pnl_line,
-         sort = EXCLUDED.sort, entity = EXCLUDED.entity`,
-      [name, kind, pnlLine, sort, entity || "strideup"]
+         sort = EXCLUDED.sort, entity = EXCLUDED.entity,
+         spend_group = EXCLUDED.spend_group`,
+      [name, kind, pnlLine, sort, entity || "strideup", spendGroup ?? null]
     );
   }
 }
