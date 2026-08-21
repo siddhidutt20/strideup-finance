@@ -17,6 +17,13 @@ const SIGNED = `SUM(CASE WHEN e.direction = 'in'
 // Uncategorised rows are bucketed by direction so nothing goes missing.
 const KIND = `COALESCE(c.kind, CASE WHEN e.direction = 'in' THEN 'revenue' ELSE 'opex' END)`;
 
+// ── Entity scoping ───────────────────────────────────────────
+// "both" means show each side by side, never added together — a statement that
+// sums a company and a person is a statement of nothing. So every query here
+// answers for exactly one set of books; the route calls it twice for "both".
+const ENT = (entity) => (entity && entity !== "both" ? " AND e.entity = ?" : "");
+const ENT_ARG = (entity) => (entity && entity !== "both" ? [entity] : []);
+
 export const monthStart = (d = new Date()) =>
   `${d.toISOString().slice(0, 7)}-01`;
 
@@ -27,14 +34,14 @@ export function addMonths(period, n) {
 }
 
 // ── One month's profit and loss ──────────────────────────────
-export async function periodSummary(period) {
+export async function periodSummary(period, entity) {
   const rows = await all(
     `SELECT ${KIND} AS kind, ${SIGNED} AS net, COUNT(*) AS n
        FROM fin_entries e
        LEFT JOIN fin_categories c ON c.id = e.category_id
-      WHERE e.review_status <> 'rejected' AND e.period = ?
+      WHERE e.review_status <> 'rejected' AND e.period = ?${ENT(entity)}
       GROUP BY 1`,
-    [period]
+    [period, ...ENT_ARG(entity)]
   );
   const by = {};
   for (const r of rows) by[r.kind] = Number(r.net);
@@ -65,7 +72,7 @@ export async function periodSummary(period) {
 }
 
 // ── Where the month's money went, by category ────────────────
-export async function categoryBreakdown(period) {
+export async function categoryBreakdown(period, entity) {
   return (
     await all(
       `SELECT COALESCE(c.name, 'Uncategorised') AS name,
@@ -74,10 +81,10 @@ export async function categoryBreakdown(period) {
               COUNT(*) AS n
          FROM fin_entries e
          LEFT JOIN fin_categories c ON c.id = e.category_id
-        WHERE e.review_status <> 'rejected' AND e.period = ?
+        WHERE e.review_status <> 'rejected' AND e.period = ?${ENT(entity)}
         GROUP BY 1, 2
         ORDER BY ABS(${SIGNED}) DESC`,
-      [period]
+      [period, ...ENT_ARG(entity)]
     )
   ).map((r) => ({
     name: r.name,
@@ -89,15 +96,15 @@ export async function categoryBreakdown(period) {
 }
 
 // ── Trailing months, for the trend ───────────────────────────
-export async function trend(months = 13, endPeriod = monthStart()) {
+export async function trend(months = 13, endPeriod = monthStart(), entity) {
   const from = addMonths(endPeriod, -(months - 1));
   const rows = await all(
     `SELECT e.period, ${KIND} AS kind, ${SIGNED} AS net
        FROM fin_entries e
        LEFT JOIN fin_categories c ON c.id = e.category_id
-      WHERE e.review_status <> 'rejected' AND e.period >= ? AND e.period <= ?
+      WHERE e.review_status <> 'rejected' AND e.period >= ? AND e.period <= ?${ENT(entity)}
       GROUP BY 1, 2`,
-    [from, endPeriod]
+    [from, endPeriod, ...ENT_ARG(entity)]
   );
 
   const buckets = new Map();
@@ -120,7 +127,7 @@ export async function trend(months = 13, endPeriod = monthStart()) {
 // With a bank feed connected the balance is the bank's. Without one, the
 // best available figure is what has been recorded — which is a different
 // claim, so it is labelled differently.
-export async function cashPosition() {
+export async function cashPosition(entity) {
   const bank = await get(
     "SELECT COUNT(*) AS n, COALESCE(SUM(amount_minor), 0) AS bal FROM fin_bank_txns"
   );
@@ -132,15 +139,16 @@ export async function cashPosition() {
        FROM fin_entries e
        LEFT JOIN fin_categories c ON c.id = e.category_id
       WHERE e.review_status <> 'rejected'
-        AND COALESCE(c.kind, 'opex') <> 'transfer'`
+        AND COALESCE(c.kind, 'opex') <> 'transfer'${ENT(entity)}`,
+    ENT_ARG(entity)
   );
   return { source: "recorded", amount: Number(rec?.net ?? 0) };
 }
 
 // Burn excludes capital events — otherwise an investment round reads as
 // profit and runway becomes fiction.
-export async function burnAndRunway(cashMinor) {
-  const t = await trend(4);
+export async function burnAndRunway(cashMinor, entity) {
+  const t = await trend(4, monthStart(), entity);
   const closed = t.slice(0, 3); // the three complete months before this one
   const netBurn =
     closed.reduce((s, m) => s + (m.expenses - m.revenue), 0) / (closed.length || 1);
@@ -152,14 +160,16 @@ export async function burnAndRunway(cashMinor) {
 }
 
 // ── Outstanding payments ─────────────────────────────────────
-export async function receivables(today = new Date()) {
+export async function receivables(today = new Date(), entity) {
+  const scoped = entity && entity !== "both" ? " AND entity = ?" : "";
   const rows = await all(
-    `SELECT id, customer, issue_date, due_date, currency, url, status,
+    `SELECT id, customer, issue_date, due_date, currency, url, status, entity,
             (amount_minor - paid_minor) AS outstanding
        FROM fin_invoices
       WHERE status NOT IN ('paid', 'void', 'written_off')
-        AND (amount_minor - paid_minor) > 0
-      ORDER BY due_date NULLS LAST`
+        AND (amount_minor - paid_minor) > 0${scoped}
+      ORDER BY due_date NULLS LAST`,
+    entity && entity !== "both" ? [entity] : []
   );
   const buckets = { current: 0, d1_30: 0, d31_60: 0, d61_90: 0, d90plus: 0 };
   const now = today.getTime();
@@ -178,6 +188,7 @@ export async function receivables(today = new Date()) {
       issueDate: isoDate(r.issue_date),
       dueDate: isoDate(r.due_date),
       status: r.status,
+      entity: r.entity,
       url: r.url,
       outstanding: out,
       daysOverdue: Math.max(0, daysOverdue),
@@ -193,22 +204,26 @@ export async function receivables(today = new Date()) {
 }
 
 // ── Capital position ─────────────────────────────────────────
-export async function capitalPosition() {
+export async function capitalPosition(entity) {
   const rows = await all(
     `SELECT c.name, ${SIGNED} AS net
        FROM fin_entries e
        JOIN fin_categories c ON c.id = e.category_id
-      WHERE e.review_status <> 'rejected' AND c.kind = 'capital'
+      WHERE e.review_status <> 'rejected' AND c.kind = 'capital'${ENT(entity)}
       GROUP BY 1
-      ORDER BY 1`
+      ORDER BY 1`,
+    ENT_ARG(entity)
   );
   const items = rows.map((r) => ({ name: r.name, amount: Number(r.net) }));
   return { items, netCapital: items.reduce((s, i) => s + i.amount, 0) };
 }
 
-export async function reviewCount() {
+export async function reviewCount(entity) {
+  const scoped = entity && entity !== "both" ? " AND entity = ?" : "";
   const r = await get(
-    "SELECT COUNT(*) AS n FROM fin_entries WHERE review_status = 'needs_review'"
+    `SELECT COUNT(*) AS n FROM fin_entries
+      WHERE review_status = 'needs_review'${scoped}`,
+    entity && entity !== "both" ? [entity] : []
   );
   return Number(r?.n ?? 0);
 }
@@ -223,17 +238,17 @@ const SIGNED_E = SIGNED;
 // A profit and loss statement, in the order an accountant reads one:
 // revenue, cost of sales, gross profit, operating expenses, operating
 // profit, tax, net.
-export async function profitAndLoss(period) {
+export async function profitAndLoss(period, entity) {
   const rows = await all(
     `SELECT COALESCE(c.name, 'Uncategorised') AS name,
             ${KIND} AS kind,
             ${SIGNED_E} AS net
        FROM fin_entries e
        LEFT JOIN fin_categories c ON c.id = e.category_id
-      WHERE e.review_status <> 'rejected' AND e.period = ?
+      WHERE e.review_status <> 'rejected' AND e.period = ?${ENT(entity)}
       GROUP BY 1, 2
       ORDER BY ABS(${SIGNED_E}) DESC`,
-    [period]
+    [period, ...ENT_ARG(entity)]
   );
 
   const section = (kind, flip) => {
@@ -264,22 +279,22 @@ export async function profitAndLoss(period) {
 // Cash flow, direct method. Opening is everything recorded before this month;
 // capital is shown on its own line because it is not trading income and
 // folding it in would make a funding round look like a good month.
-export async function cashflow(period) {
+export async function cashflow(period, entity) {
   const before = await get(
     `SELECT COALESCE(${SIGNED_E}, 0) AS net
        FROM fin_entries e
        LEFT JOIN fin_categories c ON c.id = e.category_id
       WHERE e.review_status <> 'rejected' AND e.period < ?
-        AND COALESCE(c.kind, 'opex') <> 'transfer'`,
-    [period]
+        AND COALESCE(c.kind, 'opex') <> 'transfer'${ENT(entity)}`,
+    [period, ...ENT_ARG(entity)]
   );
   const rows = await all(
     `SELECT ${KIND} AS kind, ${SIGNED_E} AS net
        FROM fin_entries e
        LEFT JOIN fin_categories c ON c.id = e.category_id
-      WHERE e.review_status <> 'rejected' AND e.period = ?
+      WHERE e.review_status <> 'rejected' AND e.period = ?${ENT(entity)}
       GROUP BY 1`,
-    [period]
+    [period, ...ENT_ARG(entity)]
   );
   const by = {};
   for (const r of rows) by[r.kind] = Number(r.net);
@@ -298,7 +313,7 @@ export async function cashflow(period) {
 }
 
 // Who the money came from, and who it went to.
-export async function byCounterparty(period, direction, limit = 12) {
+export async function byCounterparty(period, direction, limit = 12, entity) {
   return (
     await all(
       `SELECT COALESCE(p.name, 'Unattributed') AS name,
@@ -306,11 +321,11 @@ export async function byCounterparty(period, direction, limit = 12) {
               COUNT(*) AS n
          FROM fin_entries e
          LEFT JOIN fin_counterparties p ON p.id = e.counterparty_id
-        WHERE e.review_status <> 'rejected' AND e.period = ? AND e.direction = ?
+        WHERE e.review_status <> 'rejected' AND e.period = ? AND e.direction = ?${ENT(entity)}
         GROUP BY 1
         ORDER BY 2 DESC
         LIMIT ${Number(limit)}`,
-      [period, direction]
+      [period, direction, ...ENT_ARG(entity)]
     )
   ).map((r) => ({ name: r.name, amount: Number(r.total), count: Number(r.n) }));
 }

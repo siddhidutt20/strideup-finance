@@ -7,6 +7,7 @@ import { aiLimiter } from "../security.js";
 import { config } from "../config.js";
 import { ah, isoDate } from "../util.js";
 import { ACCEPTED_MIME, sniffMime, toMinor } from "../finance/extract.js";
+import { ENTITIES, ENTITY_LABEL } from "../finance/schema.js";
 import { ingestDocument, learnRule, resolvePeriod, findOrCreateCounterparty, convertToBase } from "../finance/ingest.js";
 import { importGhlCsv } from "../finance/ghl.js";
 import {
@@ -23,6 +24,16 @@ financeRouter.use(requireOwner);
 
 const MAX_BYTES = 8 * 1024 * 1024;
 const periodParam = z.string().regex(/^\d{4}-\d{2}-01$/);
+const entityParam = z.enum(["strideup", "personal", "both"]);
+const entityOnly = z.enum(["strideup", "personal"]);
+
+// "both" is answered by running the same query once per set of books and
+// returning them separately. Nothing here ever adds two entities together.
+const resolveEntities = (raw) => {
+  const parsed = entityParam.safeParse(raw);
+  const choice = parsed.success ? parsed.data : "strideup";
+  return { choice, list: choice === "both" ? ENTITIES : [choice] };
+};
 
 // ── The dashboard, in one call ───────────────────────────────
 financeRouter.get(
@@ -32,38 +43,46 @@ financeRouter.get(
       ? req.query.period
       : monthStart();
 
-    const [summary, previous, breakdown, series, cash, ar, capital, needsReview] =
-      await Promise.all([
-        periodSummary(period),
-        periodSummary(
-          `${new Date(Date.UTC(+period.slice(0, 4), +period.slice(5, 7) - 2, 1))
-            .toISOString()
-            .slice(0, 7)}-01`
-        ),
-        categoryBreakdown(period),
-        trend(13, monthStart()),
-        cashPosition(),
-        receivables(),
-        capitalPosition(),
-        reviewCount(),
-      ]);
+    const { choice, list } = resolveEntities(req.query.entity);
+    const prevPeriod = `${new Date(
+      Date.UTC(+period.slice(0, 4), +period.slice(5, 7) - 2, 1)
+    ).toISOString().slice(0, 7)}-01`;
 
-    const { monthlyBurn, runwayMonths } = await burnAndRunway(cash.amount);
-    const closed = await get("SELECT status FROM fin_periods WHERE period = ?", [period]);
+    const byEntity = {};
+    for (const ent of list) {
+      const [summary, previous, breakdown, series, cash, ar, capital, needsReview] =
+        await Promise.all([
+          periodSummary(period, ent),
+          periodSummary(prevPeriod, ent),
+          categoryBreakdown(period, ent),
+          trend(13, monthStart(), ent),
+          cashPosition(ent),
+          receivables(new Date(), ent),
+          capitalPosition(ent),
+          reviewCount(ent),
+        ]);
+      const { monthlyBurn, runwayMonths } = await burnAndRunway(cash.amount, ent);
+      const closed = await get(
+        "SELECT status FROM fin_periods WHERE period = ? AND entity = ?",
+        [period, ent]
+      );
+      byEntity[ent] = {
+        entity: ent,
+        label: ENTITY_LABEL[ent],
+        periodClosed: closed?.status === "closed",
+        summary, previous, breakdown,
+        trend: series, cash,
+        burn: { monthlyBurn, runwayMonths },
+        receivables: ar, capital, needsReview,
+      };
+    }
 
     res.json({
       baseCurrency: config.finance.baseCurrency,
       period,
-      periodClosed: closed?.status === "closed",
-      summary,
-      previous,
-      breakdown,
-      trend: series,
-      cash,
-      burn: { monthlyBurn, runwayMonths },
-      receivables: ar,
-      capital,
-      needsReview,
+      entity: choice,
+      entities: list,
+      byEntity,
       aiEnabled: config.anthropic.enabled,
     });
   })
@@ -79,34 +98,46 @@ financeRouter.get(
       ? req.query.period
       : monthStart();
 
-    const [pnl, flow, revenueBy, expenseBy, breakdown, series, ar, capital] =
-      await Promise.all([
-        profitAndLoss(period),
-        cashflow(period),
-        byCounterparty(period, "in"),
-        byCounterparty(period, "out"),
-        categoryBreakdown(period),
-        trend(13, monthStart()),
-        receivables(),
-        capitalPosition(),
-      ]);
+    const { choice, list } = resolveEntities(req.query.entity);
+
+    const byEntity = {};
+    for (const ent of list) {
+      const [pnl, flow, revenueBy, expenseBy, breakdown, series, ar, capital] =
+        await Promise.all([
+          profitAndLoss(period, ent),
+          cashflow(period, ent),
+          byCounterparty(period, "in", 12, ent),
+          byCounterparty(period, "out", 12, ent),
+          categoryBreakdown(period, ent),
+          trend(13, monthStart(), ent),
+          receivables(new Date(), ent),
+          capitalPosition(ent),
+        ]);
+      byEntity[ent] = {
+        entity: ent,
+        label: ENTITY_LABEL[ent],
+        pnl,
+        cashflow: flow,
+        revenue: {
+          byCategory: breakdown.filter((r) => r.direction === "in"),
+          byCustomer: revenueBy,
+          receivables: ar,
+        },
+        expenses: {
+          byCategory: breakdown.filter((r) => r.direction === "out"),
+          byVendor: expenseBy,
+        },
+        trend: series,
+        capital,
+      };
+    }
 
     res.json({
       period,
       baseCurrency: config.finance.baseCurrency,
-      pnl,
-      cashflow: flow,
-      revenue: {
-        byCategory: breakdown.filter((r) => r.direction === "in"),
-        byCustomer: revenueBy,
-        receivables: ar,
-      },
-      expenses: {
-        byCategory: breakdown.filter((r) => r.direction === "out"),
-        byVendor: expenseBy,
-      },
-      trend: series,
-      capital,
+      entity: choice,
+      entities: list,
+      byEntity,
     });
   })
 );
@@ -116,8 +147,9 @@ financeRouter.get(
   ah(async (req, res) => {
     res.json({
       baseCurrency: config.finance.baseCurrency,
+      entities: ENTITIES.map((e) => ({ id: e, label: ENTITY_LABEL[e] })),
       categories: await all(
-        "SELECT id, name, kind, pnl_line FROM fin_categories ORDER BY sort, name"
+        "SELECT id, name, kind, pnl_line, entity FROM fin_categories ORDER BY sort, name"
       ),
     });
   })
@@ -133,6 +165,9 @@ const uploadSchema = z.object({
   replace: z.boolean().optional(),
   // Which way the money went — a bill received, or an invoice issued.
   kind: z.enum(["expense", "revenue"]).optional(),
+  // Which books you were looking at. Used only when the reader is unsure —
+  // a rule always wins, and a confident reading beats the hint.
+  entityHint: entityOnly.optional(),
 });
 
 financeRouter.post(
@@ -174,6 +209,7 @@ financeRouter.post(
         filename, mime, buffer, source: "upload",
         replace: parsed.data.replace === true,
         kind: parsed.data.kind || "expense",
+        entityHint: parsed.data.entityHint,
       });
       if (result.duplicate) {
         return res.status(200).json({
@@ -244,10 +280,12 @@ financeRouter.get(
       args.push(req.query.period);
     }
     if (req.query.status === "needs_review") where.push("e.review_status = 'needs_review'");
+    const ent = entityOnly.safeParse(req.query.entity);
+    if (ent.success) { where.push("e.entity = ?"); args.push(ent.data); }
     const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 200));
 
     const rows = await all(
-        `SELECT e.id, e.entry_date, e.direction, e.amount_minor, e.currency,
+        `SELECT e.id, e.entity, e.entry_date, e.direction, e.amount_minor, e.currency,
                 e.base_amount_minor, e.description, e.reference, e.confidence,
                 e.review_status, e.review_reason, e.document_id, e.period,
                 c.id AS category_id, c.name AS category_name, c.kind AS category_kind,
@@ -282,6 +320,7 @@ const patchSchema = z.object({
   currency: z.string().trim().length(3).optional(),
   direction: z.enum(["in", "out"]).optional(),
   reviewStatus: z.enum(["approved", "rejected", "needs_review"]).optional(),
+  entity: entityOnly.optional(),
 });
 
 financeRouter.patch(
@@ -305,6 +344,14 @@ financeRouter.patch(
     const b = parsed.data;
     if (b.categoryId !== undefined) { sets.push("category_id = ?"); args.push(b.categoryId); }
     if (b.description !== undefined) { sets.push("description = ?"); args.push(b.description); }
+    if (b.entity !== undefined) {
+      sets.push("entity = ?");
+      args.push(b.entity);
+      // Moving books can land in a month that side has already closed.
+      const { period } = await resolvePeriod(isoDate(entry.entry_date), b.entity);
+      sets.push("period = ?");
+      args.push(period);
+    }
     if (b.direction !== undefined) { sets.push("direction = ?"); args.push(b.direction); }
     if (b.entryDate !== undefined) {
       const { period } = await resolvePeriod(b.entryDate);
@@ -340,7 +387,10 @@ financeRouter.patch(
     // Learn from the correction so this vendor never needs review again.
     const finalCategory = b.categoryId ?? entry.category_id;
     if (finalCategory && entry.counterparty && b.reviewStatus !== "rejected") {
-      await learnRule(entry.counterparty, Number(finalCategory), entry.counterparty_id);
+      await learnRule(
+        entry.counterparty, Number(finalCategory), entry.counterparty_id,
+        b.entity ?? entry.entity
+      );
     }
 
     res.json({ ok: true });
@@ -357,12 +407,15 @@ financeRouter.delete(
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) return res.status(400).json({ error: "Bad id" });
     const entry = await get(
-      "SELECT id, document_id, period FROM fin_entries WHERE id = ?",
+      "SELECT id, document_id, period, entity FROM fin_entries WHERE id = ?",
       [id]
     );
     if (!entry) return res.status(404).json({ error: "That entry no longer exists." });
 
-    const closed = await get("SELECT status FROM fin_periods WHERE period = ?", [entry.period]);
+    const closed = await get(
+      "SELECT status FROM fin_periods WHERE period = ? AND entity = ?",
+      [entry.period, entry.entity]
+    );
     if (closed?.status === "closed") {
       return res.status(409).json({
         error: "That month is closed. Reopen it first if you really want to remove this.",
@@ -386,6 +439,7 @@ const manualSchema = z.object({
   categoryId: z.number().int().positive(),
   description: z.string().trim().min(1).max(300),
   counterparty: z.string().trim().max(160).optional(),
+  entity: entityOnly.optional(),
 });
 
 financeRouter.post(
@@ -398,20 +452,21 @@ financeRouter.post(
     const b = parsed.data;
     const currency = (b.currency || config.finance.baseCurrency).toUpperCase();
     const minor = toMinor(b.amount, currency);
-    const { period } = await resolvePeriod(b.entryDate);
+    const entity = b.entity || "strideup";
+    const { period } = await resolvePeriod(b.entryDate, entity);
     const fx = await convertToBase(minor, currency, b.entryDate);
 
     const rs = await run(
       `INSERT INTO fin_entries
          (entry_date, direction, amount_minor, currency, fx_rate, base_amount_minor,
           counterparty_id, category_id, description, dedup_key, confidence,
-          review_status, period)
-       VALUES (?,?,?,?,?,?,?,?,?,?,1,'approved',?) RETURNING id`,
+          review_status, period, entity)
+       VALUES (?,?,?,?,?,?,?,?,?,?,1,'approved',?,?) RETURNING id`,
       [
         b.entryDate, b.direction, minor, currency, fx.fxRate, fx.baseAmountMinor,
         b.counterparty ? await findOrCreateCounterparty(b.counterparty) : null,
         b.categoryId, b.description,
-        `manual:${crypto.randomUUID()}`, period,
+        `manual:${crypto.randomUUID()}`, period, entity,
       ]
     );
     res.status(201).json({ id: lastId(rs) });
@@ -447,17 +502,18 @@ financeRouter.post(
   "/periods/close",
   ah(async (req, res) => {
     const parsed = z
-      .object({ period: periodParam, reopen: z.boolean().optional() })
+      .object({ period: periodParam, entity: entityOnly, reopen: z.boolean().optional() })
       .safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "Bad period." });
-    const { period, reopen } = parsed.data;
+    const { period, entity, reopen } = parsed.data;
     await run(
-      `INSERT INTO fin_periods (period, status, closed_at)
-       VALUES (?, ?, ?)
-       ON CONFLICT (period) DO UPDATE SET status = EXCLUDED.status, closed_at = EXCLUDED.closed_at`,
-      [period, reopen ? "open" : "closed", reopen ? null : new Date().toISOString()]
+      `INSERT INTO fin_periods (period, entity, status, closed_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT (period, entity) DO UPDATE SET
+         status = EXCLUDED.status, closed_at = EXCLUDED.closed_at`,
+      [period, entity, reopen ? "open" : "closed", reopen ? null : new Date().toISOString()]
     );
-    res.json({ ok: true, period, status: reopen ? "open" : "closed" });
+    res.json({ ok: true, period, entity, status: reopen ? "open" : "closed" });
   })
 );
 
@@ -467,7 +523,7 @@ financeRouter.get(
   "/export.csv",
   ah(async (req, res) => {
     const rows = await all(
-      `SELECT e.entry_date, e.direction, e.amount_minor, e.currency,
+      `SELECT e.entity, e.entry_date, e.direction, e.amount_minor, e.currency,
               COALESCE(c.name,'Uncategorised') AS category, COALESCE(c.kind,'') AS kind,
               COALESCE(p.name,'') AS counterparty, COALESCE(e.description,'') AS description,
               COALESCE(e.reference,'') AS reference, e.review_status, e.document_id
@@ -479,12 +535,13 @@ financeRouter.get(
     );
     const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
     const header = [
-      "date", "direction", "amount", "currency", "category", "kind",
+      "entity", "date", "direction", "amount", "currency", "category", "kind",
       "counterparty", "description", "reference", "status", "document_id",
     ];
     const body = rows.map((r) =>
       [
-        isoDate(r.entry_date), r.direction, (Number(r.amount_minor) / 100).toFixed(2),
+        r.entity, isoDate(r.entry_date), r.direction,
+        (Number(r.amount_minor) / 100).toFixed(2),
         r.currency, r.category, r.kind, r.counterparty, r.description,
         r.reference, r.review_status, r.document_id ?? "",
       ].map(esc).join(",")

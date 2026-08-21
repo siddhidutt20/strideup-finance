@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { all } from "../db.js";
+import { config } from "../config.js";
 import { askClaudeDocumentJSON, aiEnabled } from "../anthropic.js";
 
 // ── Reading an invoice or receipt ────────────────────────────
@@ -58,6 +59,8 @@ const extraction = z.object({
   total: z.number().finite(),
   invoice_number: z.string().trim().max(80).nullable().catch(null),
   suggested_category: z.string().trim().min(1).max(80),
+  entity: z.enum(["strideup", "personal"]).catch("strideup"),
+  entity_confidence: z.number().min(0).max(1).catch(0),
   summary: z.string().trim().max(200).catch(""),
   confidence: z.number().min(0).max(1).catch(0),
 });
@@ -65,7 +68,9 @@ const extraction = z.object({
 // The same document shape means opposite things depending on which way the
 // money went: a bill you received is an expense, an invoice you issued is
 // revenue. Telling the reader which it is up front stops it guessing.
-function buildPrompt(categoryNames, kind) {
+function buildPrompt(grouped, kind) {
+  const hints = config.finance.entityHints;
+  const list = (rows) => rows.map((r) => `- ${r.name}`).join("\n");
   const framing =
     kind === "revenue"
       ? `You are reading a SALES document a company ISSUED to a customer — an
@@ -89,12 +94,32 @@ Extract the following and reply with ONLY a JSON object, no prose and no code fe
   "total": number — the amount actually payable, as a positive number,
   "invoice_number": "string or null",
   "suggested_category": "EXACTLY one name from the category list below",
+  "entity": "strideup | personal — whose books this belongs to",
+  "entity_confidence": number between 0 and 1,
   "summary": "at most 12 words describing what was bought",
   "confidence": number between 0 and 1
 }
 
-Category list (choose the single best fit, copied verbatim):
-${categoryNames.map((n) => `- ${n}`).join("\n")}
+Whose books does this belong to?
+- "strideup" — ${hints.strideup}
+- "personal" — ${hints.personal}
+
+Judge from the document itself: who is named as the customer or the account
+holder, what was actually bought, and whether it reads as a business cost or a
+household one. If it genuinely could be either, say so with a low
+entity_confidence rather than picking one confidently.
+
+Category list — pick the single best fit and copy it verbatim. The category
+you pick and the entity you pick must agree with each other.
+
+StrideUp categories:
+${list(grouped.strideup)}
+
+Personal categories:
+${list(grouped.personal)}
+
+Either (use only when it genuinely could be either):
+${list(grouped.both)}
 
 Rules:
 - Amounts are plain numbers: no currency symbols, no thousands separators.
@@ -127,13 +152,17 @@ export async function extractDocument({ mime, data, kind = "expense" }) {
   const kinds =
     kind === "revenue" ? "('revenue')" : "('cogs','opex','capex','tax')";
   const cats = await all(
-    `SELECT name FROM fin_categories WHERE kind IN ${kinds} ORDER BY sort`
+    `SELECT name, entity FROM fin_categories WHERE kind IN ${kinds} ORDER BY sort`
   );
-  const names = cats.map((c) => c.name);
+  const grouped = {
+    strideup: cats.filter((c) => c.entity === "strideup"),
+    personal: cats.filter((c) => c.entity === "personal"),
+    both: cats.filter((c) => c.entity === "both"),
+  };
 
   const raw = await askClaudeDocumentJSON(
     { kind: mediaKind, mime, data },
-    buildPrompt(names, kind),
+    buildPrompt(grouped, kind),
     1500
   );
 
@@ -144,15 +173,40 @@ export async function extractDocument({ mime, data, kind = "expense" }) {
     err.detail = parsed.error.issues.map((i) => i.path.join(".") + ": " + i.message);
     throw err;
   }
-  return parsed.data;
+
+  // The category and the entity are two answers to the same question. When a
+  // category that belongs to one set of books is paired with the other, one of
+  // them is wrong and a human should say which.
+  const chosen = cats.find(
+    (c) => c.name.toLowerCase() === parsed.data.suggested_category.toLowerCase()
+  );
+  const entityMismatch =
+    !!chosen && chosen.entity !== "both" && chosen.entity !== parsed.data.entity;
+
+  return { ...parsed.data, entity_mismatch: entityMismatch, category_entity: chosen?.entity };
 }
 
 // ── Why a document might need a human look ───────────────────
 // A low-confidence document is still written to the ledger; it is only
 // flagged. Totals stay complete, and the flag is about attribution.
 export function reviewReason(ex, matchedByRule, confidenceFloor = 0.85) {
-  if (matchedByRule) return null;
   const reasons = [];
+  // The entity is judged even for a known vendor, unless a rule settled it —
+  // getting the wrong set of books is as wrong as the wrong category.
+  if (!matchedByRule?.entitySettled && ex.entity_confidence < confidenceFloor) {
+    reasons.push(
+      `unsure whether this is StrideUp or personal (${(ex.entity_confidence * 100).toFixed(0)}%)`
+    );
+  }
+  if (ex.entity_mismatch) {
+    reasons.push(
+      `"${ex.suggested_category}" is a ${ex.category_entity === "personal" ? "personal" : "StrideUp"} ` +
+      `category but this was filed as ${ex.entity === "personal" ? "personal" : "StrideUp"}`
+    );
+  }
+  if (matchedByRule?.categorySettled) {
+    return reasons.length ? reasons.join("; ") : null;
+  }
   if (ex.confidence < confidenceFloor) {
     reasons.push(`extraction confidence ${(ex.confidence * 100).toFixed(0)}%`);
   }

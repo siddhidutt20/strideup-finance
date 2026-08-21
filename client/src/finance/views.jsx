@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { api } from "../api.js";
 import { Panel, Kpi, TrendChart, CategoryBars, Ranked, Receivables, CapitalList } from "./pieces.jsx";
-import { CURRENCIES, delta, fmtAmount, monthLabel, today, ZERO_DECIMAL } from "./format.js";
+import { CURRENCIES, delta, fmtAmount, monthLabel, today, ZERO_DECIMAL,
+         ENTITY_LABEL } from "./format.js";
 
 // ── Overview ─────────────────────────────────────────────────
 // The one question this page answers: how is the month going. Detail lives
@@ -218,7 +219,7 @@ export function PnlView({ st, money, period }) {
 
 // ── Ledger ───────────────────────────────────────────────────
 export function LedgerView({
-  entries, categories, money, baseCurrency, period, scope, onScope,
+  entries, categories, money, baseCurrency, period, scope, onScope, showEntity,
   onFix, onRemove, onCurrency,
 }) {
   return (
@@ -235,21 +236,22 @@ export function LedgerView({
                </span>
              }>
         <LedgerTable entries={entries} categories={categories} money={money}
-                     baseCurrency={baseCurrency} onFix={onFix}
+                     baseCurrency={baseCurrency} showEntity={showEntity} onFix={onFix}
                      onRemove={onRemove} onCurrency={onCurrency} />
       </Panel>
     </>
   );
 }
 
-function LedgerTable({ entries, categories, money, baseCurrency, onFix, onRemove, onCurrency }) {
+function LedgerTable({ entries, categories, money, baseCurrency, showEntity,
+                      onFix, onRemove, onCurrency }) {
   if (!entries.length) return <p className="fin-none">No entries for this month yet.</p>;
   return (
     <div className="fin-tablewrap">
       <table className="fin-table">
         <thead>
           <tr>
-            <th>Date</th><th>Description</th><th>Category</th>
+            <th>Date</th>{showEntity && <th>Books</th>}<th>Description</th><th>Category</th>
             <th className="r">Amount</th><th>Doc</th><th aria-label="Remove" />
           </tr>
         </thead>
@@ -259,6 +261,11 @@ function LedgerTable({ entries, categories, money, baseCurrency, onFix, onRemove
             return (
               <tr key={e.id} className={flagged ? "flagged" : ""}>
                 <td className="nowrap">{e.entry_date}</td>
+                {showEntity && (
+                  <td className="nowrap">
+                    <span className={`fe-ent e-${e.entity}`}>{ENTITY_LABEL[e.entity]}</span>
+                  </td>
+                )}
                 <td>
                   <span className="fe-desc">{e.description || "—"}</span>
                   {e.counterparty && <span className="fe-cp">{e.counterparty}</span>}
@@ -312,7 +319,7 @@ function LedgerTable({ entries, categories, money, baseCurrency, onFix, onRemove
 // Not everything arrives as a document: money you put in, a bank charge, a
 // payment settled by transfer. This is how those get on the books.
 export function ManualEntry({
-  categories, currency, onAdded,
+  categories, currency, onAdded, entity: entityProp = "strideup",
   defaultDirection = "out", preferKinds, title, sub,
   descPlaceholder = "Founder equity injection", whoPlaceholder = "Founder, bank, supplier…",
   whoLabel = "Who",
@@ -323,6 +330,7 @@ export function ManualEntry({
   const [form, setForm] = useState({
     entryDate: today(), direction: defaultDirection, amount: "",
     currency, categoryId: "", description: "", counterparty: "",
+    entity: entityProp,
   });
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -340,10 +348,14 @@ export function ManualEntry({
       opex: "Operating expenses", capex: "Capital expenditure",
       tax: "Tax", transfer: "Transfers",
     };
+    // Only the categories that belong to the chosen books, plus the shared ones.
+    const mine = categories.filter(
+      (c) => !c.entity || c.entity === "both" || c.entity === form.entity
+    );
     return order
-      .map((kind) => ({ kind, label: names[kind], items: categories.filter((c) => c.kind === kind) }))
+      .map((kind) => ({ kind, label: names[kind], items: mine.filter((c) => c.kind === kind) }))
       .filter((g) => g.items.length);
-  }, [categories, preferKinds]);
+  }, [categories, preferKinds, form.entity]);
 
   async function submit(e) {
     e.preventDefault();
@@ -355,6 +367,7 @@ export function ManualEntry({
         direction: form.direction,
         amount: Number(form.amount),
         currency: form.currency,
+        entity: form.entity,
         categoryId: Number(form.categoryId),
         description: form.description.trim(),
         ...(form.counterparty.trim() ? { counterparty: form.counterparty.trim() } : {}),
@@ -383,6 +396,14 @@ export function ManualEntry({
 
       {open && (
         <form className="fin-form" onSubmit={submit}>
+          <label>
+            <span>Books</span>
+            <select value={form.entity}
+                    onChange={(e) => setForm((f) => ({ ...f, entity: e.target.value, categoryId: "" }))}>
+              <option value="strideup">StrideUp</option>
+              <option value="personal">Personal</option>
+            </select>
+          </label>
           <label>
             <span>Date</span>
             <input type="date" value={form.entryDate} onChange={set("entryDate")}
@@ -441,7 +462,7 @@ export function ManualEntry({
 }
 
 // ── Import and close ─────────────────────────────────────────
-export function ToolsView({ period, closed, onDone }) {
+export function ToolsView({ period, entity, entityList, byEntity, onDone }) {
   const [csv, setCsv] = useState("");
   const [msg, setMsg] = useState(null);
   const [working, setWorking] = useState(false);
@@ -462,9 +483,9 @@ export function ToolsView({ period, closed, onDone }) {
     } finally { setWorking(false); }
   }
 
-  async function toggleClose() {
+  async function toggleClose(ent, isClosed) {
     setWorking(true);
-    try { await api.finClosePeriod(period, closed); onDone(); }
+    try { await api.finClosePeriod(period, ent, isClosed); onDone(); }
     finally { setWorking(false); }
   }
 
@@ -492,17 +513,28 @@ export function ToolsView({ period, closed, onDone }) {
                    e.target.value = "";
                  }} />
         </label>
-        <span className="fin-spacer" />
-        <button className="fin-btn ghost" onClick={toggleClose} disabled={working}>
-          {closed ? `Reopen ${monthLabel(period)}` : `Close ${monthLabel(period)}`}
-        </button>
       </div>
       {msg && <p className={msg.ok ? "fin-ok" : "fin-error"}>{msg.text}</p>}
-      <p className="fin-help" style={{ marginTop: 14 }}>
-        {closed
-          ? "This month is closed. A late document dated in it is posted to the open month as an adjustment instead of changing a figure you have already used."
-          : "Closing a month stops a late document from quietly changing a figure you have already acted on — it gets posted to the open month as an adjustment instead."}
-      </p>
+
+      <div className="fin-closebox">
+        <h3>Close {monthLabel(period)}</h3>
+        <p className="fin-help">
+          Each set of books closes on its own. Closing one stops a late document
+          dated in that month from quietly changing a figure you have already
+          acted on — it is posted to the open month as an adjustment instead.
+        </p>
+        <div className="fin-tools-row">
+          {(entityList ?? [entity]).filter((e) => e !== "both").map((ent) => {
+            const isClosed = byEntity?.[ent]?.periodClosed;
+            return (
+              <button key={ent} className="fin-btn ghost" disabled={working}
+                      onClick={() => toggleClose(ent, isClosed)}>
+                {isClosed ? `Reopen ${ENTITY_LABEL[ent]}` : `Close ${ENTITY_LABEL[ent]}`}
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </section>
   );
 }

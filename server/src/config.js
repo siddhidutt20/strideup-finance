@@ -87,6 +87,20 @@ export const config = {
     // Daily reference rates, keyless and free. {date}, {from} and {to} are
     // substituted. Overridable so the source can be swapped without a code
     // change; a failure here never blocks an import.
+    // How the reader tells the two sets of books apart. Tunable without a code
+    // change, because only you know what counts as which.
+    entityHints: {
+      strideup:
+        process.env.FINANCE_HINT_STRIDEUP ||
+        "StrideUp, the business: coaching and programme delivery, client work, " +
+        "software and subscriptions used for work, marketing and advertising, " +
+        "contractors and freelancers, business travel, professional fees.",
+      personal:
+        process.env.FINANCE_HINT_PERSONAL ||
+        "Personal finances of the owner: rent or mortgage, housing and utility " +
+        "bills, groceries, personal subscriptions and phone, bank loan or EMI " +
+        "repayments, insurance, rental income received from property owned personally.",
+    },
     fxUrl:
       process.env.FINANCE_FX_URL ||
       "https://api.frankfurter.dev/v1/{date}?base={from}&symbols={to}",

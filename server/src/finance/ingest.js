@@ -52,9 +52,12 @@ export async function convertToBase(amountMinor, currency, date) {
 
 // If the month a document belongs to has been closed, the entry is posted to
 // the open month as an adjustment instead of rewriting settled history.
-export async function resolvePeriod(entryDate) {
+export async function resolvePeriod(entryDate, entity = "strideup") {
   const natural = periodOf(entryDate);
-  const row = await get("SELECT status FROM fin_periods WHERE period = ?", [natural]);
+  const row = await get(
+    "SELECT status FROM fin_periods WHERE period = ? AND entity = ?",
+    [natural, entity]
+  );
   if (row?.status !== "closed") return { period: natural, adjusted: false };
   const today = new Date().toISOString().slice(0, 10);
   return { period: periodOf(today), adjusted: true };
@@ -86,26 +89,53 @@ export async function findOrCreateCounterparty(name, kind = "supplier") {
 export async function matchRule(vendorName) {
   const key = vendorKey(vendorName);
   if (!key) return null;
-  return get(
-    `SELECT r.id, r.set_category_id, r.set_counterparty_id, c.name AS category_name
+  const row = await get(
+    `SELECT r.id, r.set_category_id, r.set_counterparty_id, r.set_entity,
+            c.name AS category_name
        FROM fin_rules r JOIN fin_categories c ON c.id = r.set_category_id
       WHERE r.match_pattern = ?`,
     [key]
   );
+  if (!row) return null;
+  // A rule always settles the category. It settles the entity only while the
+  // party has been seen on one side of the books — set_entity goes NULL the
+  // moment a correction contradicts it.
+  return { ...row, categorySettled: true, entitySettled: row.set_entity != null };
 }
 
 // Approving a suggestion teaches the system, so the next month is lighter.
-export async function learnRule(vendorName, categoryId, counterpartyId) {
+export async function learnRule(vendorName, categoryId, counterpartyId, entity = null) {
   const key = vendorKey(vendorName);
   if (!key || !categoryId) return;
-  await run(
-    `INSERT INTO fin_rules (match_pattern, set_category_id, set_counterparty_id)
-     VALUES (?, ?, ?)
-     ON CONFLICT (match_pattern) DO UPDATE SET
-       set_category_id = EXCLUDED.set_category_id,
-       set_counterparty_id = EXCLUDED.set_counterparty_id`,
-    [key, categoryId, counterpartyId ?? null]
+
+  const existing = await get(
+    "SELECT id, set_entity FROM fin_rules WHERE match_pattern = ?",
+    [key]
   );
+
+  // A party used by both sets of books cannot have one answer. When a
+  // correction contradicts what was stored, clear it rather than flip-flopping:
+  // from then on the reader judges the entity and the row is flagged.
+  let nextEntity = entity;
+  if (existing && existing.set_entity && entity && existing.set_entity !== entity) {
+    nextEntity = null;
+  } else if (existing && !entity) {
+    nextEntity = existing.set_entity;
+  }
+
+  if (existing) {
+    await run(
+      `UPDATE fin_rules SET set_category_id = ?, set_counterparty_id = ?, set_entity = ?
+        WHERE id = ?`,
+      [categoryId, counterpartyId ?? null, nextEntity, existing.id]
+    );
+  } else {
+    await run(
+      `INSERT INTO fin_rules (match_pattern, set_category_id, set_counterparty_id, set_entity)
+       VALUES (?, ?, ?, ?)`,
+      [key, categoryId, counterpartyId ?? null, nextEntity]
+    );
+  }
 }
 
 // ── Write one ledger row, idempotently ───────────────────────
@@ -114,8 +144,8 @@ export async function upsertEntry(e) {
     `INSERT INTO fin_entries
        (entry_date, direction, amount_minor, currency, fx_rate, base_amount_minor,
         counterparty_id, category_id, description, reference, document_id,
-        dedup_key, confidence, review_status, review_reason, period)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        dedup_key, confidence, review_status, review_reason, period, entity)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
      ON CONFLICT (dedup_key) DO NOTHING
      RETURNING id`,
     [
@@ -124,6 +154,7 @@ export async function upsertEntry(e) {
       e.categoryId ?? null, e.description ?? null, e.reference ?? null,
       e.documentId ?? null, e.dedupKey, e.confidence ?? null,
       e.reviewStatus ?? "auto", e.reviewReason ?? null, e.period,
+      e.entity ?? "strideup",
     ]
   );
   const id = lastId(rs);
@@ -137,6 +168,7 @@ export async function upsertEntry(e) {
 // expense whether it arrives by upload, by Drive, or twice by both.
 export async function ingestDocument({
   filename, mime, buffer, source = "upload", replace = false, kind = "expense",
+  entityHint,
 }) {
   const hash = sha256(buffer);
   const dedupKey = `doc:${hash}`;
@@ -209,6 +241,16 @@ export async function ingestDocument({
   }
   if (rule) await run("UPDATE fin_rules SET hits = hits + 1 WHERE id = ?", [rule.id]);
 
+  // Whose books. A rule settles it for a party seen on one side only. Failing
+  // that a confident reading stands. Only when the reader is unsure does the
+  // section you were looking at break the tie — and the row is flagged either
+  // way, so a guess is never silent.
+  const entityConfident = ex.entity_confidence >= config.finance.confidenceFloor;
+  const entity =
+    rule?.set_entity ??
+    (entityConfident ? ex.entity : entityHint ?? ex.entity) ??
+    "strideup";
+
   const counterpartyId =
     rule?.set_counterparty_id != null
       ? Number(rule.set_counterparty_id)
@@ -224,7 +266,7 @@ export async function ingestDocument({
   // row but is not itself a review item — nothing about it is uncertain.
   const reason =
     reviewReason(ex, !!rule) ?? (categoryId ? null : "no matching category");
-  const { period, adjusted } = await resolvePeriod(ex.issue_date);
+  const { period, adjusted } = await resolvePeriod(ex.issue_date, entity);
   const note = adjusted ? `posted to ${period} — ${periodOf(ex.issue_date)} is closed` : null;
   const storedReason = [reason, fx.note, note].filter(Boolean).join("; ") || null;
 
@@ -239,6 +281,7 @@ export async function ingestDocument({
     amountMinor,
     currency: ex.currency,
     fxRate: fx.fxRate,
+    entity,
     baseAmountMinor: fx.baseAmountMinor,
     counterpartyId,
     categoryId,
@@ -250,12 +293,13 @@ export async function ingestDocument({
     reviewStatus: reason || fx.note ? "needs_review" : "auto",
     reviewReason: storedReason,
     period,
+    entity,
   });
 
-  await run("UPDATE fin_documents SET parsed_at = now(), payload = ? WHERE id = ?", [
-    JSON.stringify(ex),
-    documentId,
-  ]);
+  await run(
+    "UPDATE fin_documents SET parsed_at = now(), payload = ?, entity = ? WHERE id = ?",
+    [JSON.stringify(ex), entity, documentId]
+  );
 
   return {
     duplicate: false,
@@ -266,6 +310,7 @@ export async function ingestDocument({
     matchedRule: !!rule,
     currency: ex.currency,
     fxRate: fx.fxRate,
+    entity,
     needsReview: !!(reason || fx.note),
     reviewReason: storedReason,
     adjustedPeriod: adjusted ? period : null,

@@ -3,6 +3,7 @@ import { api } from "./api.js";
 import { FIN_CSS, STATEMENT_CSS } from "./finance/styles.js";
 import {
   fmtAmount, monthLabel, readFile, shiftMonth, thisMonth, useMoney, ZERO_DECIMAL,
+  ENTITY_LABEL, ENTITY_CHOICES, loadEntity, saveEntity,
 } from "./finance/format.js";
 import {
   OverviewView, RevenueView, ExpensesView, CashflowView, PnlView, LedgerView,
@@ -36,6 +37,8 @@ export default function FinanceDashboard() {
   const [error, setError] = useState("");
   const [feed, setFeed] = useState([]);
   const [ledgerScope, setLedgerScope] = useState("month");
+  const [entity, setEntityState] = useState(loadEntity);
+  const setEntity = (v) => { saveEntity(v); setEntityState(v); };
   const [busy, setBusy] = useState(false);
 
   const money = useMoney(data?.baseCurrency || "USD");
@@ -45,8 +48,11 @@ export default function FinanceDashboard() {
       setError("");
       try {
         const [ov, en, cats] = await Promise.all([
-          api.finOverview(p),
-          api.finEntries(ledgerScope === "all" ? "?limit=500" : `?period=${p}`),
+          api.finOverview(p, entity),
+          api.finEntries(
+            (ledgerScope === "all" ? "?limit=500" : `?period=${p}`) +
+            (entity === "both" ? "" : `&entity=${entity}`)
+          ),
           categories.length ? Promise.resolve({ categories }) : api.finCategories(),
         ]);
         setData(ov);
@@ -59,25 +65,29 @@ export default function FinanceDashboard() {
         setLoading(false);
       }
     },
-    [period, categories, ledgerScope]
+    [period, categories, ledgerScope, entity]
   );
 
-  useEffect(() => { load(period); /* eslint-disable-next-line */ }, [period, ledgerScope]);
+  useEffect(() => { load(period); /* eslint-disable-next-line */ }, [period, ledgerScope, entity]);
 
   // Statements are fetched only when a statement view is opened, so the
   // dashboard does not pay for four of them nobody asked to see.
   useEffect(() => {
-    if (!NEEDS_STATEMENTS.has(view) || statements?.period === period) return;
+    if (!NEEDS_STATEMENTS.has(view) ||
+        (statements?.period === period && statements?.entity === entity)) return;
     let cancelled = false;
     api
-      .finStatements(period)
+      .finStatements(period, entity)
       .then((st) => { if (!cancelled) setStatements(st); })
       .catch((err) => { if (!cancelled) setError(err.message || "Could not load that view."); });
     return () => { cancelled = true; };
-  }, [view, period, statements]);
+  }, [view, period, entity, statements]);
 
-  const shownTrend = useMemo(() => {
-    const t = data?.trend ?? [];
+  const entityList = data?.entities ?? [entity];
+  // Trailing months are trimmed per set of books — StrideUp and personal do
+  // not necessarily start in the same month.
+  const trendFor = useCallback((ent) => {
+    const t = data?.byEntity?.[ent]?.trend ?? [];
     const first = t.findIndex((m) => m.revenue || m.expenses);
     return first < 0 ? t.slice(-6) : t.slice(Math.max(0, first - 1));
   }, [data]);
@@ -92,6 +102,7 @@ export default function FinanceDashboard() {
       mime: file.type || "application/octet-stream",
       data: b64,
       kind,
+      ...(entity === "both" ? {} : { entityHint: entity }),
       ...(replace ? { replace: true } : {}),
     });
     setFeed((f) =>
@@ -183,7 +194,9 @@ export default function FinanceDashboard() {
     view === "ledger" && ledgerScope === "all"
       ? "Every entry recorded, across all months"
       : blurbBase;
-  const waiting = NEEDS_STATEMENTS.has(view) && statements?.period !== period;
+  const waiting =
+    NEEDS_STATEMENTS.has(view) &&
+    (statements?.period !== period || statements?.entity !== entity);
   // Adding things belongs where you are looking at them: a sales invoice on
   // Revenue, a bill on Expenses.
   const UPLOAD_VIEWS = { overview: "expense", revenue: "revenue", expenses: "expense", ledger: "expense" };
@@ -200,7 +213,10 @@ export default function FinanceDashboard() {
                 whoPlaceholder: "Supplier name…", whoLabel: "Supplier" },
     ledger: { defaultDirection: "out" },
   };
-  const isEmpty = (data?.summary?.entryCount ?? 0) === 0 && !data?.receivables?.total;
+  const isEmpty = entityList.every(
+    (e) => (data?.byEntity?.[e]?.summary?.entryCount ?? 0) === 0 &&
+           !data?.byEntity?.[e]?.receivables?.total
+  );
 
   return (
     <div className="fin">
@@ -217,6 +233,13 @@ export default function FinanceDashboard() {
               </li>
             ))}
           </ul>
+          <div className="fin-entnav" role="group" aria-label="Which books">
+            {ENTITY_CHOICES.map((e) => (
+              <button key={e} className={entity === e ? "on" : ""}
+                      aria-pressed={entity === e}
+                      onClick={() => setEntity(e)}>{ENTITY_LABEL[e]}</button>
+            ))}
+          </div>
           <div className="fin-monthnav">
             <button onClick={() => setPeriod(shiftMonth(period, -1))} aria-label="Previous month">‹</button>
             <strong>{monthLabel(period)}</strong>
@@ -253,6 +276,7 @@ export default function FinanceDashboard() {
       {MANUAL[view] && !waiting && (
         <ManualEntry key={view} categories={categories}
                      currency={data?.baseCurrency || "USD"}
+                     entity={entity === "both" ? "strideup" : entity}
                      onAdded={() => load(period)} {...MANUAL[view]} />
       )}
 
@@ -268,33 +292,71 @@ export default function FinanceDashboard() {
         <div className="fin-boot"><div className="fin-spinner" /></div>
       ) : (
         <>
-          {view === "overview" && (
-            <OverviewView data={data} trend={shownTrend} money={money} period={period} />
-          )}
-          {view === "revenue" && statements && (
-            <RevenueView st={statements} trend={shownTrend} money={money} period={period} />
-          )}
-          {view === "expenses" && statements && (
-            <ExpensesView st={statements} trend={shownTrend} money={money} period={period} />
-          )}
+          {view === "overview" && entityList.map((ent) => (
+            <EntityBlock key={ent} show={entityList.length > 1}
+                         label={data.byEntity[ent].label}>
+              <OverviewView data={data.byEntity[ent]} trend={trendFor(ent)}
+                            money={money} period={period} />
+            </EntityBlock>
+          ))}
+          {view === "revenue" && statements && entityList.map((ent) => (
+            <EntityBlock key={ent} show={entityList.length > 1}
+                         label={statements.byEntity[ent].label}>
+              <RevenueView st={statements.byEntity[ent]} trend={trendFor(ent)}
+                           money={money} period={period} />
+            </EntityBlock>
+          ))}
+          {view === "expenses" && statements && entityList.map((ent) => (
+            <EntityBlock key={ent} show={entityList.length > 1}
+                         label={statements.byEntity[ent].label}>
+              <ExpensesView st={statements.byEntity[ent]} trend={trendFor(ent)}
+                            money={money} period={period} />
+            </EntityBlock>
+          ))}
           {view === "cashflow" && statements && (
-            <CashflowView st={statements} money={money} period={period} />
+            <div className={entityList.length > 1 ? "fin-sidebyside" : ""}>
+              {entityList.map((ent) => (
+                <EntityBlock key={ent} show={entityList.length > 1}
+                             label={statements.byEntity[ent].label}>
+                  <CashflowView st={statements.byEntity[ent]} money={money} period={period} />
+                </EntityBlock>
+              ))}
+            </div>
           )}
           {view === "pnl" && statements && (
-            <PnlView st={statements} money={money} period={period} />
+            <div className={entityList.length > 1 ? "fin-sidebyside" : ""}>
+              {entityList.map((ent) => (
+                <EntityBlock key={ent} show={entityList.length > 1}
+                             label={statements.byEntity[ent].label}>
+                  <PnlView st={statements.byEntity[ent]} money={money} period={period} />
+                </EntityBlock>
+              ))}
+            </div>
           )}
           {view === "ledger" && (
             <LedgerView entries={entries} categories={categories} money={money}
                         baseCurrency={data?.baseCurrency || "USD"} period={period}
+                        showEntity={entityList.length > 1}
                         scope={ledgerScope} onScope={setLedgerScope}
                         onFix={fixEntry} onRemove={removeEntry} onCurrency={fixCurrency} />
           )}
           {view === "tools" && (
-            <ToolsView period={period} closed={data?.periodClosed} onDone={() => load(period)} />
+            <ToolsView period={period} entity={entity} entityList={entityList}
+                       byEntity={data?.byEntity} onDone={() => load(period)} />
           )}
         </>
       )}
     </div>
+  );
+}
+
+function EntityBlock({ show, label, children }) {
+  if (!show) return children;
+  return (
+    <section className="fin-entblock">
+      <h2 className="fin-entlabel">{label}</h2>
+      {children}
+    </section>
   );
 }
 

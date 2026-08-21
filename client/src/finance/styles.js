@@ -28,6 +28,13 @@ export const FIN_CSS = `
   font-size:13px;font-weight:500;padding:6px 11px;border-radius:8px;cursor:pointer;transition:.14s}
 .fin-nav button:hover{color:var(--fin-accent);background:#F1ECFB}
 .fin-nav button.on{color:var(--fin-accent);background:#F1ECFB;font-weight:600}
+.fin-entnav{display:inline-flex;gap:2px;background:var(--fin-surface);
+  border:1px solid var(--fin-line);border-radius:9px;padding:3px}
+.fin-entnav button{border:none;background:none;font-family:inherit;font-size:12.5px;
+  font-weight:500;color:var(--fin-muted);padding:5px 11px;border-radius:6px;cursor:pointer;
+  transition:.14s}
+.fin-entnav button:hover{color:var(--fin-accent)}
+.fin-entnav button.on{color:var(--fin-accent);background:#F1ECFB;font-weight:600}
 .fin-monthnav{display:inline-flex;align-items:center;gap:2px;background:var(--fin-surface);
   border:1px solid var(--fin-line);border-radius:9px;padding:3px 4px}
 .fin-monthnav strong{min-width:124px;text-align:center;font-size:13px;font-weight:600;
@@ -103,6 +110,19 @@ export const FIN_CSS = `
 /* ── Panels ── */
 .fin-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
 @media(max-width:900px){.fin-grid{grid-template-columns:1fr}}
+.fin-entblock{margin-bottom:6px}
+.fin-entlabel{font-family:var(--fin-serif);font-weight:400;font-size:15px;
+  letter-spacing:.02em;text-transform:uppercase;color:var(--fin-faint);
+  margin:22px 0 10px;padding-bottom:7px;border-bottom:1px solid var(--fin-line)}
+.fin-sidebyside{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+@media(max-width:960px){.fin-sidebyside{grid-template-columns:1fr}}
+.fin-sidebyside .st-wrap{max-width:none}
+.fe-ent{display:inline-block;font-size:10px;font-weight:600;letter-spacing:.06em;
+  text-transform:uppercase;padding:2px 6px;border-radius:4px}
+.fe-ent.e-strideup{color:var(--fin-accent);background:#F1ECFB}
+.fe-ent.e-personal{color:#0A7E96;background:#E6F5F8}
+.fin-closebox{margin-top:22px;padding-top:18px;border-top:1px solid var(--fin-hair)}
+.fin-closebox h3{font-family:var(--fin-serif);font-weight:400;font-size:16px;margin:0 0 6px}
 .fin-panel{background:var(--fin-surface);border:1px solid var(--fin-line);border-radius:14px;
   padding:20px 22px;margin-bottom:14px;scroll-margin-top:64px}
 .fin-panel-head{display:flex;align-items:baseline;justify-content:space-between;gap:14px;

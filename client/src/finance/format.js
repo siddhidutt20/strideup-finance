@@ -59,3 +59,22 @@ export const readFile = (file) =>
     r.onerror = () => reject(new Error("Could not read that file."));
     r.readAsDataURL(file);
   });
+
+// ── Entities ─────────────────────────────────────────────────
+export const ENTITY_LABEL = { strideup: "StrideUp", personal: "Personal", both: "Both" };
+export const ENTITY_CHOICES = ["strideup", "personal", "both"];
+
+// Remembered between visits — you almost always want the same books you had
+// open last time.
+const ENTITY_KEY = "sf.entity";
+export function loadEntity() {
+  try {
+    const v = localStorage.getItem(ENTITY_KEY);
+    return ENTITY_CHOICES.includes(v) ? v : "strideup";
+  } catch {
+    return "strideup";
+  }
+}
+export function saveEntity(v) {
+  try { localStorage.setItem(ENTITY_KEY, v); } catch { /* private window */ }
+}

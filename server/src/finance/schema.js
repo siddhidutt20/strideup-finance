@@ -18,6 +18,7 @@ export const FIN_SCHEMA = [
      content_hash text NOT NULL,
      data         text,
      payload      text NOT NULL DEFAULT '{}',
+     entity       text NOT NULL DEFAULT 'strideup',
      received_at  timestamptz NOT NULL DEFAULT now(),
      parsed_at    timestamptz,
      parse_error  text,
@@ -29,7 +30,8 @@ export const FIN_SCHEMA = [
      name     text NOT NULL UNIQUE,
      kind     text NOT NULL,
      pnl_line text,
-     sort     integer NOT NULL DEFAULT 100
+     sort     integer NOT NULL DEFAULT 100,
+     entity   text NOT NULL DEFAULT 'strideup'
    )`,
 
   `CREATE TABLE IF NOT EXISTS fin_counterparties (
@@ -43,6 +45,7 @@ export const FIN_SCHEMA = [
   // The ledger. Amount is always positive; direction carries the sign.
   `CREATE TABLE IF NOT EXISTS fin_entries (
      id                bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+     entity            text NOT NULL DEFAULT 'strideup',
      entry_date        date NOT NULL,
      direction         text NOT NULL,
      amount_minor      bigint NOT NULL,
@@ -80,6 +83,7 @@ export const FIN_SCHEMA = [
      paid_minor   bigint NOT NULL DEFAULT 0,
      currency     char(3) NOT NULL DEFAULT 'USD',
      status       text NOT NULL DEFAULT 'sent',
+     entity       text NOT NULL DEFAULT 'strideup',
      url          text,
      updated_at   timestamptz NOT NULL DEFAULT now(),
      UNIQUE (source, external_id)
@@ -91,6 +95,7 @@ export const FIN_SCHEMA = [
      amount_minor     bigint NOT NULL,
      currency         char(3) NOT NULL DEFAULT 'USD',
      description      text,
+     entity           text NOT NULL DEFAULT 'strideup',
      external_id      text UNIQUE,
      matched_entry_id bigint REFERENCES fin_entries(id) ON DELETE SET NULL,
      created_at       timestamptz NOT NULL DEFAULT now()
@@ -103,6 +108,7 @@ export const FIN_SCHEMA = [
      match_pattern       text NOT NULL UNIQUE,
      set_counterparty_id integer REFERENCES fin_counterparties(id),
      set_category_id     integer NOT NULL REFERENCES fin_categories(id),
+     set_entity          text,
      hits                integer NOT NULL DEFAULT 0,
      created_at          timestamptz NOT NULL DEFAULT now()
    )`,
@@ -121,50 +127,103 @@ export const FIN_SCHEMA = [
    )`,
 
   `CREATE TABLE IF NOT EXISTS fin_periods (
-     period    date PRIMARY KEY,
+     period    date NOT NULL,
+     entity    text NOT NULL DEFAULT 'strideup',
      status    text NOT NULL DEFAULT 'open',
-     closed_at timestamptz
+     closed_at timestamptz,
+     PRIMARY KEY (period, entity)
    )`,
 ];
 
 // ── Chart of accounts ────────────────────────────────────────
 // Deliberately small. Twenty-odd categories everyone understands beat eighty
 // that get miscoded; they are cheap to add later and expensive to merge.
+// Two charts of accounts. `entity` is which books a category belongs to;
+// "both" is for the genuinely shared ones — a bank charge or an insurance
+// premium reads the same either side.
 export const FIN_CATEGORIES = [
-  ["Programme revenue", "revenue", "Revenue", 10],
-  ["Coaching revenue", "revenue", "Revenue", 11],
-  ["Other income", "revenue", "Revenue", 19],
+  // ── StrideUp ──
+  ["Programme revenue", "revenue", "Revenue", 10, "strideup"],
+  ["Coaching revenue", "revenue", "Revenue", 11, "strideup"],
+  ["Other income", "revenue", "Revenue", 19, "strideup"],
 
-  ["Coach & contractor fees", "cogs", "Cost of sales", 20],
-  ["Programme delivery costs", "cogs", "Cost of sales", 21],
-  ["Payment processing fees", "cogs", "Cost of sales", 22],
+  ["Coach & contractor fees", "cogs", "Cost of sales", 20, "strideup"],
+  ["Programme delivery costs", "cogs", "Cost of sales", 21, "strideup"],
+  ["Payment processing fees", "cogs", "Cost of sales", 22, "strideup"],
 
-  ["Software & subscriptions", "opex", "Operating expenses", 30],
-  ["Marketing & advertising", "opex", "Operating expenses", 31],
-  ["Salaries & wages", "opex", "Operating expenses", 32],
-  ["Contractors (non-delivery)", "opex", "Operating expenses", 33],
-  ["Professional fees", "opex", "Operating expenses", 34],
-  ["Rent & facilities", "opex", "Operating expenses", 35],
-  ["Travel", "opex", "Operating expenses", 36],
-  ["Meals & entertainment", "opex", "Operating expenses", 37],
-  ["Telephone & internet", "opex", "Operating expenses", 38],
-  ["Insurance", "opex", "Operating expenses", 39],
-  ["Training & development", "opex", "Operating expenses", 40],
-  ["Office supplies", "opex", "Operating expenses", 41],
-  ["Bank charges", "opex", "Operating expenses", 42],
-  ["Other operating", "opex", "Operating expenses", 49],
+  ["Software & subscriptions", "opex", "Operating expenses", 30, "strideup"],
+  ["Marketing & advertising", "opex", "Operating expenses", 31, "strideup"],
+  ["Salaries & wages", "opex", "Operating expenses", 32, "strideup"],
+  ["Contractors (non-delivery)", "opex", "Operating expenses", 33, "strideup"],
+  ["Rent & facilities", "opex", "Operating expenses", 35, "strideup"],
+  ["Training & development", "opex", "Operating expenses", 40, "strideup"],
+  ["Office supplies", "opex", "Operating expenses", 41, "strideup"],
+  ["Other operating", "opex", "Operating expenses", 49, "strideup"],
+  ["Equipment & hardware", "capex", "Capital expenditure", 50, "strideup"],
+  ["Sales tax / VAT", "tax", "Tax", 60, "strideup"],
+  ["Corporation tax", "tax", "Tax", 61, "strideup"],
 
-  ["Equipment & hardware", "capex", "Capital expenditure", 50],
+  ["Equity investment", "capital", "Capital", 70, "strideup"],
+  ["Director's loan in", "capital", "Capital", 71, "strideup"],
+  ["Director's loan repaid", "capital", "Capital", 72, "strideup"],
+  ["Owner draw", "capital", "Capital", 73, "strideup"],
+  ["Grant received", "capital", "Capital", 74, "strideup"],
+  ["Processor payout", "transfer", "Transfers", 80, "strideup"],
 
-  ["Sales tax / VAT", "tax", "Tax", 60],
-  ["Corporation tax", "tax", "Tax", 61],
+  // ── Shared ──
+  ["Professional fees", "opex", "Operating expenses", 34, "both"],
+  ["Travel", "opex", "Operating expenses", 36, "both"],
+  ["Meals & entertainment", "opex", "Operating expenses", 37, "both"],
+  ["Telephone & internet", "opex", "Operating expenses", 38, "both"],
+  ["Insurance", "opex", "Operating expenses", 39, "both"],
+  ["Bank charges", "opex", "Operating expenses", 42, "both"],
+  ["Bank transfer", "transfer", "Transfers", 81, "both"],
 
-  ["Equity investment", "capital", "Capital", 70],
-  ["Director's loan in", "capital", "Capital", 71],
-  ["Director's loan repaid", "capital", "Capital", 72],
-  ["Owner draw", "capital", "Capital", 73],
-  ["Grant received", "capital", "Capital", 74],
+  // ── Personal ──
+  ["Rental income", "revenue", "Income", 110, "personal"],
+  ["Salary & drawings", "revenue", "Income", 111, "personal"],
+  ["Other personal income", "revenue", "Income", 119, "personal"],
 
-  ["Processor payout", "transfer", "Transfers", 80],
-  ["Bank transfer", "transfer", "Transfers", 81],
+  ["Rent or mortgage", "opex", "Living costs", 130, "personal"],
+  ["Utilities", "opex", "Living costs", 131, "personal"],
+  ["Groceries & household", "opex", "Living costs", 132, "personal"],
+  ["Personal subscriptions", "opex", "Living costs", 133, "personal"],
+  ["Transport & fuel", "opex", "Living costs", 134, "personal"],
+  ["Healthcare", "opex", "Living costs", 135, "personal"],
+  ["Education", "opex", "Living costs", 136, "personal"],
+  // An EMI is two things: the interest is a cost, the principal is not.
+  // Splitting them keeps a loan repayment out of the personal P&L.
+  ["Loan interest", "opex", "Living costs", 137, "personal"],
+  ["Other personal", "opex", "Living costs", 149, "personal"],
+
+  ["Loan principal repaid", "capital", "Capital", 170, "personal"],
+  ["Savings & investment", "capital", "Capital", 171, "personal"],
+];
+
+// ── Entities ─────────────────────────────────────────────────
+// Two sets of books in one app. They share a login and a database and nothing
+// else: no statement ever mixes them unless it shows them side by side.
+export const ENTITIES = ["strideup", "personal"];
+export const ENTITY_LABEL = { strideup: "StrideUp", personal: "Personal" };
+
+// ── Migrations ───────────────────────────────────────────────
+// Run after FIN_SCHEMA, each one independently and tolerant of already having
+// been applied — the schema above is what a fresh database gets, these bring an
+// existing one up to it. Failures are logged, never fatal.
+export const FIN_MIGRATIONS = [
+  `ALTER TABLE fin_entries      ADD COLUMN IF NOT EXISTS entity text NOT NULL DEFAULT 'strideup'`,
+  `ALTER TABLE fin_documents    ADD COLUMN IF NOT EXISTS entity text NOT NULL DEFAULT 'strideup'`,
+  `ALTER TABLE fin_invoices     ADD COLUMN IF NOT EXISTS entity text NOT NULL DEFAULT 'strideup'`,
+  `ALTER TABLE fin_bank_txns    ADD COLUMN IF NOT EXISTS entity text NOT NULL DEFAULT 'strideup'`,
+  `ALTER TABLE fin_rules        ADD COLUMN IF NOT EXISTS set_entity text`,
+  `ALTER TABLE fin_categories   ADD COLUMN IF NOT EXISTS entity text NOT NULL DEFAULT 'strideup'`,
+  `ALTER TABLE fin_periods      ADD COLUMN IF NOT EXISTS entity text NOT NULL DEFAULT 'strideup'`,
+  // Everything recorded before entities existed is StrideUp's.
+  `UPDATE fin_entries   SET entity = 'strideup' WHERE entity IS NULL`,
+  `UPDATE fin_documents SET entity = 'strideup' WHERE entity IS NULL`,
+  `UPDATE fin_invoices  SET entity = 'strideup' WHERE entity IS NULL`,
+  // Widen the period key so closing one set of books leaves the other open.
+  `ALTER TABLE fin_periods DROP CONSTRAINT IF EXISTS fin_periods_pkey`,
+  `ALTER TABLE fin_periods ADD PRIMARY KEY (period, entity)`,
+  `CREATE INDEX IF NOT EXISTS idx_fin_entries_entity ON fin_entries(entity, period)`,
 ];

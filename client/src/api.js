@@ -37,19 +37,19 @@ export const api = {
   login: (b) => request("POST", "/auth/login", b),
   logout: () => request("POST", "/auth/logout", {}),
 
-  finOverview: (period) =>
-    request("GET", `/finance/overview${period ? `?period=${period}` : ""}`),
+  finOverview: (period, entity) =>
+    request("GET", `/finance/overview?period=${period}&entity=${entity}`),
   finCategories: () => request("GET", "/finance/categories"),
-  finStatements: (period) =>
-    request("GET", `/finance/statements${period ? `?period=${period}` : ""}`),
+  finStatements: (period, entity) =>
+    request("GET", `/finance/statements?period=${period}&entity=${entity}`),
   finEntries: (q = "") => request("GET", `/finance/entries${q}`),
   finUpload: (b) => request("POST", "/finance/documents", b),
   finDeleteEntry: (id) => request("DELETE", `/finance/entries/${id}`),
   finPatchEntry: (id, b) => request("PATCH", `/finance/entries/${id}`, b),
   finAddEntry: (b) => request("POST", "/finance/entries", b),
   finImportGhl: (csv) => request("POST", "/finance/import/ghl", { csv }),
-  finClosePeriod: (period, reopen) =>
-    request("POST", "/finance/periods/close", { period, reopen }),
+  finClosePeriod: (period, entity, reopen) =>
+    request("POST", "/finance/periods/close", { period, entity, reopen }),
   finDocUrl: (id) => `/api/finance/documents/${id}`,
   finExportUrl: () => "/api/finance/export.csv",
 };

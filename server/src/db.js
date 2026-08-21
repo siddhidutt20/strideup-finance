@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import bcrypt from "bcryptjs";
 import { config } from "./config.js";
-import { FIN_SCHEMA, FIN_CATEGORIES } from "./finance/schema.js";
+import { FIN_SCHEMA, FIN_CATEGORIES, FIN_MIGRATIONS } from "./finance/schema.js";
 
 // Neon Postgres in production; a zero-setup embedded Postgres (pglite) for
 // local development. Both speak real Postgres, so the SQL is identical.
@@ -67,6 +67,15 @@ async function initialise() {
   const q = await getQueryFn();
   for (const stmt of SCHEMA) await q(stmt, []);
   for (const stmt of FIN_SCHEMA) await q(stmt, []);
+  // Migrations are independent and idempotent: a fresh database already has
+  // everything they add, so each one is expected to be a no-op there.
+  for (const stmt of FIN_MIGRATIONS) {
+    try {
+      await q(stmt, []);
+    } catch (err) {
+      console.warn(`[db] migration skipped: ${String(err.message).slice(0, 120)}`);
+    }
+  }
   await seedOwner();
   await seedCategories();
 }
@@ -93,12 +102,14 @@ export async function seedOwner() {
 }
 
 async function seedCategories() {
-  for (const [name, kind, pnlLine, sort] of FIN_CATEGORIES) {
+  for (const [name, kind, pnlLine, sort, entity] of FIN_CATEGORIES) {
     await run(
-      `INSERT INTO fin_categories (name, kind, pnl_line, sort) VALUES (?, ?, ?, ?)
+      `INSERT INTO fin_categories (name, kind, pnl_line, sort, entity)
+       VALUES (?, ?, ?, ?, ?)
        ON CONFLICT (name) DO UPDATE SET
-         kind = EXCLUDED.kind, pnl_line = EXCLUDED.pnl_line, sort = EXCLUDED.sort`,
-      [name, kind, pnlLine, sort]
+         kind = EXCLUDED.kind, pnl_line = EXCLUDED.pnl_line,
+         sort = EXCLUDED.sort, entity = EXCLUDED.entity`,
+      [name, kind, pnlLine, sort, entity || "strideup"]
     );
   }
 }
