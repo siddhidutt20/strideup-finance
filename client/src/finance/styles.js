@@ -631,6 +631,12 @@ export const VENDORS_CSS = `
 .vm-late{color:var(--fin-neg)!important;font-weight:600}
 /* The schedule under the ledger. Editing happens in the row itself, so the
    row becomes a form rather than opening a dialog somewhere else. */
+/* Three money-in figures, then three money-out, so the row breaks 3-and-3
+   rather than stranding one side's third card beside the other side's first. */
+.ct-kpis{grid-template-columns:repeat(6,minmax(0,1fr))}
+@media(max-width:1400px){.ct-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:760px){.ct-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:460px){.ct-kpis{grid-template-columns:minmax(0,1fr)}}
 .lg-sched{min-width:820px}
 .lg-sched .lg-ent{font-size:11.5px;color:var(--fin-muted)}
 .lg-acts{white-space:nowrap;display:flex;gap:6px}

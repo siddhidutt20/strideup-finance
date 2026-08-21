@@ -153,6 +153,27 @@ for (const ent of ["strideup","personal"]) {
                  m.total, f.committedIn);
   }
 
+  // The payment schedule's headline figures must be the rows beneath them.
+  // "Late" counted only money owed TO the business, so a payment the business
+  // was late paying read as $0 late while its own row said Overdue.
+  const sc = (await g(`/finance/schedule?entity=${ent}&period=${P}`)).byEntity[ent];
+  const occs = sc.rows.flatMap((r) =>
+    (r.months.find((m) => m.period === (sc.focus || sc.period))?.occurrences ?? [])
+      .map((o) => ({ ...o, direction: r.direction })));
+  const occSum = (dir, st) => occs.filter((o) => o.direction === dir && o.status === st)
+                                  .reduce((t, o) => t + o.amount, 0);
+  check("schedule: arrived = paid incoming rows", sc.tally.paidIn, occSum("in", "paid"));
+  check("schedule: still to arrive = due incoming rows", sc.tally.dueIn, occSum("in", "due"));
+  check("schedule: overdue in = overdue incoming rows", sc.tally.overdueIn, occSum("in", "overdue"));
+  check("schedule: paid out = paid outgoing rows", sc.tally.paidOut, occSum("out", "paid"));
+  check("schedule: still to pay = due outgoing rows", sc.tally.dueOut, occSum("out", "due"));
+  check("schedule: overdue out = overdue outgoing rows", sc.tally.overdueOut, occSum("out", "overdue"));
+  // Every overdue row on either side has to land in one of the two late figures.
+  const lateRows = occs.filter((o) => o.status === "overdue")
+                       .reduce((t, o) => t + o.amount, 0);
+  check("schedule: no overdue row is missing from a late figure",
+        (sc.tally.overdueIn + sc.tally.overdueOut), lateRows);
+
   // Receivables ageing must sum to the total.
   const b=dash.receivables.buckets;
   check("receivable buckets sum to total",

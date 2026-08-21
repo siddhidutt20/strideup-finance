@@ -55,6 +55,10 @@ export function ContractsView({ sched, money, onChange }) {
 
   const t = sched.tally;
   const arrears = sched.arrears;
+  // Late is this month's missed dates plus everything still unpaid from before
+  // it. Arrears on the money-out side were computed and never shown.
+  const lateIn = sched.tally.overdueIn + arrears.in;
+  const lateOut = sched.tally.overdueOut + arrears.out;
 
   // One line per payment falling due in the month being looked at. A contract
   // with twelve monthly installments has exactly one line here, not twelve —
@@ -77,28 +81,49 @@ export function ContractsView({ sched, money, onChange }) {
 
   return (
     <>
-      <div className="fc-kpis">
+      {/* Six figures, three a side. The row used to read arrived / still due /
+          late / going out, where the first three counted only money coming IN
+          and the fourth quietly folded an overdue payment in with the ones
+          still ahead. A payment you are late paying showed as $0 late while
+          the table beside it said Overdue, and arrears you owed from earlier
+          months appeared nowhere at all. Each side now says the same three
+          things, and says which side it means. */}
+      <div className="fc-kpis ct-kpis">
         <article className="fc-kpi">
           <header><span>Arrived this month</span></header>
           <p className="fin-fig fe-in">{money.round(t.paidIn)}</p>
           <footer>from contracts, recorded in the ledger</footer>
         </article>
         <article className="fc-kpi">
-          <header><span>Still due this month</span></header>
+          <header><span>Still to arrive</span></header>
           <p className="fin-fig">{money.round(t.dueIn)}</p>
-          <footer>agreed, not yet arrived</footer>
+          <footer>owed to you, date not reached</footer>
         </article>
-        <article className={`fc-kpi${(t.overdueIn + arrears.in) > 0 ? " warn" : ""}`}>
-          <header><span>Late</span></header>
-          <p className={`fin-fig${(t.overdueIn + arrears.in) > 0 ? " fe-out" : ""}`}>
-            {money.round(t.overdueIn + arrears.in)}
-          </p>
-          <footer>past its date with nothing recorded</footer>
+        <article className={`fc-kpi${lateIn > 0 ? " warn" : ""}`}>
+          <header><span>Late to arrive</span></header>
+          <p className={`fin-fig${lateIn > 0 ? " fe-out" : ""}`}>{money.round(lateIn)}</p>
+          <footer>
+            owed to you, past its date
+            {arrears.in > 0 && ` · ${money.round(arrears.in)} from earlier months`}
+          </footer>
         </article>
         <article className="fc-kpi">
-          <header><span>Going out this month</span></header>
-          <p className="fin-fig fe-out">{money.round(t.dueOut + t.overdueOut)}</p>
-          <footer>{money.round(t.paidOut)} already paid</footer>
+          <header><span>Paid out this month</span></header>
+          <p className="fin-fig fe-out">{money.round(t.paidOut)}</p>
+          <footer>settled against a contract</footer>
+        </article>
+        <article className="fc-kpi">
+          <header><span>Still to pay</span></header>
+          <p className="fin-fig">{money.round(t.dueOut)}</p>
+          <footer>you owe it, date not reached</footer>
+        </article>
+        <article className={`fc-kpi${lateOut > 0 ? " warn" : ""}`}>
+          <header><span>Late to pay</span></header>
+          <p className={`fin-fig${lateOut > 0 ? " fe-out" : ""}`}>{money.round(lateOut)}</p>
+          <footer>
+            you owe it, past its date
+            {arrears.out > 0 && ` · ${money.round(arrears.out)} from earlier months`}
+          </footer>
         </article>
       </div>
 

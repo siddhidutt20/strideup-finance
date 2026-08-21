@@ -137,7 +137,7 @@ reaches all of them.
 
 ## Checking the numbers
 
-`scripts/audit.mjs` runs 158 cross-page reconciliations against a running
+`scripts/audit.mjs` runs 172 cross-page reconciliations against a running
 server: every headline figure against the ledger it came from, and against
 the same figure wherever else it appears. It catches the class of fault that
 matters most here — two pages disagreeing about one number — which no unit
@@ -231,6 +231,13 @@ different files per case.
   legible, and inside an `overflow-x:auto` wrapper that is meant to scroll. As
   a grid item, `.fin` grew to 736px on a 390px phone instead. `min-width:0` was
   not enough; `width:100%` with `box-sizing:border-box` is what pins it.
+- **A one-sided figure with a two-sided label.** The payment schedule read
+  arrived / still due / late / going out, where the first three counted only
+  money coming IN and the fourth folded an overdue payment in with the ones
+  still ahead. A bill you were late paying showed $0 late beside its own row
+  marked Overdue, and arrears you owed from earlier months were computed and
+  shown nowhere. Money in and money out each get the same three figures now.
+  Any total over a directional table needs the direction in its label.
 - **One `Promise.all` for nine unrelated calls.** A 500 on the vendor list left
   every other result unassigned, so the Overview — which does not use the
   vendor list — rendered nothing at all, forever. They are `allSettled` now:
