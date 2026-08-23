@@ -177,6 +177,22 @@ export const FIN_SCHEMA = [
   // Marking one paid is what turns a promise into money: it writes a real
   // ledger entry. Until then the contract is visible everywhere as committed,
   // and counts toward nothing that claims to be revenue or cash.
+  // What a month was meant to cost, per category. A budget is a plan, never a
+  // fact: nothing here is ever summed into a total, and no page reads a budget
+  // where it should read the ledger. It exists so "actual against plan" can be
+  // answered at all — without it there is no variance to show, only two
+  // months side by side.
+  `CREATE TABLE IF NOT EXISTS fin_budgets (
+     id           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+     entity       text NOT NULL DEFAULT 'strideup',
+     period       date NOT NULL,
+     category_id  integer NOT NULL REFERENCES fin_categories(id) ON DELETE CASCADE,
+     amount_minor bigint NOT NULL,
+     note         text,
+     updated_at   timestamptz NOT NULL DEFAULT now(),
+     UNIQUE (entity, period, category_id)
+   )`,
+
   `CREATE TABLE IF NOT EXISTS fin_commitment_payments (
      id             bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
      commitment_id  bigint NOT NULL REFERENCES fin_commitments(id) ON DELETE CASCADE,
@@ -300,6 +316,8 @@ export const FIN_MIGRATIONS = [
      ON fin_commitments(entity, status, start_date)`,
   `CREATE INDEX IF NOT EXISTS idx_fin_commitment_payments_due
      ON fin_commitment_payments(due_date)`,
+  `CREATE INDEX IF NOT EXISTS idx_fin_budgets_period
+     ON fin_budgets(entity, period)`,
 ];
 
 // How often a commitment recurs. "once" is a single dated payment — a

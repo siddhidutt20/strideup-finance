@@ -179,6 +179,63 @@ for (const ent of ["strideup","personal"]) {
   check("schedule: no overdue row is missing from a late figure",
         (sc.tally.overdueIn + sc.tally.overdueOut), lateRows);
 
+  // ── Profit and loss ──
+  // The statement has to be the same arithmetic as the pages it summarises,
+  // and the plan column has to stay a plan: never added into a position, and
+  // never standing in for a figure the ledger should have supplied.
+  const plr = (await g(`/finance/pl?entity=${ent}&period=${P}&span=month`)).byEntity[ent];
+  const S = plr.statement;
+  check("P&L revenue = the revenue page's month", S.revenue.actual, sin.thisMonth);
+  check("P&L gross profit = revenue − cost of revenue",
+        S.grossProfit.actual, S.revenue.actual - S.cogs.actual);
+  check("P&L opex lines sum to their total",
+        S.opex.reduce((t, l) => t + l.actual, 0), S.opexTotal.actual);
+  check("P&L operating profit = gross − opex",
+        S.operatingProfit.actual, S.grossProfit.actual - S.opexTotal.actual);
+  check("P&L net profit = operating − tax",
+        S.netProfit.actual, S.operatingProfit.actual - S.tax.actual);
+  check("P&L expenses = the expenses page's month",
+        S.opexTotal.actual + S.cogs.actual + S.tax.actual, sout.thisMonth);
+  check("P&L expense donut = cost of sales + opex + tax",
+        plr.expenseMix.reduce((t, r) => t + r.total, 0),
+        S.opexTotal.actual + S.cogs.actual + S.tax.actual);
+  check("P&L revenue donut = revenue", plr.revenueMix.reduce((t, r) => t + r.total, 0),
+        S.revenue.actual);
+  const last = plr.trend.at(-1);
+  check("P&L trend ends on the month being read", last.revenue, S.revenue.actual);
+  check("P&L trend net profit = the statement's", last.netProfit, S.netProfit.actual);
+
+  // The plan, if there is one, must hold together the same way.
+  if (S.hasBudget) {
+    check("P&L plan: gross = revenue − cost of revenue",
+          S.grossProfit.budget, S.revenue.budget - S.cogs.budget);
+    check("P&L plan: opex lines sum to their total",
+          S.opex.reduce((t, l) => t + (l.budget ?? 0), 0), S.opexTotal.budget);
+    check("P&L plan: operating = gross − opex",
+          S.operatingProfit.budget, S.grossProfit.budget - S.opexTotal.budget);
+    check("P&L plan: net = operating − tax",
+          S.netProfit.budget, S.operatingProfit.budget - S.tax.budget);
+    for (const l of [S.revenue, S.cogs, S.opexTotal, S.netProfit]) {
+      check(`  P&L variance on "${l.name}" = actual − plan`, l.variance, l.actual - l.budget);
+    }
+    // Under plan is good for a cost and bad for revenue; one sign convention
+    // cannot serve both, so the flag must follow the line's own direction.
+    const wrong = [S.revenue, S.grossProfit, S.netProfit].filter(
+      (l) => l.budget != null && l.favourable !== (l.actual >= l.budget)
+    ).length + S.opex.filter(
+      (l) => l.budget != null && l.favourable !== (l.actual <= l.budget)
+    ).length;
+    check("P&L favourable follows the line's direction", wrong, 0);
+  }
+  // A quarter is three months of the same statement, added.
+  const q = (await g(`/finance/pl?entity=${ent}&period=${P}&span=quarter`)).byEntity[ent];
+  let qRev = 0;
+  for (const p2 of q.statement.periods) {
+    const one = (await g(`/finance/pl?entity=${ent}&period=${p2}&span=month`)).byEntity[ent];
+    qRev += one.statement.revenue.actual;
+  }
+  check("P&L quarter revenue = its three months", q.statement.revenue.actual, qRev);
+
   // Receivables ageing must sum to the total.
   const b=dash.receivables.buckets;
   check("receivable buckets sum to total",

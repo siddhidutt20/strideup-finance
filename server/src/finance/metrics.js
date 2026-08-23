@@ -1748,3 +1748,248 @@ export async function overviewDashboard(entity, today = new Date(), period = nul
     needsReview: await reviewCount(entity),
   };
 }
+
+// ── Budgets, and actual against them ─────────────────────────
+// A budget is a plan. It is never summed into a position, never counted as
+// money, and never fills a gap in the ledger — it exists only so a month can
+// be read against what it was meant to be. Every figure below keeps the two
+// apart: `actual` comes from entries, `budget` from the plan, and `variance`
+// is the difference with its own sign convention per direction.
+export async function budgetsFor(entity, period) {
+  return (
+    await all(
+      `SELECT b.category_id, b.amount_minor, b.note,
+              c.name, c.kind, c.spend_group
+         FROM fin_budgets b
+         JOIN fin_categories c ON c.id = b.category_id
+        WHERE b.period = ?${entity && entity !== "both" ? " AND b.entity = ?" : ""}`,
+      entity && entity !== "both" ? [period, entity] : [period]
+    )
+  ).map((r) => ({
+    categoryId: Number(r.category_id),
+    amount: Number(r.amount_minor),
+    note: r.note ?? null,
+    name: r.name,
+    kind: r.kind,
+    group: r.spend_group ?? null,
+  }));
+}
+
+// Spending less than planned is good; earning less than planned is not. One
+// sign convention cannot serve both, so favourable is computed per direction
+// rather than left to the reader to work out from a minus sign.
+const favourable = (kind, actual, budget) =>
+  kind === "revenue" ? actual >= budget : actual <= budget;
+
+function line(name, kind, actual, budget, group = null) {
+  const has = budget != null;
+  return {
+    name, kind, group,
+    actual,
+    budget: has ? budget : null,
+    variance: has ? actual - budget : null,
+    variancePct: has && budget !== 0 ? (actual - budget) / Math.abs(budget) : null,
+    favourable: has ? favourable(kind, actual, budget) : null,
+  };
+}
+
+// The statement, for one month or a run of them, with the plan beside it.
+// `months` is how many periods ending at `period` to add together — 1 for the
+// month, 3 for the quarter, and however many have elapsed for year to date.
+export async function plStatement(entity, period, months = 1) {
+  const periods = [];
+  for (let i = months - 1; i >= 0; i--) periods.push(addMonths(period, -i));
+
+  const parts = await Promise.all(periods.map((p) => profitAndLoss(p, entity)));
+  const budgets = (await Promise.all(periods.map((p) => budgetsFor(entity, p)))).flat();
+
+  // Actuals, added across the periods in view.
+  const add = (pick) => parts.reduce((t, x) => t + pick(x), 0);
+  const revenue = add((x) => x.revenue.total);
+  const cogs = add((x) => x.cogs.total);
+  const tax = add((x) => x.tax.total);
+
+  // Operating expenses read under the five headings the rest of the app uses,
+  // so a line here and the same line on the Expenses page cannot disagree.
+  const opexRows = [];
+  for (const x of parts) {
+    for (const l of x.opex.lines) opexRows.push({ name: l.name, total: l.amount, count: 1 });
+  }
+  const byCat = new Map();
+  for (const r of opexRows) {
+    const cur = byCat.get(r.name) ?? { name: r.name, total: 0, count: 0, group: null };
+    cur.total += r.total; cur.count += r.count;
+    byCat.set(r.name, cur);
+  }
+  // The group each category belongs to, taken from the chart of accounts.
+  const cats = await all("SELECT name, spend_group FROM fin_categories");
+  const groupOf = new Map(cats.map((c) => [c.name, c.spend_group ?? null]));
+  for (const r of byCat.values()) r.group = groupOf.get(r.name) ?? null;
+  const opexGrouped = groupSpend([...byCat.values()].sort((a, b) => b.total - a.total));
+
+  // The plan, aggregated the same way.
+  // Once a plan exists for the period, a line left blank is a plan of zero —
+  // you did not budget for it, so anything spent there is entirely over plan.
+  // With no budget at all, every plan is null and the column stays empty
+  // rather than claiming the whole month was unplanned.
+  const anyPlan = budgets.length > 0;
+  const planFor = (pred) => {
+    if (!anyPlan) return null;
+    return budgets.filter(pred).reduce((t, b) => t + b.amount, 0);
+  };
+  const opexPlanByGroup = new Map();
+  for (const b of budgets.filter((x) => x.kind === "opex")) {
+    const g = b.group ?? "G&A";
+    opexPlanByGroup.set(g, (opexPlanByGroup.get(g) ?? 0) + b.amount);
+  }
+
+  const revenuePlan = planFor((b) => b.kind === "revenue");
+  const cogsPlan = planFor((b) => b.kind === "cogs");
+  const taxPlan = planFor((b) => b.kind === "tax");
+
+  const opexLines = opexGrouped.map((r) =>
+    line(r.name, "opex", r.total,
+         anyPlan ? (opexPlanByGroup.get(r.name) ?? 0) : null, r.name)
+  );
+  // A heading with a plan and nothing spent still belongs on the statement —
+  // an untouched budget is exactly what someone opens this page to find.
+  for (const [g, plan] of opexPlanByGroup) {
+    if (!opexLines.some((l) => l.name === g)) opexLines.push(line(g, "opex", 0, plan, g));
+  }
+  opexLines.sort((a, b) => b.actual - a.actual || (b.budget ?? 0) - (a.budget ?? 0));
+
+  const opexTotal = opexLines.reduce((t, l) => t + l.actual, 0);
+  const opexPlan = anyPlan ? opexLines.reduce((t, l) => t + (l.budget ?? 0), 0) : null;
+
+  const grossProfit = revenue - cogs;
+  const grossPlan = revenuePlan != null && cogsPlan != null ? revenuePlan - cogsPlan : null;
+  const operating = grossProfit - opexTotal;
+  const operatingPlan = grossPlan != null && opexPlan != null ? grossPlan - opexPlan : null;
+  const preTax = operating;
+  const preTaxPlan = operatingPlan;
+  const net = preTax - tax;
+  const netPlan = preTaxPlan != null && taxPlan != null ? preTaxPlan - taxPlan : null;
+
+  // A margin needs both halves. `null / x` is 0 in JavaScript, which quietly
+  // turned "no plan" into "a planned margin of nought per cent".
+  const pct = (n, d) => (n != null && d != null && d > 0 ? (n / d) * 100 : null);
+
+  return {
+    entity, period, months,
+    periods,
+    revenue: line("Revenue", "revenue", revenue, revenuePlan),
+    cogs: line("Cost of revenue", "cogs", cogs, cogsPlan),
+    grossProfit: line("Gross profit", "revenue", grossProfit, grossPlan),
+    grossMargin: { actual: pct(grossProfit, revenue), budget: pct(grossPlan, revenuePlan) },
+    opex: opexLines,
+    opexTotal: line("Total operating expenses", "opex", opexTotal, opexPlan),
+    operatingProfit: line("Operating profit", "revenue", operating, operatingPlan),
+    operatingMargin: { actual: pct(operating, revenue), budget: pct(operatingPlan, revenuePlan) },
+    tax: line("Tax", "tax", tax, taxPlan),
+    preTax: line("Profit before tax", "revenue", preTax, preTaxPlan),
+    netProfit: line("Net profit", "revenue", net, netPlan),
+    netMargin: { actual: pct(net, revenue), budget: pct(netPlan, revenuePlan) },
+    hasBudget: budgets.length > 0,
+  };
+}
+
+// Twelve months of the four profit lines and the three margins, for the
+// combo chart and the margin chart. Every figure is recorded — no month here
+// is projected, because a P&L is a record of what happened.
+export async function plTrend(entity, endPeriod, months = 12) {
+  const periods = [];
+  for (let i = months - 1; i >= 0; i--) periods.push(addMonths(endPeriod, -i));
+  const parts = await Promise.all(periods.map((p) => profitAndLoss(p, entity)));
+  return parts.map((x, i) => {
+    const revenue = x.revenue.total;
+    const gross = x.grossProfit;
+    const operating = x.operatingProfit;
+    const net = x.netProfit;
+    const pct = (n) => (revenue > 0 ? (n / revenue) * 100 : null);
+    return {
+      period: periods[i], revenue, grossProfit: gross,
+      operatingProfit: operating, netProfit: net,
+      grossMargin: pct(gross), operatingMargin: pct(operating), netMargin: pct(net),
+    };
+  });
+}
+
+// The lines furthest from their plan, largest gap first. Only lines that have
+// a plan can appear — a category with no budget has no variance, and guessing
+// one would be inventing the number the whole panel is about.
+export function topVariances(st, limit = 6) {
+  return st.opex
+    .filter((l) => l.budget != null)
+    .map((l) => ({ ...l, size: Math.abs(l.variance) }))
+    .sort((a, b) => b.size - a.size)
+    .slice(0, limit);
+}
+
+// What the statement says, in sentences. Every line restates a figure that is
+// visible on the same page — this is arithmetic with a vocabulary, not a
+// model's opinion, which is why nothing here can say something the numbers do
+// not. Three groups, matching how a board reads it.
+export function plInsights(st, prev, trend, money) {
+  const overall = [];
+  const positives = [];
+  const watch = [];
+  const pctOf = (n, d) => (d ? Math.round((n / d) * 100) : null);
+  const fmt = (v) => money(v);
+
+  const revChange = prev?.revenue?.actual
+    ? (st.revenue.actual - prev.revenue.actual) / Math.abs(prev.revenue.actual) : null;
+  const netChange = prev?.netProfit?.actual
+    ? (st.netProfit.actual - prev.netProfit.actual) / Math.abs(prev.netProfit.actual) : null;
+
+  if (st.revenue.actual > 0) {
+    overall.push(
+      `Revenue of ${fmt(st.revenue.actual)}` +
+      (revChange != null
+        ? `, ${revChange >= 0 ? "up" : "down"} ${Math.abs(Math.round(revChange * 100))}% on the month before`
+        : "") +
+      (st.netMargin.actual != null
+        ? `, at a ${Math.round(st.netMargin.actual)}% net margin.`
+        : ".")
+    );
+  } else {
+    overall.push(`No revenue is recorded for this period.`);
+  }
+  if (st.netProfit.actual < 0) {
+    overall.push(`The period is at a loss of ${fmt(Math.abs(st.netProfit.actual))}.`);
+  }
+
+  if (revChange != null && revChange > 0.02) {
+    positives.push(`Revenue grew ${Math.round(revChange * 100)}% on the month before.`);
+  }
+  if (st.grossMargin.actual != null && st.grossMargin.actual >= 60) {
+    positives.push(`Gross margin is ${Math.round(st.grossMargin.actual)}%.`);
+  }
+  if (netChange != null && netChange > 0.02) {
+    positives.push(`Net profit is up ${Math.round(netChange * 100)}% on the month before.`);
+  }
+  for (const l of st.opex.filter((x) => x.favourable === true && x.variance < 0).slice(0, 2)) {
+    positives.push(`${l.name} came in ${fmt(Math.abs(l.variance))} under plan.`);
+  }
+
+  const over = st.opex.filter((l) => l.favourable === false)
+                      .sort((a, b) => b.variance - a.variance);
+  for (const l of over.slice(0, 3)) {
+    watch.push(
+      `${l.name} is ${fmt(l.variance)} over plan` +
+      (l.variancePct != null ? ` (${Math.round(l.variancePct * 100)}%).` : ".")
+    );
+  }
+  if (st.operatingMargin.actual != null && st.operatingMargin.actual < 0) {
+    watch.push(`Operating margin is negative: costs exceed gross profit.`);
+  }
+  if (!st.hasBudget) {
+    watch.push(`No budget is set for this period, so nothing here is measured against a plan.`);
+  }
+  const worst = [...(trend ?? [])].filter((m) => m.netMargin != null)
+                                  .sort((a, b) => a.netMargin - b.netMargin)[0];
+  if (worst && st.netMargin.actual != null && worst.period === st.period &&
+      (trend?.length ?? 0) > 3) {
+    watch.push(`This is the lowest net margin of the last ${trend.length} months.`);
+  }
+  return { overall, positives, watch, pctOf };
+}

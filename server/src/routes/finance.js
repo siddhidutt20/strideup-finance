@@ -16,6 +16,7 @@ import {
   profitAndLoss, cashflow, byCounterparty, forecast, activeCommitments, dueSoon,
   contractSchedule, occurrencesIn, occKey, statusOf, outstandingOn, commitmentsForMonth, paymentMap, committedRunUp,
   vendorManagement, contractLibrary, cashDashboard, sideDetail, overviewDashboard,
+  budgetsFor, plStatement, plTrend, topVariances, plInsights, groupSpend,
 } from "../finance/metrics.js";
 
 export const financeRouter = express.Router();
@@ -1436,6 +1437,170 @@ financeRouter.delete(
 
     await run("DELETE FROM fin_invoices WHERE id = ?", [id]);
     res.json({ ok: true, removedEntries: entries.length });
+  })
+);
+
+// ── Budgets ──────────────────────────────────────────────────
+// A plan for a month, per category. Read and written whole: the page shows
+// every category you could budget, so saving sends the lot and an empty box
+// means "no plan", which is different from a plan of zero.
+financeRouter.get(
+  "/budgets",
+  ah(async (req, res) => {
+    const period = periodParam.safeParse(req.query.period).success
+      ? req.query.period : monthStart();
+    const { choice, list } = resolveEntities(req.query.entity);
+    const byEntity = {};
+    for (const ent of list) {
+      byEntity[ent] = {
+        entity: ent, label: ENTITY_LABEL[ent], period,
+        budgets: await budgetsFor(ent, period),
+      };
+    }
+    res.json({ entity: choice, entities: list, period, byEntity,
+               baseCurrency: config.finance.baseCurrency });
+  })
+);
+
+const budgetSchema = z.object({
+  entity: entityOnly,
+  period: z.string().regex(/^\d{4}-\d{2}-01$/),
+  lines: z.array(z.object({
+    categoryId: z.number().int().positive(),
+    // null clears the plan for that category. Zero is a real plan — "spend
+    // nothing here" — and is kept apart from having no plan at all.
+    amount: z.number().min(0).max(1e12).nullable(),
+    note: z.string().trim().max(200).nullish(),
+  })).max(200),
+});
+
+financeRouter.put(
+  "/budgets",
+  ah(async (req, res) => {
+    const parsed = budgetSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Could not read that budget." });
+    const { entity, period, lines } = parsed.data;
+
+    const closed = await get(
+      "SELECT status FROM fin_periods WHERE period = ? AND entity = ?", [period, entity]
+    );
+    if (closed?.status === "closed") {
+      return res.status(409).json({
+        error: "That month is closed. A closed month is never rewritten, and its " +
+               "plan is part of the record.",
+      });
+    }
+
+    let set = 0, cleared = 0;
+    for (const l of lines) {
+      const cat = await get(
+        "SELECT id, entity FROM fin_categories WHERE id = ?", [l.categoryId]
+      );
+      if (!cat) continue;
+      if (cat.entity !== "both" && cat.entity !== entity) continue;
+      if (l.amount == null) {
+        await run(
+          "DELETE FROM fin_budgets WHERE entity = ? AND period = ? AND category_id = ?",
+          [entity, period, l.categoryId]
+        );
+        cleared += 1;
+        continue;
+      }
+      const currency = config.finance.baseCurrency;
+      await run(
+        `INSERT INTO fin_budgets (entity, period, category_id, amount_minor, note)
+         VALUES (?,?,?,?,?)
+         ON CONFLICT (entity, period, category_id) DO UPDATE SET
+           amount_minor = EXCLUDED.amount_minor, note = EXCLUDED.note,
+           updated_at = now()`,
+        [entity, period, l.categoryId, toMinor(l.amount, currency), l.note ?? null]
+      );
+      set += 1;
+    }
+    res.json({ ok: true, set, cleared });
+  })
+);
+
+// Last month's plan, as this month's starting point. Budgets rarely change
+// wholesale, and retyping twenty lines is how a budget stops being kept.
+financeRouter.post(
+  "/budgets/copy",
+  ah(async (req, res) => {
+    const parsed = z.object({
+      entity: entityOnly,
+      period: z.string().regex(/^\d{4}-\d{2}-01$/),
+      from: z.string().regex(/^\d{4}-\d{2}-01$/).optional(),
+    }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Bad request." });
+    const { entity, period } = parsed.data;
+    const from = parsed.data.from ?? isoDate(
+      new Date(Date.UTC(+period.slice(0, 4), +period.slice(5, 7) - 2, 1))
+    );
+    const rows = await all(
+      "SELECT category_id, amount_minor, note FROM fin_budgets WHERE entity = ? AND period = ?",
+      [entity, from]
+    );
+    for (const r of rows) {
+      await run(
+        `INSERT INTO fin_budgets (entity, period, category_id, amount_minor, note)
+         VALUES (?,?,?,?,?)
+         ON CONFLICT (entity, period, category_id) DO UPDATE SET
+           amount_minor = EXCLUDED.amount_minor, updated_at = now()`,
+        [entity, period, r.category_id, r.amount_minor, r.note]
+      );
+    }
+    res.json({ ok: true, copied: rows.length, from });
+  })
+);
+
+// ── Profit and loss ──────────────────────────────────────────
+// The statement, the plan beside it, twelve months of trend, and what the
+// two together say. `months` folds the periods: 1 for the month, 3 for the
+// quarter, and however many have elapsed for year to date.
+financeRouter.get(
+  "/pl",
+  ah(async (req, res) => {
+    const period = periodParam.safeParse(req.query.period).success
+      ? req.query.period : monthStart();
+    const span = ["month", "quarter", "ytd"].includes(req.query.span)
+      ? req.query.span : "month";
+    const months = span === "month" ? 1
+      : span === "quarter" ? 3
+      : Number(period.slice(5, 7));
+    const compare = periodParam.safeParse(req.query.compare).success
+      ? req.query.compare
+      : isoDate(new Date(Date.UTC(+period.slice(0, 4), +period.slice(5, 7) - 2, 1)));
+
+    const { choice, list } = resolveEntities(req.query.entity);
+    const byEntity = {};
+    for (const ent of list) {
+      const [st, before, trend, revenueMix, expenseMix] = await Promise.all([
+        plStatement(ent, period, months),
+        plStatement(ent, compare, months),
+        plTrend(ent, period, 12),
+        categoryBreakdown(period, ent),
+        categoryBreakdown(period, ent),
+      ]);
+      const money = (v) => `${config.finance.baseCurrency} ${(v / 100).toLocaleString()}`;
+      byEntity[ent] = {
+        entity: ent, label: ENTITY_LABEL[ent], span, compare,
+        statement: st,
+        previous: before,
+        trend,
+        variances: topVariances(st),
+        insights: plInsights(st, before, trend, money),
+        revenueMix: revenueMix
+          .filter((r) => r.kind === "revenue" && r.direction === "in")
+          .map((r) => ({ name: r.name, total: r.amount })),
+        expenseMix: groupSpend(
+          expenseMix
+            .filter((r) => ["cogs", "opex", "tax"].includes(r.kind) && r.direction === "out")
+            .map((r) => ({ name: r.name, group: r.group, total: r.amount, count: r.count }))
+        ),
+      };
+    }
+    res.json({ entity: choice, entities: list, period, span, compare, byEntity,
+               baseCurrency: config.finance.baseCurrency });
   })
 );
 

@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api.js";
-import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS, FUTURE_CSS, CASHFLOW_AHEAD_CSS, CF_NONE_CSS, VENDORS_CSS, CASH_CSS, CONTRACTS_GROUP_CSS, SIDE_CSS, CASH_BAND_CSS, NARROW_FIX_CSS, INVOICE_CSS, RECORD_CSS, OVERVIEW_CSS } from "./finance/styles.js";
+import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS, FUTURE_CSS, CASHFLOW_AHEAD_CSS, CF_NONE_CSS, VENDORS_CSS, CASH_CSS, CONTRACTS_GROUP_CSS, SIDE_CSS, CASH_BAND_CSS, NARROW_FIX_CSS, INVOICE_CSS, RECORD_CSS, OVERVIEW_CSS, PL_CSS } from "./finance/styles.js";
 import {
   fmtAmount, monthLabel, readFile, shiftMonth, thisMonth, useMoney, ZERO_DECIMAL,
   ENTITY_LABEL, ENTITY_CHOICES, loadEntity, saveEntity,
 } from "./finance/format.js";
 import {
-  OverviewView, PnlView, LedgerView, ToolsView,
+  OverviewView, LedgerView, ToolsView,
 } from "./finance/views.jsx";
 import { ForecastView } from "./finance/forecast.jsx";
 import { ContractsView } from "./finance/contracts.jsx";
@@ -14,6 +14,7 @@ import { VendorsView } from "./finance/vendors.jsx";
 import { CashView } from "./finance/cash.jsx";
 import { OverviewDash } from "./finance/overview.jsx";
 import { SideView } from "./finance/side.jsx";
+import { PlView } from "./finance/pl.jsx";
 import { PayInvoice, InvoiceList } from "./finance/invoice.jsx";
 import { NewRecord } from "./finance/record.jsx";
 import { DueSoon } from "./finance/spend.jsx";
@@ -38,7 +39,7 @@ const VIEWS = [
   ["ledger", "Ledger", "Ledger", "Every entry in"],
   ["tools", "Import & close", "Import and close", "Bring in revenue, and settle"],
 ];
-const NEEDS_STATEMENTS = new Set(["revenue", "expenses", "cashflow", "pnl"]);
+const NEEDS_STATEMENTS = new Set(["revenue", "expenses", "cashflow"]);
 
 // Months ahead the picker will walk to. Future months hold no actuals — the
 // point of visiting one is to see what is already committed to land in it.
@@ -68,6 +69,11 @@ export default function FinanceDashboard({ owner, onLogout }) {
   const [cash, setCash] = useState(null);
   const [dash, setDash] = useState(null);
   const [dashFailed, setDashFailed] = useState(false);
+  const [pl, setPl] = useState(null);
+  const [plSpan, setPlSpan] = useState("month");
+  // Which period the statement is read against. Null follows the month
+  // picker — one back — until a month is chosen deliberately.
+  const [plCompare, setPlCompare] = useState(null);
   const [sides, setSides] = useState(null);
   const [invoices, setInvoices] = useState(null);
   const [paying, setPaying] = useState(null);
@@ -105,6 +111,11 @@ export default function FinanceDashboard({ owner, onLogout }) {
   );
 
   useEffect(() => { load(period); /* eslint-disable-next-line */ }, [period, ledgerScope, entity]);
+
+  // A comparison month chosen for August makes no sense once the picker moves
+  // to June, so it follows the picker back to the default rather than being
+  // silently kept.
+  useEffect(() => { setPlCompare(null); }, [period]);
 
   // Statements are fetched only when a statement view is opened, so the
   // dashboard does not pay for four of them nobody asked to see.
@@ -158,6 +169,21 @@ export default function FinanceDashboard({ owner, onLogout }) {
         && period <= thisMonth()) return;
     loadForecast();
   }, [view, entity, period, loadForecast]);
+
+  // The P&L carries a statement, a plan, twelve months of trend and the
+  // comparison period, so it is fetched only when that page is open.
+  const loadPl = useCallback(async () => {
+    try {
+      setPl(await api.finPl(entity, period, plSpan, plCompare));
+    } catch (err) {
+      setError(err.message || "Could not load the profit and loss.");
+    }
+  }, [entity, period, plSpan, plCompare]);
+
+  useEffect(() => {
+    if (view !== "pnl") return;
+    loadPl();
+  }, [view, loadPl]);
 
   // How many committed payments fall due in the next 30 days, across whichever
   // books are in view. Shown on the nav so it is visible without opening it.
@@ -332,7 +358,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
         {/* Joined in JS, not as three JSX children: a <style> element with
             several text children does not reliably end up with all of them in
             the DOM, and the symptom is a stylesheet that silently truncates. */}
-        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS}</style>
+        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS + PL_CSS}</style>
         <div className="fin-boot"><div className="fin-spinner" /></div>
       </div>
     );
@@ -365,7 +391,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
 
   return (
     <div className="fin-app">
-      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS}</style>
+      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS + PL_CSS}</style>
 
       <aside className="fin-side" aria-label="Sections">
         <div className="fin-sidebrand">
@@ -553,16 +579,20 @@ export default function FinanceDashboard({ owner, onLogout }) {
               )}
             </>
           )}
-          {view === "pnl" && statements && (
-            <div className={entityList.length > 1 ? "fin-sidebyside" : ""}>
-              {entityList.map((ent) => (
-                <EntityBlock key={ent} show={entityList.length > 1}
-                             label={statements.byEntity[ent].label}>
-                  <PnlView st={statements.byEntity[ent]} money={money} period={period} />
-                </EntityBlock>
-              ))}
-            </div>
-          )}
+          {view === "pnl" && (pl && pl.period === period ? (
+            (pl.entities ?? [entity]).map((ent) => (
+              <EntityBlock key={`pl-${ent}`} show={(pl.entities ?? []).length > 1}
+                           label={pl.byEntity[ent].label}>
+                <PlView pl={pl.byEntity[ent]} money={money} period={period}
+                        span={plSpan} compare={pl.compare}
+                        onSpan={setPlSpan} onCompare={setPlCompare}
+                        categories={categories} entity={ent}
+                        onBudgetSaved={loadPl} />
+              </EntityBlock>
+            ))
+          ) : (
+            <div className="fin-boot"><div className="fin-spinner" /></div>
+          ))}
           {view === "ledger" && (
             <LedgerView entries={entries} categories={categories} money={money}
                         baseCurrency={data?.baseCurrency || "USD"} period={period}

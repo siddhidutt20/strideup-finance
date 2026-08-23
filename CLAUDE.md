@@ -124,6 +124,21 @@ that table. There is no second store, so there is nothing to reconcile between.
 | `client/src/finance/pieces.jsx` | Panels, KPI tiles, charts, ranked lists |
 | `client/src/finance/styles.js` | All CSS |
 
+## A plan is not a fact
+
+`fin_budgets` holds what a month was meant to cost, per category. It is the
+fourth kind of claim on this app, and it is kept apart from the other three the
+same way: a budget is never summed into a position, never fills a gap the
+ledger should have filled, and always sits in its own column. Once a plan
+exists for a period, a category left blank is a plan of zero — you did not
+budget for it — so anything spent there is entirely over plan. With no plan at
+all, every budget figure is null and the column stays empty rather than
+claiming the month was unplanned.
+
+Favourable is per direction: spending under plan is good, earning under plan is
+not. One sign convention cannot serve both, so `favourable` is computed from
+the line's own kind rather than left to the reader to infer from a minus sign.
+
 ## Scheduled is not recorded
 
 The ledger is money that moved. A contract's payments have not moved, so they
@@ -137,7 +152,7 @@ reaches all of them.
 
 ## Checking the numbers
 
-`scripts/audit.mjs` runs 179 cross-page reconciliations against a running
+`scripts/audit.mjs` runs 210 cross-page reconciliations against a running
 server: every headline figure against the ledger it came from, and against
 the same figure wherever else it appears. It catches the class of fault that
 matters most here — two pages disagreeing about one number — which no unit

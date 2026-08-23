@@ -249,18 +249,26 @@ export function MultiLine({ points, series, money, aheadFrom, height = 210 }) {
   const n = points.length;
   if (!n) return <p className="fc-none">Nothing to plot yet.</p>;
 
-  const max = Math.max(1, ...points.flatMap((p) => series.map((s) => p[s.key] ?? 0)));
+  const vals = points.flatMap((p) => series.map((s) => p[s.key])).filter((v) => v != null);
+  const hi = Math.max(1, ...vals);
+  // A margin can be negative, and a scale that starts at zero draws that
+  // month below the axis and off the chart. The floor follows the data.
+  const lo = Math.min(0, ...vals);
   // A round ceiling, so the gridline labels are numbers a person would say.
-  const step = Math.pow(10, Math.floor(Math.log10(max)));
-  const top = Math.ceil(max / step) * step || 1;
+  const step = Math.pow(10, Math.floor(Math.log10(Math.max(1, hi - lo))));
+  const top = Math.ceil(hi / step) * step || 1;
+  const bottom = lo < 0 ? -(Math.ceil(Math.abs(lo) / step) * step) : 0;
+  const span = top - bottom || 1;
   const x = (i) => L + (n === 1 ? (W - L - R) / 2 : ((W - L - R) * i) / (n - 1));
-  const y = (v) => T + (H - T - B) * (1 - (v ?? 0) / top);
+  const y = (v) => T + (H - T - B) * (1 - ((v ?? 0) - bottom) / span);
 
   const aheadIdx = aheadFrom == null ? n : points.findIndex((p) => p.period === aheadFrom);
   const cut = aheadIdx < 0 ? n : aheadIdx;
   const path = (key, from, to) =>
     points.slice(from, to)
-          .map((p, i) => `${i ? "L" : "M"}${x(from + i)},${y(p[key])}`)
+          .map((p, i) => (p[key] == null ? null : `${x(from + i)},${y(p[key])}`))
+          .filter(Boolean)
+          .map((pt, i) => `${i ? "L" : "M"}${pt}`)
           .join(" ");
 
   return (
@@ -276,14 +284,18 @@ export function MultiLine({ points, series, money, aheadFrom, height = 210 }) {
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="fin-svg ml-svg" role="img"
            aria-label={series.map((s) => s.label).join(", ") + " by month"}>
-        {[0, 0.25, 0.5, 0.75, 1].map((t) => (
-          <g key={t}>
-            <line x1={L} x2={W - R} y1={y(top * t)} y2={y(top * t)} className="fin-grid-line" />
-            <text x={L - 8} y={y(top * t) + 3.5} className="ml-ylab">
-              {money.compact ? money.compact(top * t) : Math.round(top * t / 100)}
-            </text>
-          </g>
-        ))}
+        {[0, 0.25, 0.5, 0.75, 1].map((t) => {
+          const v = bottom + span * t;
+          return (
+            <g key={t}>
+              <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} className="fin-grid-line" />
+              <text x={L - 8} y={y(v) + 3.5} className="ml-ylab">
+                {money.compact ? money.compact(v) : Math.round(v / 100)}
+              </text>
+            </g>
+          );
+        })}
+        {bottom < 0 && <line x1={L} x2={W - R} y1={y(0)} y2={y(0)} className="fin-axis" />}
         {cut > 0 && cut < n && (
           <>
             <line x1={x(cut - 1)} x2={x(cut - 1)} y1={T} y2={H - B} className="ml-divide" />
@@ -302,10 +314,10 @@ export function MultiLine({ points, series, money, aheadFrom, height = 210 }) {
                       strokeWidth={s.weight ?? 2.2}
                       strokeDasharray="5 4" strokeLinejoin="round" strokeLinecap="round" />
               )}
-              {points.map((p, i) => (
+              {points.map((p, i) => (p[s.key] == null ? null : (
                 <circle key={p.period} cx={x(i)} cy={y(p[s.key])} r={hover === i ? 4.5 : 3}
                         fill={i >= cut ? "var(--fin-surface)" : c} stroke={c} strokeWidth="1.8" />
-              ))}
+              )))}
             </g>
           );
         })}
@@ -330,10 +342,127 @@ export function MultiLine({ points, series, money, aheadFrom, height = 210 }) {
             {series.map((s, si) => (
               <span key={s.key}>
                 <i style={{ background: s.colour ?? LINE_COLOURS[si] }} />
-                {money.exact(points[hover][s.key] ?? 0)}
+                {points[hover][s.key] == null ? "—" : money.exact(points[hover][s.key])}
               </span>
             ))}
             {hover >= cut && <span className="fin-tip-ahead">committed, not recorded</span>}
+          </>
+        ) : <span className="fin-tip-idle">Hover a month for exact figures</span>}
+      </div>
+    </div>
+  );
+}
+
+// ── Bars and a line, on two axes ─────────────────────────────
+// Money on the left, a percentage on the right. Two axes on one chart is
+// normally a way to imply a relationship that isn't there; it earns its place
+// here because margin IS the ratio of two of the bars, so the reader is meant
+// to read them together. The right axis is labelled and the line is the only
+// thing on it.
+//
+// Colours: #2a78d6 / #1baf7a / #eda100 / #008300 for the bars and #4a3aa7 for
+// the line — worst all-pairs ΔE 9.1 under protanopia, 15.6 under normal
+// vision. The legend names every series, which is the relief the two lightest
+// bars need on a light surface.
+export const COMBO_COLOURS = ["#2a78d6", "#1baf7a", "#eda100", "#008300"];
+export const COMBO_LINE = "#4a3aa7";
+
+export function ComboChart({ points, bars, line, money, height = 250 }) {
+  const [hover, setHover] = useState(null);
+  const W = 760, H = height, L = 56, R = 46, T = 16, B = 30;
+  const n = points.length;
+  if (!n) return <p className="fc-none">Nothing to plot yet.</p>;
+
+  const vals = points.flatMap((p) => bars.map((b) => p[b.key] ?? 0));
+  const hi = Math.max(1, ...vals);
+  const lo = Math.min(0, ...vals);
+  const step = Math.pow(10, Math.floor(Math.log10(Math.max(1, hi))));
+  const top = Math.ceil(hi / step) * step || 1;
+  const bottom = lo < 0 ? -(Math.ceil(Math.abs(lo) / step) * step) : 0;
+  const span = top - bottom || 1;
+
+  const pcts = points.map((p) => p[line.key]).filter((v) => v != null);
+  const pHi = Math.max(10, ...pcts.map((v) => Math.ceil(v / 10) * 10));
+  const pLo = Math.min(0, ...pcts.map((v) => Math.floor(v / 10) * 10));
+  const pSpan = pHi - pLo || 1;
+
+  const slot = (W - L - R) / n;
+  const bw = Math.max(3, Math.min(11, (slot - 8) / bars.length));
+  const y = (v) => T + (H - T - B) * (1 - (v - bottom) / span);
+  const yp = (v) => T + (H - T - B) * (1 - (v - pLo) / pSpan);
+  const cx = (i) => L + slot * i + slot / 2;
+
+  const linePath = points
+    .map((p, i) => (p[line.key] == null ? null : `${i ? "L" : "M"}${cx(i)},${yp(p[line.key])}`))
+    .filter(Boolean).join(" ").replace(/^L/, "M");
+
+  return (
+    <div className="fin-chart">
+      <div className="fin-legend">
+        {bars.map((b, i) => (
+          <span key={b.key}><i className="ml-key" style={{ background: COMBO_COLOURS[i] }} />{b.label}</span>
+        ))}
+        <span><i className="ml-key cb-line" />{line.label}</span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="fin-svg ml-svg" role="img"
+           aria-label={`${bars.map((b) => b.label).join(", ")} and ${line.label} by month`}>
+        {[0, 0.25, 0.5, 0.75, 1].map((t) => {
+          const v = bottom + span * t;
+          return (
+            <g key={t}>
+              <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} className="fin-grid-line" />
+              <text x={L - 8} y={y(v) + 3.5} className="ml-ylab">{money.compact(v)}</text>
+              <text x={W - R + 8} y={yp(pLo + pSpan * t) + 3.5} className="ml-ylab cb-right">
+                {Math.round(pLo + pSpan * t)}%
+              </text>
+            </g>
+          );
+        })}
+        {bottom < 0 && (
+          <line x1={L} x2={W - R} y1={y(0)} y2={y(0)} className="fin-axis" />
+        )}
+        {points.map((p, i) => (
+          <g key={p.period} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
+            <rect x={L + slot * i} y={0} width={slot} height={H}
+                  fill={hover === i ? "var(--fin-sunk)" : "transparent"} />
+            {bars.map((b, bi) => {
+              const v = p[b.key] ?? 0;
+              const x = cx(i) - (bars.length * bw) / 2 + bi * bw;
+              const top0 = y(Math.max(0, v));
+              const h = Math.abs(y(v) - y(0));
+              return <rect key={b.key} x={x + 0.5} y={top0} width={Math.max(2, bw - 1)}
+                           height={Math.max(1, h)} fill={COMBO_COLOURS[bi]} rx="1.5" />;
+            })}
+          </g>
+        ))}
+        <path d={linePath} fill="none" stroke={COMBO_LINE} strokeWidth="2.2"
+              strokeLinejoin="round" strokeLinecap="round" />
+        {points.map((p, i) => (p[line.key] == null ? null : (
+          <circle key={`d-${p.period}`} cx={cx(i)} cy={yp(p[line.key])}
+                  r={hover === i ? 4 : 2.8} fill="var(--fin-surface)"
+                  stroke={COMBO_LINE} strokeWidth="1.8" />
+        )))}
+        {points.map((p, i) => (
+          (n <= 12 || i % 2 === 0) ? (
+            <text key={`l-${p.period}`} x={cx(i)} y={H - 10} className="fin-xlab">
+              {monthLabel(p.period, true).replace(" ", " '").slice(0, 6)}
+            </text>
+          ) : null
+        ))}
+      </svg>
+      <div className="fin-tip" aria-live="polite">
+        {hover != null ? (
+          <>
+            <strong>{monthLabel(points[hover].period)}</strong>
+            {bars.map((b, bi) => (
+              <span key={b.key}>
+                <i style={{ background: COMBO_COLOURS[bi] }} />
+                {money.exact(points[hover][b.key] ?? 0)}
+              </span>
+            ))}
+            <span><i style={{ background: COMBO_LINE }} />
+              {points[hover][line.key] == null ? "—" : `${Math.round(points[hover][line.key])}%`}
+            </span>
           </>
         ) : <span className="fin-tip-idle">Hover a month for exact figures</span>}
       </div>

@@ -981,3 +981,97 @@ export const OVERVIEW_CSS = `
 .ag-bad{background:#e07a3a}.ag-worst{background:#d03b3b}
 .ch-alerts li .vm-rec{margin-left:auto;align-self:center;flex:none}
 `;
+
+export const PL_CSS = `
+/* The budget form is a dialog, not a section of the page — it is a thing you
+   open, fill in and close. Built on the same overlay the contract dialog uses
+   so both behave the same way. */
+.fin-modal{position:fixed;inset:0;z-index:45;display:grid;place-items:center;padding:20px;
+  background:rgba(23,19,38,.42);backdrop-filter:blur(3px)}
+.fin-modalbox{width:100%;background:var(--fin-surface);border-radius:18px;padding:20px 22px;
+  box-shadow:0 30px 70px -25px rgba(23,19,38,.5);display:flex;flex-direction:column;
+  gap:14px;max-height:90vh}
+.fin-modalhead{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.fin-modalhead h2{margin:0 0 4px;font-family:var(--fin-display);font-weight:600;font-size:19px}
+.fin-modalhead span{display:block;font-size:12.5px;color:var(--fin-muted);line-height:1.55}
+.fin-modalfoot{display:flex;align-items:center;gap:8px;padding-top:4px;
+  border-top:1px solid var(--fin-hair);flex-wrap:wrap}
+
+.pl-controls{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:0 0 16px}
+.pl-compare{display:flex;align-items:center;gap:8px;font-size:12.5px;
+  color:var(--fin-muted)}
+.pl-compare select{font-family:inherit;font-size:13px;padding:7px 10px;
+  border:1px solid var(--fin-line);border-radius:9px;background:var(--fin-surface);
+  color:var(--fin-ink);cursor:pointer}
+.pl-controls .fin-btn{margin-left:auto}
+@media(max-width:560px){.pl-controls .fin-btn{margin-left:0;width:100%;text-align:center}}
+.pl-kpis{grid-template-columns:repeat(6,minmax(0,1fr))}
+@media(max-width:1400px){.pl-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:820px){.pl-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:460px){.pl-kpis{grid-template-columns:minmax(0,1fr)}}
+.pl-kpis .fc-kpi{position:relative;overflow:hidden}
+.pl-spark{position:absolute;right:0;bottom:0;width:52%;height:26px;opacity:.5;
+  pointer-events:none}
+
+/* The statement is the page's centre of gravity, so it gets the wide column
+   and the trend sits beside it rather than under it. */
+.pl-band{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:16px;
+  align-items:start}
+.pl-band3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:start}
+@media(max-width:1300px){.pl-band3{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:1100px){.pl-band{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:820px){.pl-band3{grid-template-columns:minmax(0,1fr)}}
+
+.pl-table{min-width:560px}
+.pl-table td:first-child{white-space:nowrap}
+/* The plan is the only column here that is not a fact, so it is tinted and
+   set apart rather than sitting flush with the recorded figures. */
+.pl-plan{background:color-mix(in srgb, var(--fin-accent) 4%, transparent);
+  color:var(--fin-muted)}
+.pl-table thead th.pl-plan{color:var(--fin-accent)}
+.pl-table tr.pl-strong td{font-weight:600}
+.pl-table tr.pl-head td{padding-top:14px;font-size:11px;font-weight:700;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--fin-faint);
+  border-bottom:0}
+.pl-table tr.pl-total td{font-weight:600;background:var(--fin-sunk)}
+.pl-table tr.pl-net td{font-weight:700;background:color-mix(in srgb, var(--fin-accent) 8%, transparent)}
+.pl-table tr.pl-sub td{font-size:12.5px;color:var(--fin-muted);padding-top:2px;padding-bottom:8px}
+.pl-table tr.pl-sub td:first-child{padding-left:16px}
+
+.ml-ylab.cb-right{text-anchor:start}
+.fin-legend i.ml-key.cb-line{background:none;height:0;border-top:2px solid #4a3aa7;
+  border-radius:0}
+
+.pl-var li em{font-size:11.5px;font-style:normal}
+.pl-ins section{margin-bottom:14px}
+.pl-ins section:last-child{margin-bottom:0}
+.pl-ins h5{margin:0 0 6px;font-size:11.5px;font-weight:700;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--fin-faint)}
+.pl-ins h5.ok{color:#12657F}
+.pl-ins h5.warn{color:var(--fin-out)}
+.pl-ins p{margin:0 0 6px;font-size:13px;line-height:1.6}
+.pl-watch{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:9px}
+.pl-watch li{position:relative;padding-left:24px;font-size:13px;line-height:1.6}
+.pl-watch li::before{content:"!";position:absolute;left:0;top:2px;width:15px;height:15px;
+  border-radius:5px;background:color-mix(in srgb, var(--fin-out) 14%, transparent);
+  color:var(--fin-out);font-size:10px;font-weight:700;text-align:center;line-height:15px}
+
+/* The budget form. Every category you could plan for, grouped the way the
+   dashboards read them, so a blank is as visible as a figure. */
+.pl-budget{max-width:760px}
+.pl-budgetbody{max-height:60vh;overflow-y:auto;padding:4px 2px}
+.pl-budgetbody section{margin-bottom:16px}
+.pl-budgetbody h5{display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+  margin:0 0 8px;padding-bottom:6px;border-bottom:1px solid var(--fin-hair);
+  font-size:11.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--fin-faint)}
+.pl-budgetbody h5 b{font-size:14px;font-weight:600;letter-spacing:0;
+  text-transform:none;color:var(--fin-ink)}
+.pl-budgetbody label{display:flex;align-items:center;justify-content:space-between;
+  gap:12px;padding:5px 0}
+.pl-budgetbody label span{font-size:13px;color:var(--fin-ink);min-width:0}
+.pl-budgetbody input{width:140px;flex:none;font-family:inherit;font-size:13px;
+  padding:7px 9px;border:1px solid var(--fin-line);border-radius:8px;
+  background:var(--fin-surface);color:var(--fin-ink);text-align:right}
+.fin-spacer{flex:1}
+`;

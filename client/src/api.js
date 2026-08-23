@@ -65,6 +65,13 @@ export const api = {
   deleteCommitment: (id) => request("DELETE", `/finance/commitments/${id}`),
   updateCommitment: (id, b) => request("PATCH", `/finance/commitments/${id}`, b),
   deleteContract: (documentId) => request("DELETE", `/finance/contracts/${documentId}`),
+  finPl: (entity, period, span, compare) =>
+    request("GET", `/finance/pl?entity=${entity}&period=${period}&span=${span}` +
+                   (compare ? `&compare=${compare}` : "")),
+  finBudgets: (entity, period) =>
+    request("GET", `/finance/budgets?entity=${entity}&period=${period}`),
+  saveBudgets: (b) => request("PUT", "/finance/budgets", b),
+  copyBudgets: (b) => request("POST", "/finance/budgets/copy", b),
   finInvoices: (entity) => request("GET", `/finance/invoices?entity=${entity}`),
   addInvoice: (b) => request("POST", "/finance/invoices", b),
   payInvoice: (id, b) => request("POST", `/finance/invoices/${id}/payments`, b),
