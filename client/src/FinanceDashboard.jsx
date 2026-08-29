@@ -427,8 +427,21 @@ export default function FinanceDashboard({ owner, onLogout }) {
               <b>{owner.name}</b>
               <em>{owner.email}</em>
             </span>
-            <button className="fin-sideout" onClick={onLogout} title="Log out">↪</button>
           </div>
+        )}
+        {owner && (
+          // A bare ↪ with a tooltip is not a control anyone finds. The way out
+          // of an app has to say what it is.
+          <button className="fin-sideout" onClick={onLogout}>
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none"
+                 stroke="currentColor" strokeWidth="1.9" strokeLinecap="round"
+                 strokeLinejoin="round" aria-hidden="true">
+              <path d="M10 20H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h4" />
+              <path d="M16 16l4-4-4-4" />
+              <path d="M20 12H10" />
+            </svg>
+            Log out
+          </button>
         )}
       </aside>
 

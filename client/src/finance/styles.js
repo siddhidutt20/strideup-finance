@@ -66,9 +66,15 @@ export const FIN_CSS = `
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fin-sidewho em{font-style:normal;font-size:11px;color:var(--fin-faint);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.fin-sideout{border:none;background:none;color:var(--fin-faint);font-size:15px;
-  cursor:pointer;padding:4px 6px;border-radius:7px;line-height:1}
-.fin-sideout:hover{color:var(--fin-accent);background:#F1ECFB}
+/* A full-width row under the account block, with a word on it. It reads as a
+   thing you can press, which the icon on its own never did. */
+.fin-sideout{display:flex;align-items:center;justify-content:center;gap:8px;
+  width:100%;margin-top:8px;border:1px solid var(--fin-line);background:var(--fin-surface);
+  color:var(--fin-muted);font-family:inherit;font-size:12.5px;font-weight:600;
+  cursor:pointer;padding:9px 12px;border-radius:11px;line-height:1;transition:.13s}
+.fin-sideout:hover{color:var(--fin-accent);background:#F1ECFB;
+  border-color:color-mix(in srgb, var(--fin-accent) 30%, var(--fin-line))}
+.fin-sideout:focus-visible{outline:2px solid var(--fin-accent);outline-offset:2px}
 
 .fin-headctl{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
 .fin-entnav{display:inline-flex;gap:2px;background:var(--fin-surface);
@@ -105,6 +111,8 @@ export const FIN_CSS = `
   .fin-side nav ul{flex-direction:row;gap:4px}
   .fin-side nav button{width:auto;white-space:nowrap;padding:8px 12px}
   .fin-sideuser{margin:0}
+  /* In the top-bar layout it sits beside the account block, not under it. */
+  .fin-sideout{width:auto;margin-top:0}
 }
 
 /* ── Masthead ── */
