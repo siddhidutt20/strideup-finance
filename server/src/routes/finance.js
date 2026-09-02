@@ -18,6 +18,7 @@ import {
   vendorManagement, contractLibrary, cashDashboard, sideDetail, overviewDashboard,
   budgetsFor, plStatement, plTrend, topVariances, plInsights, groupSpend,
 } from "../finance/metrics.js";
+import { exportEntity, importAll, purgeEntity } from "../finance/transfer.js";
 
 export const financeRouter = express.Router();
 
@@ -1445,6 +1446,73 @@ financeRouter.delete(
 
     await run("DELETE FROM fin_invoices WHERE id = ?", [id]);
     res.json({ ok: true, removedEntries: entries.length });
+  })
+);
+
+// ── Moving a set of books to another instance ────────────────
+// Three steps, deliberately separate, and none of them needs a terminal or a
+// database password: download the books, upload them into the other instance,
+// and only then remove them here.
+financeRouter.get(
+  "/books/:entity/export.json",
+  ah(async (req, res) => {
+    const parsed = entityOnly.safeParse(req.params.entity);
+    if (!parsed.success) return res.status(400).json({ error: "No such books." });
+    const data = await exportEntity(parsed.data);
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${parsed.data}-books-${isoDate(new Date())}.json"`
+    );
+    res.send(JSON.stringify(data, null, 1));
+  })
+);
+
+financeRouter.post(
+  "/books/import",
+  ah(async (req, res) => {
+    const data = req.body;
+    if (!data || typeof data !== "object" || !data.entity || !Array.isArray(data.entries)) {
+      return res.status(400).json({
+        error: "That does not look like a books file. Use the file downloaded " +
+               "from the other instance, unchanged.",
+      });
+    }
+    // A file of business books has no home in a personal instance. Refusing is
+    // the honest answer — silently relabelling them would put the two sets of
+    // books back together, which is the thing this whole split exists to stop.
+    if (!ENTITIES.includes(data.entity)) {
+      return res.status(400).json({
+        error: `That file holds ${ENTITY_LABEL[data.entity] || data.entity} books, ` +
+               `and this app keeps ${ENTITIES.map((e) => ENTITY_LABEL[e]).join(" and ")}.`,
+      });
+    }
+    const r = await importAll(data);
+    res.json({ ok: true, ...r });
+  })
+);
+
+financeRouter.post(
+  "/books/:entity/remove",
+  ah(async (req, res) => {
+    const parsed = entityOnly.safeParse(req.params.entity);
+    if (!parsed.success) return res.status(400).json({ error: "No such books." });
+    const entity = parsed.data;
+    // Typing the name is the confirmation. A dialog you can dismiss with the
+    // space bar is not one, and this is the only irreversible thing in the app.
+    if (String(req.body?.confirm || "").trim().toLowerCase() !== entity) {
+      return res.status(400).json({
+        error: `To remove these books, type "${entity}" to confirm.`,
+      });
+    }
+    if (ENTITIES.length < 2) {
+      return res.status(409).json({
+        error: "These are the only books this app keeps. Removing them would " +
+               "leave nothing behind — that is a job for deleting the instance.",
+      });
+    }
+    const r = await purgeEntity(entity, true);
+    res.json({ ok: true, ...r });
   })
 );
 

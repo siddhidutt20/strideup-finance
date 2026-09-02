@@ -72,6 +72,10 @@ export const api = {
     request("GET", `/finance/budgets?entity=${entity}&period=${period}`),
   saveBudgets: (b) => request("PUT", "/finance/budgets", b),
   copyBudgets: (b) => request("POST", "/finance/budgets/copy", b),
+  booksExportUrl: (entity) => `/api/finance/books/${entity}/export.json`,
+  importBooks: (data) => request("POST", "/finance/books/import", data),
+  removeBooks: (entity, confirm) =>
+    request("POST", `/finance/books/${entity}/remove`, { confirm }),
   finInvoices: (entity) => request("GET", `/finance/invoices?entity=${entity}`),
   addInvoice: (b) => request("POST", "/finance/invoices", b),
   payInvoice: (id, b) => request("POST", `/finance/invoices/${id}/payments`, b),

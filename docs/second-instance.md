@@ -64,8 +64,26 @@ there is nothing else in the database to serve.
 
 ## 3 · Move the personal books across
 
-Three separate steps. Nothing is deleted until you have opened the new
-instance and checked the figures yourself.
+Do this in the app, under **Import & close → Move a set of books to another
+app**. No terminal and no database password: download the books from the
+business app, upload the file into the personal app, and only then remove them
+from the business one. The three steps are numbered on the page in the order
+they must happen.
+
+Upload only inserts, and matches on the keys the app already treats as identity
+— a document by its content hash, a commitment by its dedup key, an entry by
+its own. Uploading the same file twice adds nothing the second time, so it is
+safe to repeat. A file of business books uploaded into the personal app is
+refused rather than relabelled.
+
+Removing asks you to type the name of the books first, and only offers itself
+in an app that keeps more than one set — there is nothing sensible about
+emptying an app that keeps only one.
+
+### The same three steps from a terminal
+
+For a bulk move, or if you would rather not click. Nothing is deleted until you
+have opened the new instance and checked the figures yourself.
 
 ```bash
 # From the repo, pointed at the BUSINESS database

@@ -42,9 +42,14 @@ export function createApp() {
   // is small.
   const smallJson = express.json({ limit: "64kb" });
   const largeJson = express.json({ limit: "12mb" });
-  app.use((req, res, next) =>
-    req.path.startsWith("/api/finance") ? largeJson(req, res, next) : smallJson(req, res, next)
-  );
+  // A books file carries every stored document inside it, so it is the one
+  // payload that can be larger than a single upload.
+  const booksJson = express.json({ limit: "64mb" });
+  app.use((req, res, next) => {
+    if (req.path === "/api/finance/books/import") return booksJson(req, res, next);
+    return req.path.startsWith("/api/finance")
+      ? largeJson(req, res, next) : smallJson(req, res, next);
+  });
   app.use(cookieParser());
 
   app.get("/api/health", (req, res) =>

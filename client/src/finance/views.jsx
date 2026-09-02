@@ -639,6 +639,8 @@ export function ToolsView({ period, entity, entityList, byEntity, onDone }) {
       </div>
       {msg && <p className={msg.ok ? "fin-ok" : "fin-error"}>{msg.text}</p>}
 
+      <MoveBooks entityList={entityList} entity={entity} onDone={onDone} />
+
       <div className="fin-closebox">
         <h3>Close {monthLabel(period)}</h3>
         {period > thisMonth() && (
@@ -667,5 +669,130 @@ export function ToolsView({ period, entity, entityList, byEntity, onDone }) {
         </div>
       </div>
     </section>
+  );
+}
+
+
+// ── Moving a set of books to another instance ────────────────
+// Three steps in the order they must happen, and the third is behind the
+// other two: download here, upload there, and only then remove. Nothing needs
+// a terminal or a database password, and nothing is deleted until the books
+// are demonstrably somewhere else.
+function MoveBooks({ entityList, entity, onDone }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const [removing, setRemoving] = useState(null);
+  const [typed, setTyped] = useState("");
+
+  const books = (entityList ?? [entity]).filter((e) => e !== "both");
+
+  async function upload(file) {
+    setBusy(true); setMsg(null);
+    try {
+      const data = JSON.parse(await file.text());
+      const r = await api.importBooks(data);
+      const counts = Object.entries(r.added ?? {})
+        .map(([k, v]) => `${v} ${k}`).join(", ");
+      setMsg({ ok: true, text: counts
+        ? `Brought in ${counts}.`
+        : "Nothing new — everything in that file was already here." });
+      onDone();
+    } catch (err) {
+      setMsg({ ok: false, text: err.message?.includes("JSON")
+        ? "That file could not be read. Use the one downloaded from the other app, unchanged."
+        : err.message });
+    } finally { setBusy(false); }
+  }
+
+  async function remove(ent) {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await api.removeBooks(ent, typed);
+      const counts = Object.entries(r.removed ?? {}).filter(([, n]) => n)
+        .map(([t, n]) => `${n} from ${t.replace("fin_", "")}`).join(", ");
+      setMsg({ ok: true, text: `${ENTITY_LABEL[ent]} books removed: ${counts || "nothing was there"}.` });
+      setRemoving(null); setTyped(""); onDone();
+    } catch (err) {
+      setMsg({ ok: false, text: err.message });
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="fin-closebox fin-books">
+      <h3>Move a set of books to another app</h3>
+      <p className="fin-help">
+        For running personal and the business as two separate apps. Download the
+        books here, upload the file into the other app, check the figures there,
+        and only then remove them from this one.
+      </p>
+
+      <ol className="fin-steps">
+        <li>
+          <b>Download</b>
+          <span>Everything for one set of books, in one file — entries,
+            agreements, documents, invoices, budgets and closed months.</span>
+          <span className="fin-tools-row">
+            {books.map((e) => (
+              <a key={e} className="fin-btn ghost" href={api.booksExportUrl(e)}>
+                Download {ENTITY_LABEL[e]} books
+              </a>
+            ))}
+          </span>
+        </li>
+        <li>
+          <b>Upload, in the other app</b>
+          <span>Open the other app, come to this page, and choose the file you
+            just downloaded. Nothing is overwritten and running it twice adds
+            nothing the second time, so it is safe to repeat.</span>
+          <span className="fin-tools-row">
+            <label className="fin-filebtn">
+              {busy ? "Working…" : "Choose a books file"}
+              <input type="file" accept=".json,application/json" hidden disabled={busy}
+                     onChange={async (e) => {
+                       const f = e.target.files?.[0];
+                       if (f) await upload(f);
+                       e.target.value = "";
+                     }} />
+            </label>
+          </span>
+        </li>
+        {books.length > 1 && (
+          <li>
+            <b>Remove from here — last</b>
+            <span>
+              Only once the other app is open in front of you and its figures
+              are right. This cannot be undone from inside the app.
+            </span>
+            {removing == null ? (
+              <span className="fin-tools-row">
+                {books.map((e) => (
+                  <button key={e} className="fin-btn ghost danger" disabled={busy}
+                          onClick={() => { setRemoving(e); setTyped(""); }}>
+                    Remove {ENTITY_LABEL[e]} books from this app
+                  </button>
+                ))}
+              </span>
+            ) : (
+              <span className="fin-confirm">
+                <label>
+                  Type <code>{removing}</code> to confirm
+                  <input value={typed} onChange={(ev) => setTyped(ev.target.value)}
+                         placeholder={removing} autoFocus />
+                </label>
+                <span className="fin-tools-row">
+                  <button className="fin-btn danger" disabled={busy || typed.trim().toLowerCase() !== removing}
+                          onClick={() => remove(removing)}>
+                    {busy ? "Removing…" : `Remove ${ENTITY_LABEL[removing]} books`}
+                  </button>
+                  <button className="fin-btn ghost" disabled={busy}
+                          onClick={() => { setRemoving(null); setTyped(""); }}>Cancel</button>
+                </span>
+              </span>
+            )}
+          </li>
+        )}
+      </ol>
+      {msg && <p className={msg.ok ? "fin-ok" : "fin-error"}>{msg.text}</p>}
+    </div>
   );
 }

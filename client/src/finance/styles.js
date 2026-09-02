@@ -1083,3 +1083,29 @@ export const PL_CSS = `
   background:var(--fin-surface);color:var(--fin-ink);text-align:right}
 .fin-spacer{flex:1}
 `;
+
+export const BOOKS_CSS = `
+.fin-books{margin-top:16px}
+.fin-steps{list-style:none;counter-reset:step;margin:14px 0 0;padding:0;
+  display:flex;flex-direction:column;gap:16px}
+.fin-steps li{counter-increment:step;position:relative;padding-left:38px;
+  display:flex;flex-direction:column;gap:7px}
+.fin-steps li::before{content:counter(step);position:absolute;left:0;top:0;
+  width:26px;height:26px;border-radius:9px;display:grid;place-items:center;
+  background:color-mix(in srgb, var(--fin-accent) 12%, transparent);
+  color:var(--fin-accent);font-size:12.5px;font-weight:700}
+.fin-steps li b{font-size:13.5px;font-weight:600;color:var(--fin-ink)}
+.fin-steps li > span{font-size:12.5px;line-height:1.6;color:var(--fin-muted)}
+.fin-steps .fin-tools-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:2px}
+.fin-btn.danger{background:var(--fin-out);border-color:var(--fin-out);color:#fff}
+.fin-btn.ghost.danger{background:var(--fin-surface);color:var(--fin-out);
+  border-color:color-mix(in srgb, var(--fin-out) 32%, var(--fin-line))}
+.fin-confirm{display:flex;flex-direction:column;gap:9px}
+.fin-confirm label{display:flex;flex-direction:column;gap:5px;font-size:12.5px;
+  color:var(--fin-muted)}
+.fin-confirm code{background:var(--fin-sunk);padding:1px 6px;border-radius:6px;
+  font-size:12px;color:var(--fin-ink)}
+.fin-confirm input{max-width:260px;font-family:inherit;font-size:13px;padding:8px 10px;
+  border:1px solid var(--fin-line);border-radius:9px;background:var(--fin-surface);
+  color:var(--fin-ink)}
+`;
