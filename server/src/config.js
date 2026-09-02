@@ -62,7 +62,12 @@ export const config = {
     (isProd ? "unconfigured-refuses-requests" : "dev-only-insecure-secret"),
   databaseUrl,
   hasDatabase: !!databaseUrl,
-  pgliteDir: path.resolve(__dirname, "../../data/pg"),
+  // Where the local development database lives. Overridable so two instances
+  // can be run side by side on one machine without sharing a database — which
+  // is the whole point of running two.
+  pgliteDir: process.env.PGLITE_DIR
+    ? path.resolve(process.env.PGLITE_DIR)
+    : path.resolve(__dirname, "../../data/pg"),
   clientOrigin: process.env.CLIENT_ORIGIN || "http://localhost:5273",
 
   // One account owns this app. There is no registration — the company's books

@@ -18,7 +18,12 @@ const near=(name,a,b,tol=1)=>{
   console.log(`  ${ok?"ok  ":"FAIL"} ${name.padEnd(52)} ${M(a).padStart(13)} ${ok?"≈":"≠"} ${M(b).padStart(13)}`);
 };
 
-const P="2026-08-01";
+// The month under test is whichever month the server thinks it is in. Half
+// these checks compare a page that takes a period against one that does not,
+// and a hard-coded month passes until the clock rolls over and then fails
+// everything at once for a reason that has nothing to do with the code.
+const P=(await g("/finance/dashboard?entity=strideup")).period;
+console.log(`  reading ${P} — the month the server is in`);
 for (const ent of ["strideup","personal"]) {
   console.log(`\n══ ${ent} ══`);
   const entries=(await g(`/finance/entries?limit=500`)).entries.filter(e=>e.entity===ent);
@@ -61,13 +66,19 @@ for (const ent of ["strideup","personal"]) {
   // The overview reads a month still ahead off the committed path. It must
   // open where the month before it closes, move only by what is agreed, and
   // land exactly where the forecast says — the same figure, four pages apart.
-  let prevClose = st.cashflow.closing;
-  for (const m of fc.months.slice(1, 4)) {
+  // Each projected month must open where the one before it closes. The month
+  // before is taken from the forecast's own closing, not from the recorded
+  // closing of the month we are in — those differ by whatever that month still
+  // has to come, and comparing against the wrong one passed only for as long
+  // as the current month happened to have nothing left in it.
+  for (let i = 1; i < 4 && i < fc.months.length; i++) {
+    const m = fc.months[i];
+    const before = fc.months[i - 1];
     const mp = m.period.slice(0, 7);
     const od = (await g(`/finance/dashboard?entity=${ent}&period=${m.period}`)).byEntity[ent];
     const pj = od.projected;
-    check(`  overview ${mp} opens where ${prevClose === st.cashflow.closing ? "this month" : "the month before"} closes`,
-          pj.opening, prevClose);
+    check(`  overview ${mp} opens where ${before.period.slice(0, 7)} closes`,
+          pj.opening, before.closing);
     check(`  overview ${mp} committed in = forecast`, pj.committedIn, m.committedIn);
     check(`  overview ${mp} committed out = forecast`, pj.committedOut, m.committedOut);
     check(`  overview ${mp} closes = opening + in − out`,
@@ -78,7 +89,6 @@ for (const ent of ["strideup","personal"]) {
     check(`  overview ${mp} rows sum to in − out`,
           pj.items.reduce((t, i) => t + (i.direction === "in" ? i.amount : -i.amount), 0),
           pj.committedIn - pj.committedOut);
-    prevClose = pj.closing;
   }
 
   // Side pages must decompose their own month.

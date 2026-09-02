@@ -3,7 +3,7 @@ import { api } from "./api.js";
 import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS, FUTURE_CSS, CASHFLOW_AHEAD_CSS, CF_NONE_CSS, VENDORS_CSS, CASH_CSS, CONTRACTS_GROUP_CSS, SIDE_CSS, CASH_BAND_CSS, NARROW_FIX_CSS, INVOICE_CSS, RECORD_CSS, OVERVIEW_CSS, PL_CSS } from "./finance/styles.js";
 import {
   fmtAmount, monthLabel, readFile, shiftMonth, thisMonth, useMoney, ZERO_DECIMAL,
-  ENTITY_LABEL, ENTITY_CHOICES, loadEntity, saveEntity,
+  ENTITY_LABEL, entityChoices, loadEntity, saveEntity,
 } from "./finance/format.js";
 import {
   OverviewView, LedgerView, ToolsView,
@@ -56,6 +56,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
   const [statements, setStatements] = useState(null);
   const [entries, setEntries] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [books, setBooks] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [feed, setFeed] = useState([]);
@@ -85,6 +86,16 @@ export default function FinanceDashboard({ owner, onLogout }) {
 
   const money = useMoney(data?.baseCurrency || "USD");
 
+  // What this deployment offers. One set of books is not a choice, so the
+  // entity is pinned to it rather than left on whatever was last remembered
+  // from another instance in the same browser.
+  const choices = useMemo(() => entityChoices(books), [books]);
+  useEffect(() => {
+    if (choices.length === 1 && entity !== choices[0]) setEntity(choices[0]);
+    else if (choices.length > 1 && !choices.includes(entity)) setEntity(choices[0]);
+    // eslint-disable-next-line
+  }, [choices]);
+
   const load = useCallback(
     async (p = period) => {
       setError("");
@@ -100,6 +111,9 @@ export default function FinanceDashboard({ owner, onLogout }) {
         setData(ov);
         setEntries(en.entries);
         setCategories(cats.categories);
+        // Which sets of books this deployment keeps. A personal instance
+        // answers with one, and the switcher goes away.
+        if (cats.entities) setBooks(cats.entities);
         setStatements(null); // recomputed for the new month, on demand
       } catch (err) {
         setError(err.message || "Could not load your finances.");
@@ -466,13 +480,15 @@ export default function FinanceDashboard({ owner, onLogout }) {
                 <button className="fin-btn" onClick={() => setAdding(true)}>+ New</button>
               </span>
             )}
-            <div className="fin-entnav" role="group" aria-label="Which books">
-              {ENTITY_CHOICES.map((e) => (
-                <button key={e} className={entity === e ? "on" : ""}
-                        aria-pressed={entity === e}
-                        onClick={() => setEntity(e)}>{ENTITY_LABEL[e]}</button>
-              ))}
-            </div>
+            {choices.length > 1 && (
+              <div className="fin-entnav" role="group" aria-label="Which books">
+                {choices.map((e) => (
+                  <button key={e} className={entity === e ? "on" : ""}
+                          aria-pressed={entity === e}
+                          onClick={() => setEntity(e)}>{ENTITY_LABEL[e]}</button>
+                ))}
+              </div>
+            )}
             <div className="fin-monthnav">
               <button onClick={() => setPeriod(shiftMonth(period, -1))} aria-label="Previous month">‹</button>
               <strong>{monthLabel(period)}</strong>

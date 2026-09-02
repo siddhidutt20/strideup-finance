@@ -2,6 +2,7 @@ import { z } from "zod";
 import { all } from "../db.js";
 import { config } from "../config.js";
 import { askClaudeDocumentJSON, aiEnabled } from "../anthropic.js";
+import { ENTITIES, SINGLE_ENTITY } from "./schema.js";
 
 // ── Reading an invoice or receipt ────────────────────────────
 // One model call per document, answering into a fixed JSON shape. The live
@@ -91,7 +92,7 @@ const extraction = z.object({
   total: z.number().finite(),
   invoice_number: z.string().trim().max(80).nullable().catch(null),
   suggested_category: z.string().trim().min(1).max(80),
-  entity: z.enum(["strideup", "personal"]).catch("strideup"),
+  entity: z.enum(["strideup", "personal"]).catch("strideup"),  // clamped on ingest
   entity_confidence: z.number().min(0).max(1).catch(0),
   summary: z.string().trim().max(200).catch(""),
   confidence: z.number().min(0).max(1).catch(0),
@@ -185,14 +186,17 @@ and fill in:
 
 For anything that is not a contract, leave installments empty and direction null.
 
-Whose books does this belong to?
+${SINGLE_ENTITY ? `Whose books does this belong to?
+This system keeps one set of books only: "${SINGLE_ENTITY}" — ${hints[SINGLE_ENTITY]}
+Always answer "${SINGLE_ENTITY}" for "entity", with entity_confidence 1.` :
+`Whose books does this belong to?
 - "strideup" — ${hints.strideup}
 - "personal" — ${hints.personal}
 
 Judge from the document itself: who is named as the customer or the account
 holder, what was actually bought, and whether it reads as a business cost or a
 household one. If it genuinely could be either, say so with a low
-entity_confidence rather than picking one confidently.
+entity_confidence rather than picking one confidently.`}
 
 Category list — pick the single best fit and copy it verbatim. The category
 you pick and the entity you pick must agree with each other.
@@ -205,11 +209,10 @@ whose work has no more specific home. The same test applies throughout: a
 developer contracted to build the product is a technology cost, a recruiter is
 a payroll cost, a lawyer is a professional fee.
 
-StrideUp categories:
+${grouped.strideup.length ? `StrideUp categories:
 ${list(grouped.strideup)}
-
-Personal categories:
-${list(grouped.personal)}
+` : ""}${grouped.personal.length ? `Personal categories:
+${list(grouped.personal)}` : ""}
 
 Either (use only when it genuinely could be either):
 ${list(grouped.both)}
@@ -251,9 +254,13 @@ export async function extractDocument({ mime, data, kind = "expense" }) {
   const cats = await all(
     `SELECT name, entity, spend_group FROM fin_categories WHERE kind IN ${kinds} ORDER BY sort`
   );
+  // Only the books this instance keeps are offered. On a personal instance the
+  // reader is never shown a business category, so it cannot suggest one.
   const grouped = {
-    strideup: cats.filter((c) => c.entity === "strideup"),
-    personal: cats.filter((c) => c.entity === "personal"),
+    strideup: ENTITIES.includes("strideup")
+      ? cats.filter((c) => c.entity === "strideup") : [],
+    personal: ENTITIES.includes("personal")
+      ? cats.filter((c) => c.entity === "personal") : [],
     both: cats.filter((c) => c.entity === "both"),
   };
 

@@ -283,10 +283,32 @@ export const FIN_CATEGORIES = [
 ];
 
 // ── Entities ─────────────────────────────────────────────────
-// Two sets of books in one app. They share a login and a database and nothing
-// else: no statement ever mixes them unless it shows them side by side.
-export const ENTITIES = ["strideup", "personal"];
-export const ENTITY_LABEL = { strideup: "StrideUp", personal: "Personal" };
+// Two sets of books. In one deployment they share a login and a database and
+// nothing else: no statement ever mixes them unless it shows them side by side.
+//
+// An instance can also be told to run only one of them. FINANCE_ENTITIES names
+// which books this deployment keeps — "personal" for a personal instance,
+// "strideup,personal" (the default) for one that keeps both. Where it names
+// one, that entity is the only one the app will read, write or accept an
+// upload for, and the switcher disappears because there is nothing to switch
+// between. It is a deployment's whole identity, not a preference, which is why
+// it is an environment variable and not a setting inside the app.
+export const ALL_ENTITIES = ["strideup", "personal"];
+
+const configured = String(process.env.FINANCE_ENTITIES || "")
+  .split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
+  .filter((e) => ALL_ENTITIES.includes(e));
+
+export const ENTITIES = configured.length ? configured : ALL_ENTITIES;
+export const SINGLE_ENTITY = ENTITIES.length === 1 ? ENTITIES[0] : null;
+// What an entry belongs to when nothing says otherwise. On a single-entity
+// instance there is only one answer; on a two-entity one it is the first.
+export const DEFAULT_ENTITY = ENTITIES[0];
+
+export const ENTITY_LABEL = {
+  strideup: process.env.FINANCE_LABEL_STRIDEUP || "StrideUp",
+  personal: process.env.FINANCE_LABEL_PERSONAL || "Personal",
+};
 
 // ── Migrations ───────────────────────────────────────────────
 // Run after FIN_SCHEMA, each one independently and tolerant of already having

@@ -3,6 +3,7 @@ import { all, get, run, lastId } from "../db.js";
 import { config } from "../config.js";
 import { extractDocument, reviewReason, toMinor, fromMinor } from "./extract.js";
 import { getRate } from "./fx.js";
+import { SINGLE_ENTITY, DEFAULT_ENTITY } from "./schema.js";
 
 // ── The normaliser ───────────────────────────────────────────
 // Everything that becomes a ledger row goes through here, whatever the
@@ -52,7 +53,7 @@ export async function convertToBase(amountMinor, currency, date) {
 
 // If the month a document belongs to has been closed, the entry is posted to
 // the open month as an adjustment instead of rewriting settled history.
-export async function resolvePeriod(entryDate, entity = "strideup") {
+export async function resolvePeriod(entryDate, entity = DEFAULT_ENTITY) {
   const natural = periodOf(entryDate);
   const row = await get(
     "SELECT status FROM fin_periods WHERE period = ? AND entity = ?",
@@ -154,7 +155,7 @@ export async function upsertEntry(e) {
       e.categoryId ?? null, e.description ?? null, e.reference ?? null,
       e.documentId ?? null, e.dedupKey, e.confidence ?? null,
       e.reviewStatus ?? "auto", e.reviewReason ?? null, e.period,
-      e.entity ?? "strideup",
+      e.entity ?? DEFAULT_ENTITY,
     ]
   );
   const id = lastId(rs);
@@ -246,10 +247,13 @@ export async function ingestDocument({
   // section you were looking at break the tie — and the row is flagged either
   // way, so a guess is never silent.
   const entityConfident = ex.entity_confidence >= config.finance.confidenceFloor;
-  const entity =
-    rule?.set_entity ??
-    (entityConfident ? ex.entity : entityHint ?? ex.entity) ??
-    "strideup";
+  // On an instance that keeps one set of books there is nothing to decide:
+  // whatever the reader thought, the document belongs to the books this
+  // deployment holds, because it holds no others.
+  const entity = SINGLE_ENTITY ??
+    (rule?.set_entity ??
+     (entityConfident ? ex.entity : entityHint ?? ex.entity) ??
+     DEFAULT_ENTITY);
 
   const counterpartyId =
     rule?.set_counterparty_id != null

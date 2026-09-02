@@ -7,7 +7,7 @@ import { aiLimiter } from "../security.js";
 import { config } from "../config.js";
 import { ah, isoDate } from "../util.js";
 import { ACCEPTED_MIME, sniffMime, toMinor, fromMinor, ZERO_DECIMAL } from "../finance/extract.js";
-import { ENTITIES, ENTITY_LABEL, FREQUENCIES } from "../finance/schema.js";
+import { ENTITIES, ENTITY_LABEL, FREQUENCIES, SINGLE_ENTITY, DEFAULT_ENTITY } from "../finance/schema.js";
 import { ingestDocument, learnRule, resolvePeriod, findOrCreateCounterparty, convertToBase } from "../finance/ingest.js";
 import { importGhlCsv } from "../finance/ghl.js";
 import {
@@ -27,14 +27,22 @@ financeRouter.use(requireOwner);
 
 const MAX_BYTES = 8 * 1024 * 1024;
 const periodParam = z.string().regex(/^\d{4}-\d{2}-01$/);
-const entityParam = z.enum(["strideup", "personal", "both"]);
-const entityOnly = z.enum(["strideup", "personal"]);
+// An instance that keeps one set of books accepts that one and nothing else.
+// This is the guarantee the whole split rests on: a request naming the other
+// entity is not an error to report, it is simply answered with the books this
+// deployment has — there is no query string that reaches data another instance
+// holds, because this instance's database does not hold it either.
+const entityParam = SINGLE_ENTITY
+  ? z.enum([SINGLE_ENTITY]) : z.enum(["strideup", "personal", "both"]);
+const entityOnly = SINGLE_ENTITY
+  ? z.enum([SINGLE_ENTITY]) : z.enum(["strideup", "personal"]);
 
 // "both" is answered by running the same query once per set of books and
 // returning them separately. Nothing here ever adds two entities together.
 const resolveEntities = (raw) => {
+  if (SINGLE_ENTITY) return { choice: SINGLE_ENTITY, list: [SINGLE_ENTITY] };
   const parsed = entityParam.safeParse(raw);
-  const choice = parsed.success ? parsed.data : "strideup";
+  const choice = parsed.success ? parsed.data : ENTITIES[0];
   return { choice, list: choice === "both" ? ENTITIES : [choice] };
 };
 
@@ -508,7 +516,7 @@ financeRouter.post(
     const b = parsed.data;
     const currency = (b.currency || config.finance.baseCurrency).toUpperCase();
     const minor = toMinor(b.amount, currency);
-    const entity = b.entity || "strideup";
+    const entity = b.entity || DEFAULT_ENTITY;
     const { period } = await resolvePeriod(b.entryDate, entity);
     const fx = await convertToBase(minor, currency, b.entryDate);
 
@@ -741,7 +749,7 @@ financeRouter.post(
         WHERE status = 'active' AND entity = ? AND direction = ?
           AND lower(description) = lower(?) AND amount_minor = ?
           AND currency = ? AND frequency = ? AND start_date = ?`,
-      [b.entity || "strideup", b.direction, b.description, minor,
+      [b.entity || DEFAULT_ENTITY, b.direction, b.description, minor,
        currency, b.frequency, b.startDate]
     );
     if (twin) {
@@ -764,7 +772,7 @@ financeRouter.post(
           frequency, day_of_month, start_date, end_date, source, dedup_key)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'manual',?) RETURNING id`,
       [
-        b.entity || "strideup", b.direction, b.description,
+        b.entity || DEFAULT_ENTITY, b.direction, b.description,
         b.counterparty ? await findOrCreateCounterparty(b.counterparty) : null,
         b.categoryId ?? null,
         minor, currency, fx.fxRate, fx.baseAmountMinor,
@@ -1304,7 +1312,7 @@ financeRouter.post(
     if (b.dueDate && b.dueDate < b.issueDate) {
       return res.status(400).json({ error: "The due date is before the issue date." });
     }
-    const entity = b.entity || "strideup";
+    const entity = b.entity || DEFAULT_ENTITY;
     const currency = (b.currency || config.finance.baseCurrency).toUpperCase();
     const minor = toMinor(b.amount, currency);
     const number = b.number?.trim() || `INV-${Date.now().toString(36).toUpperCase()}`;

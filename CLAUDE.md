@@ -124,6 +124,25 @@ that table. There is no second store, so there is nothing to reconcile between.
 | `client/src/finance/pieces.jsx` | Panels, KPI tiles, charts, ranked lists |
 | `client/src/finance/styles.js` | All CSS |
 
+## One deployment, one set of books
+
+`FINANCE_ENTITIES` names the books an instance keeps — `personal`,
+`strideup`, or both (the default). Where it names one, that entity is the only
+one the app reads, writes or accepts an upload for: `resolveEntities` clamps
+every request to it, the reader is told there is one set of books so it cannot
+suggest a category from the other, and the switcher never renders. A request
+naming the other entity is answered with this instance's data rather than
+refused — there is nothing else in its database to serve, which is the point.
+
+It is a deployment's identity, not a preference, which is why it is an
+environment variable and not a setting inside the app. `docs/second-instance.md`
+is the setup, and `scripts/move-entity.mjs` moves a set of books between two
+instances in three separate steps — export, import, and a purge that refuses to
+run without `--yes-delete`.
+
+Two instances must not share `SESSION_SECRET`. A cookie issued by one would be
+accepted by the other, which is the single way the two could reach each other.
+
 ## A plan is not a fact
 
 `fin_budgets` holds what a month was meant to cost, per category. It is the
@@ -152,7 +171,7 @@ reaches all of them.
 
 ## Checking the numbers
 
-`scripts/audit.mjs` runs 210 cross-page reconciliations against a running
+`scripts/audit.mjs` runs 196 cross-page reconciliations against a running
 server: every headline figure against the ledger it came from, and against
 the same figure wherever else it appears. It catches the class of fault that
 matters most here — two pages disagreeing about one number — which no unit
@@ -246,6 +265,11 @@ different files per case.
   legible, and inside an `overflow-x:auto` wrapper that is meant to scroll. As
   a grid item, `.fin` grew to 736px on a 390px phone instead. `min-width:0` was
   not enough; `width:100%` with `box-sizing:border-box` is what pins it.
+- **An audit that hard-codes "this month" fails on the first of the month.**
+  Half these checks compare a page that takes a period against one that does
+  not, so a fixed `P` passed until the clock rolled over and then failed
+  twenty-three checks at once for a reason that had nothing to do with the
+  code. `P` is now whatever month the server says it is in.
 - **`amount_minor / 100` is wrong for a third of the world.** The CSV export
   divided by 100 whatever the currency, so a ¥7,500 line came out as ¥75.00.
   `fromMinor(minor, currency)` exists for this; nothing should divide by 100 by

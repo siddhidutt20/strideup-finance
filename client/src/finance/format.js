@@ -67,8 +67,19 @@ export const readFile = (file) =>
   });
 
 // ── Entities ─────────────────────────────────────────────────
+// Labels for the two sets of books. A deployment that keeps only one of them
+// says so, and the switcher never appears — there is nothing to switch to,
+// because this instance's database holds nothing else.
 export const ENTITY_LABEL = { strideup: "StrideUp", personal: "Personal", both: "Both" };
 export const ENTITY_CHOICES = ["strideup", "personal", "both"];
+
+// What this instance actually offers, given the books the server says it
+// keeps. One set of books means one choice and no switcher.
+export function entityChoices(books) {
+  const list = (books ?? []).map((b) => b.id).filter(Boolean);
+  if (!list.length) return ENTITY_CHOICES;
+  return list.length === 1 ? list : [...list, "both"];
+}
 
 // Remembered between visits — you almost always want the same books you had
 // open last time.
