@@ -14,20 +14,13 @@ there is nothing else in the database to serve.
 
 ---
 
-## 1 · A database for personal
+## 1 · The Vercel project for personal
 
-1. Go to **console.neon.tech** and sign in.
-2. Top left, click the **project dropdown** → **New Project**.
-3. Name it `strideup-personal`. Leave the Postgres version and region as they
-   are. Click **Create project**.
-4. On the project page click **Connect** (top right of the Connection Details
-   box).
-5. Make sure **Connection pooling** is ticked, then click the copy icon on the
-   connection string. It looks like
-   `postgresql://…@ep-….pooler.…neon.tech/neondb?sslmode=require`.
-6. Keep that on the clipboard for step 2.6.
-
-## 2 · A Vercel project for personal
+The database comes second here, not first. Where Neon is managed through
+Vercel — which it is if **New project** is greyed out on console.neon.tech with
+"use the Neon Postgres integration in Vercel" — a database is created from
+Vercel's Storage tab and attached to a project. So the project has to exist
+first.
 
 1. Go to **vercel.com/new**.
 2. Under **Import Git Repository**, find `strideup-finance` and click
@@ -36,12 +29,11 @@ there is nothing else in the database to serve.
 3. **Project Name**: `strideup-personal`. This becomes the URL, so it is worth
    getting right: `strideup-personal.vercel.app`.
 4. Leave **Framework Preset**, **Root Directory** and the build settings alone.
-5. Expand **Environment Variables**.
-6. Add each of these — **Key**, then **Value**, then **Add** after every one:
+5. Expand **Environment Variables** and add these — **Key**, **Value**, then
+   **Add** after every one. There is no `DATABASE_URL` here; step 2 supplies it.
 
    | Key | Value |
    |---|---|
-   | `DATABASE_URL` | the Neon string from step 1.5 |
    | `FINANCE_ENTITIES` | `personal` |
    | `SESSION_SECRET` | a fresh random string, **not** the business one |
    | `OWNER_EMAIL` | the address you will sign in with |
@@ -54,13 +46,41 @@ there is nothing else in the database to serve.
    mean a session cookie issued by one app is accepted by the other, which is
    the one way the two could reach each other.
 
-7. Click **Deploy** and wait for it to finish.
-8. Open the new URL and sign in with `OWNER_EMAIL` / `OWNER_PASSWORD`. There
-   should be **no StrideUp / Personal / Both switcher** in the header. If there
-   is, `FINANCE_ENTITIES` did not take — check the spelling in
-   **Settings → Environment Variables**, then **Deployments → ⋯ → Redeploy**.
-   Vercel bakes environment variables in at build time, so a new variable needs
-   a redeploy; a code change does not.
+6. Click **Deploy**. It will build, and the app will come up reporting that it
+   has no database. That is expected — step 2 gives it one.
+
+## 2 · A database for personal, from inside Vercel
+
+1. Open the **strideup-personal** project in Vercel.
+2. Click the **Storage** tab.
+3. Click **Create Database** (or **Connect Database** → **Create New**).
+4. Choose **Neon — Serverless Postgres** from the marketplace list.
+5. Name it `strideup-personal`. Take the default region and the free plan.
+6. Click **Create**, then on the connect step make sure **strideup-personal**
+   is the project selected, and that it applies to **Production, Preview and
+   Development**.
+7. Vercel writes the connection string into the project's environment variables
+   for you — usually `DATABASE_URL`, sometimes `POSTGRES_URL` or a prefixed
+   variant. The app looks for all of those, so whichever it chose is fine.
+8. Go to **Deployments → ⋯ on the top one → Redeploy**. Environment variables
+   are baked in at build time, so the app has to be built again to see the
+   database.
+
+If the marketplace refuses because a database already exists on the free plan,
+that is a Neon plan limit rather than anything about this app: either upgrade
+the Neon integration, or create the second database under a different Neon
+account and paste its connection string in as `DATABASE_URL` by hand.
+
+## 2b · Check it before going further
+
+1. Open `strideup-personal.vercel.app` and sign in with the `OWNER_EMAIL` and
+   `OWNER_PASSWORD` from step 1.5.
+2. There should be **no StrideUp / Personal / Both switcher** in the header.
+   That is how you know `FINANCE_ENTITIES` took.
+3. If the switcher is there, or the app reports no database, check
+   **Settings → Environment Variables**, then redeploy. Vercel bakes
+   environment variables in at build time; a new variable needs a redeploy, a
+   code change does not.
 
 ## 3 · Move the personal books across
 
