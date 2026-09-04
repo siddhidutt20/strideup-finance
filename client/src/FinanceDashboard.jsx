@@ -418,19 +418,7 @@ export default function FinanceDashboard({ owner, onLogout,
 
       <aside className="fin-side" aria-label="Sections">
         <div className="fin-sidebrand">
-          {brand.wordmark ? (
-            <>
-              <img src="/strideup-wordmark.png" alt="StrideUp"
-                   width="128" height="53" className="fin-wordmark" />
-              <span className="fin-product">Finance</span>
-            </>
-          ) : (
-            // Not the company's books, so not the company's wordmark.
-            <span className="fin-brandtype">
-              {brand.name.trim().split(/\s+/).slice(0, -1).join(" ")}
-              <b>{brand.name.trim().split(/\s+/).at(-1)}</b>
-            </span>
-          )}
+          <Brand brand={brand} height={53} />
         </div>
         <p className="fin-sidelabel">Menu</p>
         <nav>
@@ -940,5 +928,34 @@ function UploadFeed({ feed, money, onReplace, onDismiss }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+
+// ── The mark ─────────────────────────────────────────────────
+// An instance shows its own logo where it has one, and sets its name in type
+// where it does not. The fallback is on the image failing to load rather than
+// on a flag, so dropping a file into client/public is the whole of adding a
+// logo — nothing to configure, and never a broken image if the file is not
+// there.
+export function Brand({ brand, height }) {
+  const [failed, setFailed] = useState(false);
+  const words = brand.name.trim().split(/\s+/);
+  if (brand.wordmarkSrc && !failed) {
+    return (
+      <>
+        <img src={brand.wordmarkSrc} alt={brand.name} className="fin-wordmark"
+             style={{ height }} onError={() => setFailed(true)} />
+        {/* A logo says who; the word under it says what. Both instances want
+            both, so the product word is not the company's to keep. */}
+        <span className="fin-product">{words.at(-1)}</span>
+      </>
+    );
+  }
+  return (
+    <span className="fin-brandtype">
+      {words.slice(0, -1).join(" ")}
+      <b>{words.at(-1)}</b>
+    </span>
   );
 }

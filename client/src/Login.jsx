@@ -11,6 +11,7 @@ export default function Login({ onAuthed, brand = { name: "StrideUp Finance", wo
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [logoFailed, setLogoFailed] = useState(false);
   const [error, setError] = useState("");
 
   async function submit(e) {
@@ -33,11 +34,11 @@ export default function Login({ onAuthed, brand = { name: "StrideUp Finance", wo
     <div className="lg-wrap">
       <style>{LOGIN_CSS}</style>
       <form className="lg-card" onSubmit={submit}>
-        {brand.wordmark ? (
+        {brand.wordmarkSrc && !logoFailed ? (
           <>
-            <img src="/strideup-wordmark.png" alt="StrideUp"
-                 width="176" height="73" className="lg-wordmark" />
-            <h1 className="lg-title">Finance</h1>
+            <img src={brand.wordmarkSrc} alt={brand.name} className="lg-wordmark"
+                 onError={() => setLogoFailed(true)} />
+            <h1 className="lg-title">{brand.wordmark ? "Finance" : tail}</h1>
           </>
         ) : (
           <>

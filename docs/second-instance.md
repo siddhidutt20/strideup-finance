@@ -42,9 +42,14 @@ first.
    | `ANTHROPIC_API_KEY` | the same key is fine, or a separate one |
    | `FINANCE_BASE_CURRENCY` | `USD`, or whatever personal is kept in |
 
-   The app names itself: a personal instance calls itself **Personal Finance**
-   and drops the StrideUp wordmark without being told to. `FINANCE_APP_NAME`
-   overrides that if you want something else.
+   The app names itself: a personal instance calls itself "<your name>'s
+   Finance" from `OWNER_NAME`, or **Personal Finance** where that is unset, and
+   drops the StrideUp wordmark and icon without being told to.
+   `FINANCE_APP_NAME` overrides the name.
+
+   To give it a logo, put an image at `client/public/personal-wordmark.png`.
+   With no file there the name is set in type instead — never a broken image.
+   `FINANCE_LOGO` and `FINANCE_ICON` point elsewhere if you would rather.
 
    `SESSION_SECRET` must differ from the business instance. Sharing it would
    mean a session cookie issued by one app is accepted by the other, which is

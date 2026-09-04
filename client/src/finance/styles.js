@@ -39,6 +39,9 @@ export const FIN_CSS = `
   padding:10px 10px 20px}
 /* Where there is no wordmark, the name is set in type: the qualifier light,
    the thing itself heavy, on two lines like the lockup it replaces. */
+/* A logo of unknown proportions: fix the height, let the width follow, and
+   never let it push the sidebar wider than itself. */
+.fin-wordmark{width:auto;max-width:100%;object-fit:contain;object-position:left center}
 .fin-brandtype{display:flex;flex-direction:column;line-height:1.15;
   font-family:var(--fin-display);font-size:19px;font-weight:500;
   color:var(--fin-muted);letter-spacing:-.015em}

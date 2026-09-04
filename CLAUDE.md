@@ -140,6 +140,12 @@ is the setup, and `scripts/move-entity.mjs` moves a set of books between two
 instances in three separate steps — export, import, and a purge that refuses to
 run without `--yes-delete`.
 
+An instance also carries its own name and its own mark. Drop a file at
+`client/public/personal-wordmark.png` and a personal instance shows it; leave it
+out and the same instance sets its name in type instead. The fallback is on the
+image failing to load rather than on a flag, so adding a logo is putting a file
+in a folder and nothing else, and a missing file is never a broken image.
+
 An instance also carries its own name. `config.brand` is "Personal Finance"
 without the wordmark on a personal instance and "StrideUp Finance" with it
 otherwise, overridable with `FINANCE_APP_NAME`. It is served from `/api/health`

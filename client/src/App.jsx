@@ -3,7 +3,8 @@ import { api } from "./api.js";
 import Login from "./Login.jsx";
 import FinanceDashboard from "./FinanceDashboard.jsx";
 
-const DEFAULT_BRAND = { name: "StrideUp Finance", wordmark: true };
+const DEFAULT_BRAND = { name: "StrideUp Finance", wordmark: true,
+                        icon: "/strideup-icon.svg" };
 
 export default function App() {
   const [loading, setLoading] = useState(true);
@@ -27,7 +28,17 @@ export default function App() {
       .catch(() => { /* the default name is fine if health is unreachable */ });
   }, []);
 
-  useEffect(() => { document.title = brand.name; }, [brand]);
+  // The tab carries the name and the mark. Both are set here rather than in
+  // index.html, because one build serves every instance and the HTML cannot
+  // know which one it is being served as.
+  useEffect(() => {
+    document.title = brand.name;
+    if (!brand.icon) return;
+    for (const rel of ["icon", "apple-touch-icon"]) {
+      const link = document.querySelector(`link[rel="${rel}"]`);
+      if (link) link.href = brand.icon;
+    }
+  }, [brand]);
 
   async function logout() {
     try {

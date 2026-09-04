@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Personal Finance">
+  <!-- Not the company's mark. Same rounded-square silhouette so it still reads
+       as an app icon at tab size, but a different hue and a different figure,
+       so two tabs open side by side are told apart at a glance. -->
+  <defs>
+    <linearGradient id="pf-grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0FA3C7"/>
+      <stop offset="100%" stop-color="#1B6FA8"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="url(#pf-grad)"/>
+  <!-- Three rising bars: money over time, which is what the app is about. -->
+  <rect x="15" y="34" width="8" height="15" rx="3" fill="#fff" opacity="0.62"/>
+  <rect x="28" y="26" width="8" height="23" rx="3" fill="#fff" opacity="0.82"/>
+  <rect x="41" y="17" width="8" height="32" rx="3" fill="#fff"/>
+</svg>
