@@ -2,7 +2,12 @@ import { useState } from "react";
 
 // One account owns this app, so there is nothing to sign up for — just a way
 // back in.
-export default function Login({ onAuthed }) {
+export default function Login({ onAuthed, brand = { name: "StrideUp Finance", wordmark: true } }) {
+  // "StrideUp Finance" splits into a wordmark and a product name; anything
+  // else is set in type, with the last word carrying the weight.
+  const words = brand.name.trim().split(/\s+/);
+  const lead = words.slice(0, -1).join(" ");
+  const tail = words.at(-1);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -28,9 +33,18 @@ export default function Login({ onAuthed }) {
     <div className="lg-wrap">
       <style>{LOGIN_CSS}</style>
       <form className="lg-card" onSubmit={submit}>
-        <img src="/strideup-wordmark.png" alt="StrideUp"
-             width="176" height="73" className="lg-wordmark" />
-        <h1 className="lg-title">Finance</h1>
+        {brand.wordmark ? (
+          <>
+            <img src="/strideup-wordmark.png" alt="StrideUp"
+                 width="176" height="73" className="lg-wordmark" />
+            <h1 className="lg-title">Finance</h1>
+          </>
+        ) : (
+          <>
+            {lead && <p className="lg-lead">{lead}</p>}
+            <h1 className="lg-title">{tail}</h1>
+          </>
+        )}
         <p className="lg-sub">
           Revenue, expenses, cash and outstanding payments — in one place.
         </p>
@@ -39,7 +53,7 @@ export default function Login({ onAuthed }) {
         <input
           id="email" className="lg-input" type="email" autoComplete="username"
           value={email} onChange={(e) => setEmail(e.target.value)}
-          placeholder="you@strideup.org" required
+          placeholder="you@example.com" required
         />
 
         <label className="lg-label" htmlFor="password">Password</label>
@@ -74,6 +88,7 @@ const LOGIN_CSS = `
 .lg-card{position:relative;z-index:1;width:100%;max-width:410px;background:#fff;border-radius:22px;
   padding:34px 30px;box-shadow:0 30px 80px -30px rgba(20,8,40,.7);display:flex;flex-direction:column}
 .lg-wordmark{align-self:flex-start;width:auto;height:52px;max-width:100%;margin:0 0 10px}
+.lg-lead{margin:0;font-size:19px;font-weight:600;letter-spacing:-.01em;color:var(--fin-muted,#6E6884)}
 .lg-title{font-weight:600;font-size:38px;
   letter-spacing:-.02em;line-height:1;margin:0 0 10px;color:#171326}
 .lg-sub{font-size:14px;line-height:1.55;color:#6b6188;margin:0 0 20px}

@@ -49,7 +49,8 @@ const HORIZON_MONTHS = 18;
 const RECORD_VIEWS = { overview: "out", revenue: "in", expenses: "out",
                        ledger: "out", vendors: "out" };
 
-export default function FinanceDashboard({ owner, onLogout }) {
+export default function FinanceDashboard({ owner, onLogout,
+                                          brand = { name: "StrideUp Finance", wordmark: true } }) {
   const [view, setView] = useState("overview");
   const [period, setPeriod] = useState(thisMonth());
   const [data, setData] = useState(null);
@@ -417,9 +418,19 @@ export default function FinanceDashboard({ owner, onLogout }) {
 
       <aside className="fin-side" aria-label="Sections">
         <div className="fin-sidebrand">
-          <img src="/strideup-wordmark.png" alt="StrideUp"
-               width="128" height="53" className="fin-wordmark" />
-          <span className="fin-product">Finance</span>
+          {brand.wordmark ? (
+            <>
+              <img src="/strideup-wordmark.png" alt="StrideUp"
+                   width="128" height="53" className="fin-wordmark" />
+              <span className="fin-product">Finance</span>
+            </>
+          ) : (
+            // Not the company's books, so not the company's wordmark.
+            <span className="fin-brandtype">
+              {brand.name.trim().split(/\s+/).slice(0, -1).join(" ")}
+              <b>{brand.name.trim().split(/\s+/).at(-1)}</b>
+            </span>
+          )}
         </div>
         <p className="fin-sidelabel">Menu</p>
         <nav>

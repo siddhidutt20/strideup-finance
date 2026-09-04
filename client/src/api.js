@@ -72,6 +72,9 @@ export const api = {
     request("GET", `/finance/budgets?entity=${entity}&period=${period}`),
   saveBudgets: (b) => request("PUT", "/finance/budgets", b),
   copyBudgets: (b) => request("POST", "/finance/budgets/copy", b),
+  // Unauthenticated on purpose: the login page needs to know what this app is
+  // called before anyone has signed in to ask.
+  health: () => fetch("/api/health").then((r) => r.json()),
   booksExportUrl: (entity) => `/api/finance/books/${entity}/export.json`,
   importBooks: (data) => request("POST", "/finance/books/import", data),
   removeBooks: (entity, confirm) =>

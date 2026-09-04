@@ -57,6 +57,9 @@ export function createApp() {
       ok: config.configErrors.length === 0,
       ai: config.anthropic.enabled,
       app: "strideup-finance",
+      // The login page renders before anyone is signed in, so the name and the
+      // wordmark it should show have to come from somewhere unauthenticated.
+      brand: config.brand,
       configErrors: config.configErrors,
     })
   );

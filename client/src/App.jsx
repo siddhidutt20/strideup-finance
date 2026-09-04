@@ -3,9 +3,12 @@ import { api } from "./api.js";
 import Login from "./Login.jsx";
 import FinanceDashboard from "./FinanceDashboard.jsx";
 
+const DEFAULT_BRAND = { name: "StrideUp Finance", wordmark: true };
+
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [owner, setOwner] = useState(null);
+  const [brand, setBrand] = useState(DEFAULT_BRAND);
 
   useEffect(() => {
     (async () => {
@@ -17,7 +20,14 @@ export default function App() {
         setLoading(false);
       }
     })();
+    // What this deployment calls itself, so the tab and the login page say it
+    // before anyone signs in.
+    api.health()
+      .then((h) => { if (h?.brand?.name) setBrand(h.brand); })
+      .catch(() => { /* the default name is fine if health is unreachable */ });
   }, []);
+
+  useEffect(() => { document.title = brand.name; }, [brand]);
 
   async function logout() {
     try {
@@ -37,12 +47,12 @@ export default function App() {
     );
   }
 
-  if (!owner) return <Login onAuthed={setOwner} />;
+  if (!owner) return <Login onAuthed={setOwner} brand={brand} />;
 
   return (
     <div className="sf-shell">
       <style>{SHELL_CSS}</style>
-      <FinanceDashboard owner={owner} onLogout={logout} />
+      <FinanceDashboard owner={owner} onLogout={logout} brand={brand} />
     </div>
   );
 }

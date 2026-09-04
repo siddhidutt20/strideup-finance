@@ -37,6 +37,12 @@ export const FIN_CSS = `
    than beside it — "Finance" is what this app is, not part of the logo. */
 .fin-sidebrand{display:flex;flex-direction:column;align-items:flex-start;gap:2px;
   padding:10px 10px 20px}
+/* Where there is no wordmark, the name is set in type: the qualifier light,
+   the thing itself heavy, on two lines like the lockup it replaces. */
+.fin-brandtype{display:flex;flex-direction:column;line-height:1.15;
+  font-family:var(--fin-display);font-size:19px;font-weight:500;
+  color:var(--fin-muted);letter-spacing:-.015em}
+.fin-brandtype b{font-size:23px;font-weight:600;color:var(--fin-ink)}
 .fin-wordmark{display:block;width:auto;height:42px}
 .fin-product{font-family:var(--fin-display);font-size:17px;font-weight:600;
   letter-spacing:-.01em;color:var(--fin-muted);padding-left:1px}

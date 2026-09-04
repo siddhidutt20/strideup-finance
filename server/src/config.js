@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+import { SINGLE_ENTITY } from "./finance/schema.js";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -72,6 +73,18 @@ export const config = {
 
   // One account owns this app. There is no registration — the company's books
   // are not something anyone should be able to sign themselves up for.
+  // What this deployment calls itself. A personal instance is not StrideUp, so
+  // it does not wear StrideUp's name or its wordmark — the brand is part of
+  // what makes two instances feel like two apps rather than one app twice.
+  brand: {
+    name:
+      process.env.FINANCE_APP_NAME ||
+      (SINGLE_ENTITY === "personal" ? "Personal Finance" : "StrideUp Finance"),
+    // The wordmark belongs to the company. Anything that is not the company's
+    // books shows its name in type instead.
+    wordmark: SINGLE_ENTITY !== "personal",
+  },
+
   owner: {
     email: (process.env.OWNER_EMAIL || "owner@strideup.org").trim().toLowerCase(),
     password: process.env.OWNER_PASSWORD || (isProd ? "" : "owner-dev-password"),

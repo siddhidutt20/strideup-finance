@@ -140,6 +140,13 @@ is the setup, and `scripts/move-entity.mjs` moves a set of books between two
 instances in three separate steps — export, import, and a purge that refuses to
 run without `--yes-delete`.
 
+An instance also carries its own name. `config.brand` is "Personal Finance"
+without the wordmark on a personal instance and "StrideUp Finance" with it
+otherwise, overridable with `FINANCE_APP_NAME`. It is served from `/api/health`
+because the login page renders before anyone is signed in to ask, and it sets
+the browser tab. The StrideUp wordmark belongs to the company; anything that is
+not the company's books shows its name in type instead.
+
 A personal instance is not a business one with a filter over it. It calls money
 coming in **Income**, drops the P&L and the revenue import, and says "how your
 money is doing" rather than naming the company. `viewsFor` and `moneyInLabel`
