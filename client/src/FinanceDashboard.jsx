@@ -984,8 +984,14 @@ export function Brand({ brand, height }) {
   if (brand.wordmarkSrc && !failed) {
     return (
       <>
-        <img src={brand.wordmarkSrc} alt={brand.name} className="fin-wordmark"
-             style={{ height }} onError={() => setFailed(true)} />
+        {/* The company's lockup is wide and short, so it is sized by height.
+            A logo of unknown proportions is sized by the width it has to sit
+            in — a stacked mark with a name and a tagline under it is
+            unreadable at the height a wordmark wants. */}
+        <img src={brand.wordmarkSrc} alt={brand.name}
+             className={`fin-wordmark${brand.wordmark ? "" : " fin-logo"}`}
+             style={brand.wordmark ? { height } : undefined}
+             onError={() => setFailed(true)} />
         {/* A logo says who; the word under it says what. Where the name is one
             word the logo has already said it, and repeating it under the mark
             is noise. */}

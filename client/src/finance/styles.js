@@ -42,6 +42,14 @@ export const FIN_CSS = `
 /* A logo of unknown proportions: fix the height, let the width follow, and
    never let it push the sidebar wider than itself. */
 .fin-wordmark{width:auto;max-width:100%;object-fit:contain;object-position:left center}
+/* A custom mark is sized by the width it has to live in, capped so a tall
+   lockup cannot push the menu down the page. The width is set outright rather
+   than as a percentage: the brand block is a flex column aligned to its start,
+   so a percentage resolves against the image's own content width and the logo
+   comes out at a third of the size it was given. */
+.fin-wordmark.fin-logo{width:170px;max-width:100%;height:auto;max-height:130px;
+  object-position:left center;margin:0 0 4px}
+@media(max-width:1000px){.fin-wordmark.fin-logo{width:104px;max-height:52px}}
 .fin-brandtype{display:flex;flex-direction:column;line-height:1.15;
   font-family:var(--fin-display);font-size:19px;font-weight:500;
   color:var(--fin-muted);letter-spacing:-.015em}

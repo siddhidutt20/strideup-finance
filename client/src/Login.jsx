@@ -36,7 +36,8 @@ export default function Login({ onAuthed, brand = { name: "StrideUp Finance", wo
       <form className="lg-card" onSubmit={submit}>
         {brand.wordmarkSrc && !logoFailed ? (
           <>
-            <img src={brand.wordmarkSrc} alt={brand.name} className="lg-wordmark"
+            <img src={brand.wordmarkSrc} alt={brand.name}
+                 className={brand.wordmark ? "lg-wordmark" : "lg-logo"}
                  onError={() => setLogoFailed(true)} />
             {/* A one-word name is already in the mark above it. */}
             {(brand.wordmark || words.length > 1) && (
@@ -92,6 +93,10 @@ const LOGIN_CSS = `
 .lg-card{position:relative;z-index:1;width:100%;max-width:410px;background:#fff;border-radius:22px;
   padding:34px 30px;box-shadow:0 30px 80px -30px rgba(20,8,40,.7);display:flex;flex-direction:column}
 .lg-wordmark{align-self:flex-start;width:auto;height:52px;max-width:100%;margin:0 0 10px}
+/* A custom mark can be any shape, and a stacked one is unreadable at the
+   height a wide wordmark wants. It gets the card's width instead, centred. */
+.lg-logo{align-self:center;width:100%;height:auto;max-width:240px;max-height:180px;
+  margin:0 auto 14px;object-fit:contain}
 .lg-lead{margin:0;font-size:19px;font-weight:600;letter-spacing:-.01em;color:var(--fin-muted,#6E6884)}
 .lg-title{font-weight:600;font-size:38px;
   letter-spacing:-.02em;line-height:1;margin:0 0 10px;color:#171326}
