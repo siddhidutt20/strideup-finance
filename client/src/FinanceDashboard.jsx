@@ -711,6 +711,7 @@ export default function FinanceDashboard({ owner, onLogout,
           {view === "transactions" && (
             <TransactionsView entity={entity} categories={categories} money={money}
                               reloadKey={txKey}
+                              onChanged={() => { load(period); loadForecast(); }}
                               onAdd={() => { setUploadKindPick(null); setAdding(true); }} />
           )}
           {!personalOnly && view === "revenue" && sides?.in && (sides.in.entities ?? [entity]).map((ent) => (

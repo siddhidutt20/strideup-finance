@@ -1524,6 +1524,21 @@ export const MONEY_CSS = `
 .hh-unplanned{background:#FFFCF4}
 .hh-unplanned td:first-child b{color:#8a6a15}
 
+/* Editing, wherever a row can be corrected. The button stays quiet until the
+   row is under the pointer — a table of Edit buttons reads as a form. */
+.ic-editcell{width:1%;white-space:nowrap;text-align:right}
+.fin-btn.sm{padding:5px 11px;font-size:12px}
+.ic-editcell .fin-btn{opacity:.45;transition:opacity .12s}
+tr:hover .ic-editcell .fin-btn,.ic-editcell .fin-btn:focus-visible{opacity:1}
+.fin-formacts{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:4px}
+.ic-spacer{flex:1}
+.ic-confirm{flex:1;min-width:200px;font-size:12.5px;line-height:1.5;color:var(--fin-neg)}
+.fin-btn.ghost.danger{color:var(--fin-neg);
+  border-color:color-mix(in srgb,var(--fin-out) 35%,var(--fin-line))}
+.fin-btn.ghost.danger:hover{background:#FEF0F2}
+.fin-hint{display:block;font-style:normal;font-size:11.5px;line-height:1.5;
+  color:var(--fin-faint);margin-top:4px}
+
 /* One line about the month, in the tone the month deserves. */
 .hh-note{display:flex;align-items:flex-start;gap:13px;flex-wrap:wrap;
   border-radius:16px;padding:14px 17px;border:1px solid var(--fin-hair);

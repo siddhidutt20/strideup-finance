@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../api.js";
 import { Panel } from "./pieces.jsx";
 import { Disc, CategoryPill } from "./glyphs.jsx";
+import { CURRENCIES, majorOf } from "./format.js";
 
 // ── Every transaction, filtered ──────────────────────────────
 // The ledger, asked the way somebody looks for one thing: who was it with,
@@ -27,13 +28,139 @@ function sourceOf(r) {
 
 const BLANK = { q: "", direction: "", categoryId: "", from: "", to: "" };
 
-export function TransactionsView({ entity, categories, money, onAdd, reloadKey }) {
+// ── Correcting a recorded row ────────────────────────────────
+// Everything a reader can get wrong is editable here: what it was, who it was
+// with, when, how much, in which currency, and which way the money went.
+// Removing is separate and confirmed, because a row taken out of the ledger
+// takes its figure out of every total on every page.
+function EntryEditor({ entry, categories, entity, onClose, onSaved }) {
+  const [f, setF] = useState({
+    description: entry.description ?? "",
+    entryDate: entry.entry_date ?? "",
+    amount: String(majorOf(entry.amount_minor, entry.currency)),
+    currency: entry.currency ?? "USD",
+    direction: entry.direction ?? "out",
+    categoryId: entry.category_id ?? "",
+  });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const [confirming, setConfirming] = useState(false);
+  const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
+
+  const usable = categories.filter(
+    (c) => (!c.entity || c.entity === "both" || c.entity === entity) &&
+           (f.direction === "in" ? c.kind === "revenue" || c.kind === "capital"
+                                 : c.kind !== "revenue")
+  );
+
+  async function save(e) {
+    e.preventDefault();
+    setBusy(true); setMsg(null);
+    try {
+      await api.finPatchEntry(entry.id, {
+        description: f.description.trim(),
+        entryDate: f.entryDate,
+        amount: Number(f.amount),
+        currency: f.currency,
+        direction: f.direction,
+        categoryId: f.categoryId ? Number(f.categoryId) : undefined,
+        // Correcting a row is confirming it. Leaving it flagged after somebody
+        // has looked at it and fixed it is just a badge nobody can clear.
+        reviewStatus: "approved",
+      });
+      onSaved();
+    } catch (err) {
+      setMsg(err.message || "Could not save that.");
+    } finally { setBusy(false); }
+  }
+
+  async function remove() {
+    setBusy(true); setMsg(null);
+    try {
+      await api.finDeleteEntry(entry.id);
+      onSaved();
+    } catch (err) {
+      setMsg(err.message || "Could not remove that.");
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="fin-modal" role="dialog" aria-label="Edit this transaction">
+      <div className="fin-sheet">
+        <header className="fin-sheethead">
+          <h2>Edit this transaction</h2>
+          <button className="fin-x" onClick={onClose} aria-label="Close">×</button>
+        </header>
+        <form className="fin-form" onSubmit={save}>
+          <label className="wide"><span>What it was</span>
+            <input value={f.description} onChange={set("description")}
+                   maxLength={300} required />
+          </label>
+          <label><span>Date</span>
+            <input type="date" value={f.entryDate} onChange={set("entryDate")} required />
+          </label>
+          <label><span>Which way</span>
+            <select value={f.direction}
+                    onChange={(e) => setF((x) => ({ ...x, direction: e.target.value, categoryId: "" }))}>
+              <option value="out">Money out</option>
+              <option value="in">Money in</option>
+            </select>
+          </label>
+          <label><span>Amount</span>
+            <input type="number" step="0.01" min="0.01" value={f.amount}
+                   onChange={set("amount")} required />
+          </label>
+          <label><span>Currency</span>
+            <select value={f.currency} onChange={set("currency")}>
+              {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </label>
+          <label><span>Category</span>
+            <select value={f.categoryId} onChange={set("categoryId")}>
+              <option value="">Uncategorised</option>
+              {usable.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </label>
+          {msg && <p className="fin-error wide">{msg}</p>}
+          <div className="fin-formacts wide">
+            {confirming ? (
+              <>
+                <span className="ic-confirm">
+                  Remove this row? Its figure comes out of every total that
+                  counted it.
+                </span>
+                <button type="button" className="fin-btn ghost danger" disabled={busy}
+                        onClick={remove}>Yes, remove it</button>
+                <button type="button" className="fin-btn ghost" disabled={busy}
+                        onClick={() => setConfirming(false)}>Keep it</button>
+              </>
+            ) : (
+              <>
+                <button type="button" className="fin-btn ghost danger" disabled={busy}
+                        onClick={() => setConfirming(true)}>Remove</button>
+                <span className="ic-spacer" />
+                <button type="button" className="fin-btn ghost" onClick={onClose}>Cancel</button>
+                <button className="fin-btn" disabled={busy}>
+                  {busy ? "Saving…" : "Save changes"}
+                </button>
+              </>
+            )}
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+export function TransactionsView({ entity, categories, money, onAdd, onChanged, reloadKey }) {
   const [f, setF] = useState(BLANK);
   const [page, setPage] = useState(0);
   const [rows, setRows] = useState(null);
   const [total, setTotal] = useState(0);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [editing, setEditing] = useState(null);
+  const [bump, setBump] = useState(0);
 
   const set = (k) => (e) => { setF((x) => ({ ...x, [k]: e.target.value })); setPage(0); };
   const dirty = Object.keys(BLANK).some((k) => f[k] !== BLANK[k]);
@@ -56,7 +183,7 @@ export function TransactionsView({ entity, categories, money, onAdd, reloadKey }
   useEffect(() => {
     const t = setTimeout(load, f.q ? 220 : 0);
     return () => clearTimeout(t);
-  }, [load, reloadKey]);
+  }, [load, reloadKey, bump]);
 
   const pages = Math.max(1, Math.ceil(total / PAGE));
   const from = total ? page * PAGE + 1 : 0;
@@ -118,7 +245,8 @@ export function TransactionsView({ entity, categories, money, onAdd, reloadKey }
             <table className="fin-table tx-table">
               <thead>
                 <tr><th>Date</th><th>Description</th><th>Category</th>
-                    <th>Where from</th><th className="num">Amount</th></tr>
+                    <th>Where from</th><th className="num">Amount</th>
+                    <th aria-label="Edit" /></tr>
               </thead>
               <tbody className={busy ? "tx-busy" : undefined}>
                 {rows.map((r) => {
@@ -138,6 +266,11 @@ export function TransactionsView({ entity, categories, money, onAdd, reloadKey }
                       <td><span className={`tx-src s-${src.cls}`}>{src.label}</span></td>
                       <td className={`num fin-fig ${r.direction === "in" ? "fe-in" : "fe-out"}`}>
                         {r.direction === "in" ? "+" : "−"} {money.exact(r.base_amount_minor)}
+                      </td>
+                      <td className="ic-editcell">
+                        <button className="fin-btn ghost sm" onClick={() => setEditing(r)}>
+                          Edit
+                        </button>
                       </td>
                     </tr>
                   );
@@ -168,9 +301,20 @@ export function TransactionsView({ entity, categories, money, onAdd, reloadKey }
         )}
         <p className="fc-note">
           Amounts are shown in your own currency, converted at the rate on the
-          day. Correcting or removing a row is on the Ledger.
+          day it happened. Editing a row here changes it everywhere — every
+          total that counted it is recomputed from the same ledger.
         </p>
       </Panel>
+
+      {editing && (
+        <EntryEditor entry={editing} categories={categories} entity={entity}
+                     onClose={() => setEditing(null)}
+                     onSaved={() => {
+                       setEditing(null);
+                       setBump((b) => b + 1);
+                       onChanged?.();
+                     }} />
+      )}
     </div>
   );
 }

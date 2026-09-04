@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { api } from "../api.js";
 import { Panel } from "./pieces.jsx";
 import { Disc } from "./glyphs.jsx";
-import { monthLabel } from "./format.js";
+import { monthLabel, CURRENCIES } from "./format.js";
 import { CommitmentForm } from "./forecast.jsx";
 
 // ── Where the money comes from ───────────────────────────────
@@ -57,11 +57,150 @@ function IncomeBars({ series, money, current }) {
   );
 }
 
+
+// ── Correcting a source ──────────────────────────────────────
+// A source read off a document is somebody's answer, and any part of it can
+// be wrong. All of it is correctable, and the two ways of stopping one are
+// kept apart: ending it keeps the months it did run, removing it says it
+// should never have been there.
+function SourceEditor({ source, entity, categories, currency, money, onClose, onSaved }) {
+  const [f, setF] = useState({
+    counterparty: source.name ?? "",
+    description: source.description ?? "",
+    amount: String((source.amount ?? 0) / 100),
+    currency,
+    frequency: source.frequency ?? "monthly",
+    categoryId: "",
+    startDate: source.startDate ?? "",
+    endDate: source.endDate ?? "",
+  });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const [confirming, setConfirming] = useState(false);
+  const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
+
+  const usable = categories.filter(
+    (c) => (!c.entity || c.entity === "both" || c.entity === entity) &&
+           (c.kind === "revenue" || c.kind === "capital")
+  );
+  // The category is matched by name because that is what the source carries;
+  // an id would be the safer key, but it is not what the page was given.
+  const currentId = usable.find((c) => c.name === source.type)?.id ?? "";
+
+  async function save(e) {
+    e.preventDefault();
+    setBusy(true); setMsg(null);
+    try {
+      await api.updateCommitment(source.id, {
+        counterparty: f.counterparty.trim() || null,
+        description: f.description.trim() || f.counterparty.trim(),
+        amount: Number(f.amount),
+        currency: f.currency,
+        frequency: f.frequency,
+        categoryId: f.categoryId ? Number(f.categoryId) : undefined,
+        startDate: f.startDate,
+        endDate: f.endDate || null,
+      });
+      onSaved();
+    } catch (err) {
+      setMsg(err.message || "Could not save that.");
+    } finally { setBusy(false); }
+  }
+
+  async function remove() {
+    setBusy(true); setMsg(null);
+    try {
+      await api.deleteCommitment(source.id);
+      onSaved();
+    } catch (err) {
+      setMsg(err.message || "Could not remove that.");
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="fin-modal" role="dialog" aria-label="Edit this income source">
+      <div className="fin-sheet">
+        <header className="fin-sheethead">
+          <h2>Edit “{source.name}”</h2>
+          <button className="fin-x" onClick={onClose} aria-label="Close">×</button>
+        </header>
+        <form className="fin-form" onSubmit={save}>
+          <label><span>Who it comes from</span>
+            <input value={f.counterparty} onChange={set("counterparty")}
+                   maxLength={120} required />
+          </label>
+          <label className="wide"><span>What it is</span>
+            <input value={f.description} onChange={set("description")}
+                   placeholder="Monthly salary" maxLength={200} />
+          </label>
+          <label><span>Amount each time</span>
+            <input type="number" step="0.01" min="0.01" value={f.amount}
+                   onChange={set("amount")} required />
+          </label>
+          <label><span>Currency</span>
+            <select value={f.currency} onChange={set("currency")}>
+              {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </label>
+          <label><span>How often</span>
+            <select value={f.frequency} onChange={set("frequency")}>
+              {Object.entries(FREQ).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </label>
+          <label><span>Type</span>
+            <select value={f.categoryId === "" ? currentId : f.categoryId}
+                    onChange={set("categoryId")}>
+              <option value="">Uncategorised</option>
+              {usable.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </label>
+          <label><span>First payment</span>
+            <input type="date" value={f.startDate} onChange={set("startDate")} required />
+          </label>
+          <label><span>Until</span>
+            <input type="date" value={f.endDate} onChange={set("endDate")} />
+            <em className="fin-hint">
+              Leave blank if it is open-ended. Setting a date keeps every month it
+              did run — it stops arriving after that, it does not vanish.
+            </em>
+          </label>
+          {msg && <p className="fin-error wide">{msg}</p>}
+          <div className="fin-formacts wide">
+            {confirming ? (
+              <>
+                <span className="ic-confirm">
+                  Remove “{source.name}” entirely? Any payment already recorded
+                  against it stays in the ledger.
+                </span>
+                <button type="button" className="fin-btn ghost danger" disabled={busy}
+                        onClick={remove}>Yes, remove it</button>
+                <button type="button" className="fin-btn ghost" disabled={busy}
+                        onClick={() => setConfirming(false)}>Keep it</button>
+              </>
+            ) : (
+              <>
+                <button type="button" className="fin-btn ghost danger" disabled={busy}
+                        onClick={() => setConfirming(true)}>Remove</button>
+                <span className="ic-spacer" />
+                <button type="button" className="fin-btn ghost" onClick={onClose}>Cancel</button>
+                <button className="fin-btn" disabled={busy}>
+                  {busy ? "Saving…" : "Save changes"}
+                </button>
+              </>
+            )}
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export function IncomeView({ inc, money, period, entity, categories, currency,
                             onChanged, onAdd, adding, onCloseAdd }) {
   const [busy, setBusy] = useState(false);
   const [dismissed, setDismissed] = useState([]);
   const [recurring, setRecurring] = useState(null);
+  const [editing, setEditing] = useState(null);
   const [span, setSpan] = useState("year");
 
   const series = useMemo(() => {
@@ -187,7 +326,8 @@ export function IncomeView({ inc, money, period, entity, categories, currency,
             <table className="fin-table ic-table">
               <thead>
                 <tr><th>Source</th><th>Type</th><th>How often</th>
-                    <th className="num">Amount</th><th>Last received</th><th>Next due</th></tr>
+                    <th className="num">Amount</th><th>Last received</th><th>Next due</th>
+                    <th aria-label="Edit" /></tr>
               </thead>
               <tbody>
                 {[...active, ...ended].map((s) => (
@@ -210,6 +350,11 @@ export function IncomeView({ inc, money, period, entity, categories, currency,
                       {s.active
                         ? (s.nextDue ? dayLabel(s.nextDue) : <span className="fin-dash">—</span>)
                         : <span className="ic-endtag">ended {dayLabel(s.endDate)}</span>}
+                    </td>
+                    <td className="ic-editcell">
+                      <button className="fin-btn ghost sm" onClick={() => setEditing(s)}>
+                        Edit
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -241,6 +386,13 @@ export function IncomeView({ inc, money, period, entity, categories, currency,
             ))}
           </ul>
         </Panel>
+      )}
+
+      {editing && (
+        <SourceEditor source={editing} entity={entity} categories={categories}
+                      currency={currency} money={money}
+                      onClose={() => setEditing(null)}
+                      onSaved={() => { setEditing(null); onChanged(); }} />
       )}
 
       {adding && (
