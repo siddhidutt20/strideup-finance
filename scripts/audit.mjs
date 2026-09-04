@@ -308,5 +308,39 @@ console.log("\n══ export.csv ══");
   }
 }
 
+// ── The home page ────────────────────────────────────────────
+// One call feeds the whole first screen, so every figure on it has to agree
+// with the page it was taken from. If they diverge, the home page is lying
+// about the same month twice.
+for (const ent of ["strideup","personal"]) {
+  console.log(`\n══ home · ${ent} ══`);
+  const home=(await g(`/finance/home?entity=${ent}&period=${P}`)).byEntity[ent];
+  const hh=(await g(`/finance/household?entity=${ent}&period=${P}`)).byEntity[ent];
+  const dash=(await g(`/finance/dashboard?entity=${ent}`)).byEntity[ent];
+  const live=(await g(`/finance/entries?limit=500`)).entries
+    .filter(e=>e.entity===ent&&e.review_status!=="rejected");
+  const monthNet=(d)=>live.filter(e=>e.period.slice(0,10)===P&&e.direction===d)
+                          .reduce((t,e)=>t+Number(e.base_amount_minor),0);
+
+  check("home income = household income", home.savings.income, hh.savings.income);
+  check("home spending = household spending", home.savings.spent, hh.savings.spent);
+  check("home bills total = household bills", home.bills.total, hh.bills.total);
+  check("home income = the ledger for the month", home.savings.income, monthNet("in"));
+  check("home total cash = the dashboard's cash", home.cash.amount, dash.cash.amount);
+  check("home cash movement = the month's net",
+        home.cash.movement, monthNet("in") - monthNet("out"));
+  // Five tiles at most, and they must add up to the month's spending — an
+  // "Others" that quietly drops a category is worse than no tile.
+  check("home category tiles sum to the month's spending",
+        home.topCategories.reduce((t,c)=>t+c.amount,0), home.spendTotal);
+  check("home spending total = the month's spending", home.spendTotal, home.savings.spent);
+  const last=home.series[home.series.length-1];
+  check("home chart's last month = the month on the page", last.revenue, home.savings.income);
+  const shares=home.topCategories.reduce((t,c)=>t+c.share,0);
+  const sharesOk=!home.spendTotal||Math.abs(shares-1)<1e-6;
+  sharesOk?pass++:fail++;
+  console.log(`  ${sharesOk?"ok  ":"FAIL"} ${"home category shares add to 100%".padEnd(52)} ${(shares*100).toFixed(2)}%`);
+}
+
 console.log(`\n  ${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);

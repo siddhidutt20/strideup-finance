@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api.js";
-import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS, FUTURE_CSS, CASHFLOW_AHEAD_CSS, CF_NONE_CSS, VENDORS_CSS, CASH_CSS, CONTRACTS_GROUP_CSS, SIDE_CSS, CASH_BAND_CSS, NARROW_FIX_CSS, INVOICE_CSS, RECORD_CSS, OVERVIEW_CSS, PL_CSS, BOOKS_CSS, HOUSEHOLD_CSS } from "./finance/styles.js";
+import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS, FUTURE_CSS, CASHFLOW_AHEAD_CSS, CF_NONE_CSS, VENDORS_CSS, CASH_CSS, CONTRACTS_GROUP_CSS, SIDE_CSS, CASH_BAND_CSS, NARROW_FIX_CSS, INVOICE_CSS, RECORD_CSS, OVERVIEW_CSS, PL_CSS, BOOKS_CSS, HOUSEHOLD_CSS, HOME_CSS } from "./finance/styles.js";
 import {
   fmtAmount, monthLabel, readFile, shiftMonth, thisMonth, useMoney, ZERO_DECIMAL,
   ENTITY_LABEL, entityChoices, viewsFor, moneyInLabel, loadEntity, saveEntity,
@@ -16,6 +16,8 @@ import { OverviewDash } from "./finance/overview.jsx";
 import { SideView } from "./finance/side.jsx";
 import { PlView, BudgetEditor } from "./finance/pl.jsx";
 import { BudgetView, BillsView } from "./finance/household.jsx";
+import { HomeView, greeting } from "./finance/home.jsx";
+import { Search, Alerts, AccountMenu } from "./finance/topbar.jsx";
 import { PayInvoice, InvoiceList } from "./finance/invoice.jsx";
 import { NewRecord } from "./finance/record.jsx";
 import { DueSoon } from "./finance/spend.jsx";
@@ -74,6 +76,7 @@ export default function FinanceDashboard({ owner, onLogout,
   const [dashFailed, setDashFailed] = useState(false);
   const [pl, setPl] = useState(null);
   const [household, setHousehold] = useState(null);
+  const [home, setHome] = useState(null);
   const [budgeting, setBudgeting] = useState(false);
   const [plSpan, setPlSpan] = useState("month");
   // Which period the statement is read against. Null follows the month
@@ -97,6 +100,10 @@ export default function FinanceDashboard({ owner, onLogout,
   // Which pages this instance carries, and what it calls money coming in.
   const views = useMemo(() => viewsFor(VIEWS, books), [books]);
   const inLabel = useMemo(() => moneyInLabel(books), [books]);
+  // A household's first screen is its own page, not the company overview
+  // wearing a different word. Same ledger, same month, different question.
+  const personalOnly = (books ?? []).length === 1 && books[0].id === "personal";
+  const isHome = personalOnly && view === "overview";
   // A page this instance does not have must not stay open behind the nav.
   useEffect(() => {
     if (!views.some((v) => v[0] === view)) setView("overview");
@@ -224,6 +231,21 @@ export default function FinanceDashboard({ owner, onLogout,
     if (!["budget", "bills"].includes(view)) return;
     loadHousehold();
   }, [view, loadHousehold]);
+
+  // The home page is one call: everything on it comes back together, so no
+  // panel is ever showing one month's figures beside another's.
+  const loadHome = useCallback(async () => {
+    try {
+      setHome(await api.finHome(entity, period));
+    } catch (err) {
+      setError(err.message || "Could not load the home page.");
+    }
+  }, [entity, period]);
+
+  useEffect(() => {
+    if (!isHome) return;
+    loadHome();
+  }, [isHome, loadHome]);
 
   // How many committed payments fall due in the next 30 days, across whichever
   // books are in view. Shown on the nav so it is visible without opening it.
@@ -398,7 +420,7 @@ export default function FinanceDashboard({ owner, onLogout,
         {/* Joined in JS, not as three JSX children: a <style> element with
             several text children does not reliably end up with all of them in
             the DOM, and the symptom is a stylesheet that silently truncates. */}
-        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS + PL_CSS + BOOKS_CSS + HOUSEHOLD_CSS}</style>
+        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS + PL_CSS + BOOKS_CSS + HOUSEHOLD_CSS + HOME_CSS}</style>
         <div className="fin-boot"><div className="fin-spinner" /></div>
       </div>
     );
@@ -416,7 +438,7 @@ export default function FinanceDashboard({ owner, onLogout,
     // shown under another month's heading while the new ones are in flight.
     // `dashFailed` breaks the wait: a spinner that will never resolve is
     // indistinguishable from a page that is simply broken.
-    (view === "overview" && !dashFailed && (!dash || dash.period !== period));
+    (view === "overview" && !isHome && !dashFailed && (!dash || dash.period !== period));
   // Adding things belongs where you are looking at them: a sales invoice on
   // Revenue, a bill on Expenses.
 
@@ -431,7 +453,7 @@ export default function FinanceDashboard({ owner, onLogout,
 
   return (
     <div className="fin-app">
-      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS + PL_CSS + BOOKS_CSS + HOUSEHOLD_CSS}</style>
+      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS + PL_CSS + BOOKS_CSS + HOUSEHOLD_CSS + HOME_CSS}</style>
 
       <aside className="fin-side" aria-label="Sections">
         <div className="fin-sidebrand">
@@ -445,7 +467,8 @@ export default function FinanceDashboard({ owner, onLogout,
                 <button className={view === id ? "on" : ""}
                         aria-current={view === id ? "page" : undefined}
                         onClick={() => setView(id)}>
-                  {ICONS[id]}<span>{label}</span>
+                  {ICONS[personalOnly && id === "overview" ? "home" : id]}
+                  <span>{label}</span>
                   {id === "forecast" && duePending > 0 && (
                     <b className="fin-badge" title={`${duePending} due in the next 30 days`}>
                       {duePending}
@@ -484,15 +507,39 @@ export default function FinanceDashboard({ owner, onLogout,
       </aside>
 
       <div className="fin">
-        <header className="fin-viewhead">
-          <div>
-            <h1>{heading}</h1>
-            <p>
-              {view === "ledger" && ledgerScope === "all"
-                ? `${blurb}.`
-                : `${blurb} ${monthLabel(period)}.`}
-            </p>
+        {personalOnly && (
+          <div className="fin-topbar">
+            <Search entity={entity} onOpen={(r) => { setPeriod(r.period); setView("ledger"); }} />
+            <Alerts alerts={home?.byEntity?.[entity]?.alerts} onGo={setView} />
+            <AccountMenu owner={owner} onLogout={onLogout} />
           </div>
+        )}
+        <header className={`fin-viewhead${isHome ? " fin-greet" : ""}`}>
+          <div>
+            {isHome ? (
+              <>
+                <p className="fin-eyebrow">Welcome back</p>
+                <h1>
+                  {greeting()}, <i>{String(owner?.name || "there").split(/\s+/)[0]}!</i>
+                </h1>
+                <p>Here's your financial snapshot for {monthLabel(period)}.</p>
+              </>
+            ) : (
+              <>
+                <h1>{heading}</h1>
+                <p>
+                  {view === "ledger" && ledgerScope === "all"
+                    ? `${blurb}.`
+                    : `${blurb} ${monthLabel(period)}.`}
+                </p>
+              </>
+            )}
+          </div>
+          {isHome && (
+            <p className="fin-motto" aria-hidden="true">
+              “A calmer today<br />for a brighter tomorrow.”
+            </p>
+          )}
           <div className="fin-headctl">
             {RECORD_VIEWS[view] && (
               <span className="fin-headacts">
@@ -553,13 +600,22 @@ export default function FinanceDashboard({ owner, onLogout,
         <div className="fin-boot"><div className="fin-spinner" /></div>
       ) : (
         <>
-          {view === "overview" && dashFailed && (!dash || dash.period !== period) && (
+          {isHome && (home && home.period === period ? (
+            (home.entities ?? [entity]).map((ent) => (
+              <HomeView key={`hm-${ent}`} home={home.byEntity[ent]} money={money}
+                        period={period} owner={owner} onGo={setView}
+                        onEditBudget={() => setBudgeting(true)}
+                        onUpload={() => { setUploadKindPick("expense"); setUploading(true); }}
+                        onAdd={() => setAdding(true)} />
+            ))
+          ) : <div className="fin-boot"><div className="fin-spinner" /></div>)}
+          {view === "overview" && !isHome && dashFailed && (!dash || dash.period !== period) && (
             <div className="fin-warn">
               The overview could not be built for {monthLabel(period)}. The message
               above says which part failed; every other page is unaffected.
             </div>
           )}
-          {view === "overview" && dash && dash.period === period &&
+          {view === "overview" && !isHome && dash && dash.period === period &&
             (dash.entities ?? [entity]).map((ent) => (
             <EntityBlock key={`ov-${ent}`} show={(dash.entities ?? []).length > 1}
                          label={dash.byEntity[ent].label}>
@@ -667,7 +723,7 @@ export default function FinanceDashboard({ owner, onLogout,
             <BudgetEditor entity={entity === "both" ? entityList[0] : entity}
                           period={period} categories={categories} money={money}
                           onClose={() => setBudgeting(false)}
-                          onSaved={() => { setBudgeting(false); loadHousehold(); loadPl(); }} />
+                          onSaved={() => { setBudgeting(false); loadHousehold(); loadPl(); loadHome(); }} />
           )}
           {view === "ledger" && (
             <LedgerView entries={entries} categories={categories} money={money}

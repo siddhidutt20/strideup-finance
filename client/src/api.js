@@ -70,6 +70,11 @@ export const api = {
                    (compare ? `&compare=${compare}` : "")),
   finHousehold: (entity, period) =>
     request("GET", `/finance/household?entity=${entity}&period=${period}`),
+  finHome: (entity, period) =>
+    request("GET", `/finance/home?entity=${entity}&period=${period}`),
+  finSearch: (q, entity) =>
+    request("GET", `/finance/entries?limit=8&q=${encodeURIComponent(q)}` +
+                   (entity && entity !== "both" ? `&entity=${entity}` : "")),
   finBudgets: (entity, period) =>
     request("GET", `/finance/budgets?entity=${entity}&period=${period}`),
   saveBudgets: (b) => request("PUT", "/finance/budgets", b),

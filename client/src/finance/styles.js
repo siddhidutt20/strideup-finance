@@ -1155,3 +1155,243 @@ export const HOUSEHOLD_CSS = `
 .hh-bar i.over{background:var(--fin-out)}
 .hh-when{display:block;font-style:normal;font-size:11px;color:var(--fin-faint)}
 `;
+
+// ── The home page ────────────────────────────────────────────
+// The first screen a household sees. Four figures, then the month in three
+// panels, then what actually happened, then the plan at the foot — kept last
+// and kept apart, because a plan is not a position.
+export const HOME_CSS = `
+/* The bar above everything: find a row, see what wants a decision, get out. */
+.fin-topbar{display:flex;align-items:center;gap:10px;margin:0 0 18px}
+.tb-search{position:relative;flex:1;min-width:0;display:flex;align-items:center;gap:9px;
+  background:var(--fin-surface);border:1px solid var(--fin-line);border-radius:999px;
+  padding:0 14px;height:42px;color:var(--fin-faint)}
+.tb-search:focus-within{border-color:color-mix(in srgb,var(--fin-accent) 45%,var(--fin-line));
+  box-shadow:0 0 0 3px #F1ECFB}
+.tb-search input{flex:1;min-width:0;border:0;background:none;font-family:inherit;
+  font-size:14px;color:var(--fin-ink);outline:none}
+.tb-search input::placeholder{color:var(--fin-faint)}
+.tb-clear{border:0;background:none;color:var(--fin-faint);font-size:19px;line-height:1;
+  cursor:pointer;padding:0 2px}
+.tb-clear:hover{color:var(--fin-out)}
+.tb-results,.tb-menu{position:absolute;z-index:40;top:calc(100% + 6px);
+  background:var(--fin-surface);border:1px solid var(--fin-line);border-radius:14px;
+  box-shadow:0 14px 40px rgba(23,19,38,.13);padding:6px;min-width:240px;max-height:340px;
+  overflow:auto}
+.tb-results{left:0;right:0}
+.tb-menu{right:0}
+.tb-results button,.tb-menu button{display:grid;grid-template-columns:1fr auto;
+  gap:0 10px;width:100%;text-align:left;border:0;background:none;font-family:inherit;
+  padding:8px 10px;border-radius:10px;cursor:pointer;color:var(--fin-ink)}
+.tb-results button:hover,.tb-menu button:hover{background:#F5F1FD}
+.tb-results b,.tb-menu b{font-size:13.5px;font-weight:600;display:block;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tb-results em,.tb-menu em{grid-column:1;font-style:normal;font-size:11.5px;
+  color:var(--fin-faint)}
+.tb-results span{grid-row:1/3;align-self:center;font-family:var(--fin-display);
+  font-weight:650;font-size:16px}
+.tb-hint{margin:0;padding:9px 11px;font-size:12.5px;color:var(--fin-muted)}
+.tb-me{border-bottom:1px solid var(--fin-hair);margin-bottom:4px}
+.tb-me b{display:block;font-size:13px;color:var(--fin-ink)}
+.tb-me em{font-style:normal;font-size:11.5px;color:var(--fin-faint)}
+.tb-bell{position:relative}
+.tb-bell>button,.tb-who>button{display:flex;align-items:center;gap:8px;height:42px;
+  border:1px solid var(--fin-line);background:var(--fin-surface);border-radius:999px;
+  color:var(--fin-muted);cursor:pointer;font-family:inherit;padding:0 12px}
+.tb-bell>button{width:42px;justify-content:center;padding:0}
+.tb-bell>button:hover,.tb-who>button:hover{color:var(--fin-accent);
+  border-color:color-mix(in srgb,var(--fin-accent) 35%,var(--fin-line))}
+.tb-dot{position:absolute;top:9px;right:11px;width:8px;height:8px;border-radius:50%;
+  background:var(--fin-out);border:2px solid var(--fin-surface)}
+.tb-who{position:relative}
+.tb-who b{font-size:13.5px;font-weight:600;color:var(--fin-ink)}
+.tb-caret{font-style:normal;font-size:10px;color:var(--fin-faint)}
+.tb-alerts{width:280px}
+
+/* The greeting. The name carries the colour, so the sentence reads as one. */
+.fin-viewhead.fin-greet{align-items:flex-start}
+.fin-eyebrow{margin:0 0 4px!important;font-size:11px;font-weight:650;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--fin-faint)}
+.fin-greet h1 i{font-style:italic;color:var(--fin-accent)}
+.fin-motto{margin:6px 0 0;text-align:right;font-style:italic;font-size:13.5px;
+  line-height:1.5;color:var(--fin-muted);white-space:nowrap}
+.fin-motto::after{content:"";display:block;width:34px;height:2px;border-radius:2px;
+  background:var(--fin-out);margin:8px 0 0 auto}
+
+.hm{display:flex;flex-direction:column;gap:16px}
+
+/* Four figures, tinted by what they are. Colour is a label here, not decoration. */
+.hm-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.hm-kpi{display:flex;align-items:flex-start;gap:12px;padding:16px 17px;border-radius:16px;
+  border:1px solid var(--fin-hair)}
+.hm-kpi.t-cash{background:#FDF1F7;border-color:#F7DEEB}
+.hm-kpi.t-in{background:#EDF9F3;border-color:#D5EFE3}
+.hm-kpi.t-out{background:#FEF0F2;border-color:#FADDE2}
+.hm-kpi.t-save{background:#FFF8E9;border-color:#F6E7C4}
+.hm-kpi-icon{flex:none;display:grid;place-items:center;width:38px;height:38px;
+  border-radius:12px;background:#fff;color:var(--fin-accent);
+  box-shadow:0 1px 2px rgba(23,19,38,.06)}
+.hm-kpi.t-in .hm-kpi-icon{color:#128a5e}
+.hm-kpi.t-out .hm-kpi-icon{color:var(--fin-out)}
+.hm-kpi.t-save .hm-kpi-icon{color:#a37711}
+.hm-kpi-body{min-width:0;display:flex;flex-direction:column;gap:2px}
+.hm-kpi-label{font-size:12.5px;font-weight:550;color:var(--fin-muted)}
+.hm-kpi-fig{font-family:var(--fin-display);font-weight:600;font-size:clamp(21px,2.3vw,27px);
+  letter-spacing:-.02em;color:var(--fin-ink);line-height:1.15;
+  overflow:hidden;text-overflow:ellipsis}
+.hm-kpi-fig.fe-out{color:var(--fin-neg)}
+.hm-change{font-style:normal;font-size:11.5px;font-weight:600}
+.hm-change.good{color:#128a5e}
+.hm-change.bad{color:var(--fin-neg)}
+.hm-flat{font-style:normal;font-size:11.5px;color:var(--fin-muted)}
+
+/* Two rows of panels, in the proportions the eye needs: the chart is the
+   widest thing on the page, the standing card the narrowest. */
+.hm-row{display:grid;gap:14px;align-items:stretch}
+.hm-row-a{grid-template-columns:minmax(0,5.2fr) minmax(0,3.4fr) minmax(0,2.6fr)}
+.hm-row-b{grid-template-columns:minmax(0,4.4fr) minmax(0,3fr) minmax(0,4.6fr)}
+.hm .fin-panel{margin:0;height:100%}
+.fin-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+  clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.hm-pick select{font-family:inherit;font-size:12.5px;font-weight:550;color:var(--fin-ink);
+  background:var(--fin-surface);border:1px solid var(--fin-line);border-radius:9px;
+  padding:6px 9px;cursor:pointer}
+
+.hm-chart{margin-top:2px}
+.hm-legend{margin-bottom:2px}
+.hm-ylab{font-size:10.5px;fill:var(--fin-faint);text-anchor:end}
+
+/* Bills, categories and transactions are all "a disc, a name, a figure". Same
+   shape three times, so the eye learns it once. */
+.hm-disc{flex:none;display:grid;place-items:center;width:32px;height:32px;border-radius:10px;
+  background:#F5F1FD;color:var(--fin-accent);font-family:var(--fin-display);
+  font-weight:650;font-size:13px}
+.hm-disc.sm{width:26px;height:26px;border-radius:8px}
+.hm-disc svg{width:17px;height:17px}
+.hm-disc.sm svg{width:14px;height:14px}
+
+.hm-bills{list-style:none;margin:2px 0 0;padding:0;display:flex;flex-direction:column;gap:2px}
+.hm-bills li{display:flex;align-items:center;gap:10px;padding:8px 2px;
+  border-bottom:1px solid var(--fin-hair)}
+.hm-bills li:last-child{border-bottom:0}
+.hm-bill-who{flex:1;min-width:0;display:flex;flex-direction:column}
+.hm-bill-who b{font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.hm-bill-who em{font-style:normal;font-size:11.5px;color:var(--fin-faint)}
+.hm-bill-amt{flex:none;font-size:14px;font-weight:650}
+.hm-when{flex:none;font-size:11px;font-weight:600;padding:4px 9px;border-radius:999px;
+  background:var(--fin-sunk);color:var(--fin-muted);white-space:nowrap}
+.hm-when.soon{background:#FEF0F2;color:var(--fin-neg)}
+.hm-when.late{background:var(--fin-out);color:#fff}
+
+/* The standing card. A drawn horizon, not a photograph — nothing here needs a
+   megabyte of stock imagery to say "you are doing fine". */
+.hm-standing{position:relative;overflow:hidden;padding:0;border:0;min-height:280px;
+  background:linear-gradient(168deg,#E7DEFA 0%,#F2E4F2 44%,#FCEBDD 100%)}
+.hm-standing-art{position:absolute;inset:auto 0 0 0;height:46%}
+.hm-standing-art svg{display:block;width:100%;height:100%}
+.hm-standing-body{position:relative;display:flex;flex-direction:column;
+  height:100%;padding:20px 20px 18px}
+.hm-standing h2{margin:0;padding-right:42px;font-family:var(--fin-display);
+  font-weight:600;font-size:clamp(17px,1.55vw,20px);line-height:1.3;
+  letter-spacing:-.02em;color:var(--fin-ink)}
+.hm-standing-go{position:absolute;top:20px;right:20px;width:34px;height:34px;
+  border-radius:50%;border:0;background:#fff;color:var(--fin-accent);font-size:16px;
+  cursor:pointer;box-shadow:0 2px 8px rgba(23,19,38,.12)}
+.hm-standing-go:hover{background:var(--fin-accent);color:#fff}
+.hm-standing hr{width:34px;height:2px;border:0;border-radius:2px;background:var(--fin-out);
+  margin:auto 0 10px}
+.hm-quote{margin:0;font-style:italic;font-size:13.5px;line-height:1.55;color:var(--fin-muted)}
+
+.hm-cats{list-style:none;margin:2px 0 0;padding:0;display:flex;flex-direction:column;gap:2px}
+.hm-cats li{display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;
+  gap:4px 10px;padding:8px 2px}
+.hm-cat-name{grid-column:2;font-size:13.5px;font-weight:600;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.hm-cat-amt{font-size:14px;font-weight:650}
+.hm-cats em{font-style:normal;font-size:11.5px;color:var(--fin-faint);
+  min-width:32px;text-align:right}
+.hm-cat-bar{grid-column:2/-1;height:5px;border-radius:3px;background:var(--fin-sunk);
+  overflow:hidden}
+.hm-cat-bar i{display:block;height:100%;border-radius:3px;
+  background:linear-gradient(90deg,var(--fin-accent),var(--fin-in))}
+
+.hm-insights{list-style:none;margin:2px 0 0;padding:0;display:flex;flex-direction:column;
+  gap:11px;font-size:13px;line-height:1.5}
+.hm-insights li{display:flex;align-items:flex-start;gap:10px}
+.hm-ins-icon{flex:none;display:grid;place-items:center;width:26px;height:26px;
+  border-radius:50%;background:var(--fin-sunk);color:var(--fin-muted)}
+.hm-ins-icon.t-up{background:#EDF9F3;color:#128a5e}
+.hm-ins-icon.t-down{background:#FEF0F2;color:var(--fin-neg)}
+.hm-ins-icon.t-note{background:#F5F1FD;color:var(--fin-accent)}
+
+.hm-recent{list-style:none;margin:2px 0 0;padding:0;display:flex;flex-direction:column;gap:2px}
+.hm-recent li{display:flex;align-items:center;gap:10px;padding:7px 2px;
+  border-bottom:1px solid var(--fin-hair)}
+.hm-recent li:last-child{border-bottom:0}
+.hm-rec-date{flex:none;font-style:normal;font-size:11.5px;color:var(--fin-faint);
+  width:46px}
+.hm-rec-who{flex:1;min-width:0;font-size:13.5px;font-weight:600;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.hm-rec-cat{flex:none;font-size:11.5px;color:var(--fin-muted);max-width:96px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hm-rec-amt{flex:none;font-size:13.5px;font-weight:650;white-space:nowrap}
+
+/* The plan, last and separate. Never added into anything above it. */
+.hm-plan{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:16px 20px;
+  margin:0;background:var(--fin-surface)}
+.hm-plan-icon{flex:none;display:grid;place-items:center;width:42px;height:42px;
+  border-radius:14px;background:#F5F1FD;color:var(--fin-accent)}
+.hm-plan-what{display:flex;flex-direction:column;min-width:150px}
+.hm-plan-what em{font-style:normal;font-size:11.5px;color:var(--fin-faint)}
+.hm-plan-what b{font-family:var(--fin-display);font-weight:600;font-size:16px;
+  letter-spacing:-.01em}
+.hm-plan-none{flex:1;min-width:180px;margin:0;font-size:12.5px;color:var(--fin-muted)}
+.hm-plan-bar{flex:1;min-width:150px;height:11px;border-radius:6px;background:var(--fin-sunk);
+  overflow:hidden}
+.hm-plan-bar i{display:block;height:100%;border-radius:6px;
+  background:linear-gradient(90deg,var(--fin-accent),var(--fin-in))}
+.hm-plan-bar i.over{background:var(--fin-out)}
+.hm-plan-fig{display:flex;flex-direction:column;align-items:flex-end;flex:none}
+.hm-plan-fig b{font-size:13.5px;font-weight:650;white-space:nowrap}
+.hm-plan-fig em{font-style:normal;font-size:11.5px;color:var(--fin-faint)}
+.hm-plan-fig em.over{color:var(--fin-neg)}
+.hm-plan-tag{flex:none;font-size:12.5px;font-weight:600;padding:8px 14px;border-radius:999px;
+  background:linear-gradient(120deg,#FDF0E4,#FBE6F1);color:#8a5b12}
+.hm-plan-tag.over{background:#FEF0F2;color:var(--fin-neg)}
+.hm-foot{margin:0}
+.hm-foot .fin-link{font-size:inherit}
+
+@media(max-width:1240px){
+  .hm-kpis{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .hm-row-a,.hm-row-b{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .hm-row-a>*:nth-child(3),.hm-row-b>*:nth-child(3){grid-column:1/-1}
+  /* Full width, the standing card becomes a band: the headline and the line
+     under it side by side, with the horizon behind both. Stretching a tall
+     card across the page turns it into a poster. */
+  .hm-standing{min-height:0}
+  .hm-standing-art{height:100%}
+  .hm-standing-body{flex-direction:row;align-items:center;gap:22px;
+    padding:18px 20px}
+  .hm-standing h2{flex:1;padding-right:0}
+  .hm-standing-go{position:static;flex:none;order:3}
+  .hm-standing hr{display:none}
+  .hm-quote{flex:none;max-width:46%;margin:0}
+}
+@media(max-width:900px){
+  .hm-row-a,.hm-row-b{grid-template-columns:minmax(0,1fr)}
+  .hm-row-a>*:nth-child(3),.hm-row-b>*:nth-child(3){grid-column:auto}
+  .fin-motto{display:none}
+  .fin-topbar{flex-wrap:wrap}
+  .tb-search{order:3;flex-basis:100%}
+}
+@media(max-width:520px){
+  .hm-kpis{grid-template-columns:minmax(0,1fr)}
+  .hm-rec-cat{display:none}
+  .hm-standing-body{flex-direction:column;align-items:flex-start;gap:10px}
+  .hm-standing-go{align-self:flex-end}
+  .hm-quote{max-width:none}
+  .hm-plan{gap:10px}
+  .hm-plan-bar{flex-basis:100%}
+}
+`;

@@ -18,6 +18,7 @@ import {
   vendorManagement, contractLibrary, cashDashboard, sideDetail, overviewDashboard,
   budgetsFor, plStatement, plTrend, topVariances, plInsights, groupSpend,
   householdMonth,
+  homeDashboard,
 } from "../finance/metrics.js";
 import { exportEntity, importAll, purgeEntity } from "../finance/transfer.js";
 
@@ -331,6 +332,16 @@ financeRouter.get(
       args.push(req.query.period);
     }
     if (req.query.status === "needs_review") where.push("e.review_status = 'needs_review'");
+    // Free-text search across what somebody would actually type looking for a
+    // row: who it was with, what it was called, and the reference on it.
+    const q = String(req.query.q ?? "").trim().slice(0, 80);
+    if (q) {
+      where.push(
+        "(e.description ILIKE ? OR e.reference ILIKE ? OR p.name ILIKE ? OR c.name ILIKE ?)"
+      );
+      const like = `%${q.replace(/[%_]/g, (m) => `\\${m}`)}%`;
+      args.push(like, like, like, like);
+    }
     const ent = entityOnly.safeParse(req.query.entity);
     if (ent.success) { where.push("e.entity = ?"); args.push(ent.data); }
     const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 200));
@@ -1644,6 +1655,29 @@ financeRouter.get(
       byEntity[ent] = {
         label: ENTITY_LABEL[ent],
         ...(await householdMonth(ent, period)),
+      };
+    }
+    res.json({ entity: choice, entities: list, period, byEntity,
+               baseCurrency: config.finance.baseCurrency });
+  })
+);
+
+// ── The home page ────────────────────────────────────────────
+// Everything the first screen shows, in one call: where you stand, how the
+// month compares with the one before, what is about to leave, where the money
+// went, and the last few things that actually happened.
+financeRouter.get(
+  "/home",
+  ah(async (req, res) => {
+    const period = periodParam.safeParse(req.query.period).success
+      ? req.query.period : monthStart();
+    const { choice, list } = resolveEntities(req.query.entity);
+    const money = (v) => `${config.finance.baseCurrency} ${Math.round(v / 100).toLocaleString()}`;
+    const byEntity = {};
+    for (const ent of list) {
+      byEntity[ent] = {
+        label: ENTITY_LABEL[ent],
+        ...(await homeDashboard(ent, period, new Date(), money)),
       };
     }
     res.json({ entity: choice, entities: list, period, byEntity,

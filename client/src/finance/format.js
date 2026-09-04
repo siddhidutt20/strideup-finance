@@ -90,7 +90,7 @@ export function viewsFor(views, books) {
     .filter(([id]) => !["pnl", "tools"].includes(id))
     .map((v) =>
       v[0] === "revenue" ? [v[0], "Income", "Income", "Where the money came from in"]
-      : v[0] === "overview" ? [v[0], v[1], v[2], "How your money is doing in"]
+      : v[0] === "overview" ? [v[0], "Home", "Home", "How your money is doing in"]
       : v);
   // Budget and Bills sit where a household looks for them — after the two
   // sides of the month, before anything that projects forward.

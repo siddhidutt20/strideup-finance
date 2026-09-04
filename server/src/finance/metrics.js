@@ -2123,3 +2123,228 @@ export async function householdMonth(entity, period, today = new Date()) {
     },
   };
 }
+
+// ── The home page ────────────────────────────────────────────
+// One call for the first screen a household sees: where it stands, how the
+// month compares with the one before, what is about to leave, where the money
+// went, and what actually moved. Every figure here is recorded or committed —
+// nothing on this page is an estimate, and the one planned figure (the budget
+// strip) is labelled as a plan.
+
+// What this month moved, in cash terms. Transfers are excluded because moving
+// money between your own pockets is not income and not spending.
+async function cashMovement(entity, period) {
+  const r = await get(
+    `SELECT COALESCE(${SIGNED}, 0) AS net
+       FROM fin_entries e
+       LEFT JOIN fin_categories c ON c.id = e.category_id
+      WHERE e.review_status <> 'rejected'
+        AND COALESCE(c.kind, 'opex') <> 'transfer'
+        AND e.period = ?${ENT(entity)}`,
+    [period, ...ENT_ARG(entity)]
+  );
+  return Number(r?.net ?? 0);
+}
+
+// The last handful of things that actually happened, newest first. Not
+// scoped to the month picker: "recent" means recent, and a quiet month should
+// still show you the last thing you spent.
+async function recentEntries(entity, limit = 6) {
+  const rows = await all(
+    `SELECT e.id, e.entry_date, e.direction, e.base_amount_minor, e.description,
+            e.review_status, c.name AS category_name, p.name AS counterparty
+       FROM fin_entries e
+       LEFT JOIN fin_categories c ON c.id = e.category_id
+       LEFT JOIN fin_counterparties p ON p.id = e.counterparty_id
+      WHERE e.review_status <> 'rejected'${ENT(entity)}
+      ORDER BY e.entry_date DESC, e.id DESC
+      LIMIT ${Math.min(25, Math.max(1, limit))}`,
+    ENT_ARG(entity)
+  );
+  return rows.map((r) => ({
+    id: Number(r.id),
+    date: isoDate(r.entry_date),
+    direction: r.direction,
+    amount: Number(r.base_amount_minor),
+    name: r.counterparty || r.description || "—",
+    description: r.description,
+    categoryName: r.category_name || "Uncategorised",
+    needsReview: r.review_status === "needs_review",
+  }));
+}
+
+// A change against last month, as a fraction. Null when there is nothing to
+// compare against — a first month has no trend, and 0 → anything is not a
+// percentage.
+const changeOn = (now, before) =>
+  before ? (now - before) / Math.abs(before) : null;
+
+// What the month says, in sentences, from figures already on the page. Every
+// line is arithmetic on recorded rows — none of it is a model call.
+function homeInsights(hh, prevSummary, spend, prevSpend, money) {
+  const out = [];
+  const s = hh.savings;
+
+  // A month with nothing in it is a fact worth saying out loud — an empty
+  // panel reads as a broken one.
+  if (!s.income && !s.spent) {
+    out.push({
+      tone: "note",
+      text: "Nothing is recorded for this month yet. The bills below are what is " +
+            "agreed to leave, not what has gone.",
+    });
+  }
+
+  // The heading that moved most against last month, either way.
+  const before = new Map(prevSpend.map((r) => [r.name, r.amount]));
+  const moved = spend
+    .map((r) => ({ ...r, was: before.get(r.name) ?? 0 }))
+    .filter((r) => r.was > 0)
+    .map((r) => ({ ...r, change: (r.amount - r.was) / r.was }))
+    .sort((a, b) => Math.abs(b.change) - Math.abs(a.change))[0];
+  if (moved && Math.abs(moved.change) >= 0.05) {
+    out.push({
+      tone: moved.change > 0 ? "down" : "up",
+      text: `You spent ${Math.abs(Math.round(moved.change * 100))}% ` +
+            `${moved.change > 0 ? "more" : "less"} on ${moved.name.toLowerCase()} this month.`,
+    });
+  }
+
+  // The savings rate, against the month before.
+  const prevRate = prevSummary.revenue > 0
+    ? (prevSummary.revenue - prevSummary.expenses) / prevSummary.revenue : null;
+  if (s.rate != null && s.rate < 0 && s.income > 0) {
+    out.push({
+      tone: "down",
+      text: `You spent ${(s.spent / s.income).toFixed(1)}× what came in this month.`,
+    });
+  } else if (s.rate != null && prevRate != null && Math.abs(s.rate - prevRate) >= 0.01) {
+    out.push({
+      tone: s.rate >= prevRate ? "up" : "down",
+      text: `Your savings rate ${s.rate >= prevRate ? "increased" : "fell"} from ` +
+            `${Math.round(prevRate * 100)}% to ${Math.round(s.rate * 100)}%.`,
+    });
+  } else if (s.rate != null) {
+    out.push({
+      tone: s.rate >= 0 ? "up" : "down",
+      text: `You are keeping ${Math.round(s.rate * 100)}% of what came in this month.`,
+    });
+  }
+
+  // Subscriptions nothing has been paid against in a while. Same test the
+  // Bills page uses, so the two pages never disagree.
+  const stale = hh.subscriptions.filter(
+    (x) => x.lastPaid && (Date.now() - new Date(x.lastPaid)) / (30 * 86400000) >= 2
+  );
+  if (stale.length) {
+    out.push({
+      tone: "note",
+      text: `${stale.length} subscription${stale.length === 1 ? "" : "s"} ` +
+            `${stale.length === 1 ? "has" : "haven't"} been paid in 2+ months` +
+            ` — ${money(stale.reduce((t, x) => t + x.monthlyEquivalent, 0))} a month.`,
+    });
+  }
+
+  if (hh.bills.overdue.length) {
+    out.push({
+      tone: "down",
+      text: `${hh.bills.overdue.length} bill${hh.bills.overdue.length === 1 ? " is" : "s are"} ` +
+            `past their date, worth ` +
+            `${money(hh.bills.overdue.reduce((t, b) => t + b.amount, 0))}.`,
+    });
+  }
+
+  const over = hh.budget.categories.filter((c) => c.over);
+  if (over.length) {
+    out.push({
+      tone: "down",
+      text: `${over.length} heading${over.length === 1 ? " is" : "s are"} over plan: ` +
+            `${over.slice(0, 3).map((c) => c.name).join(", ")}.`,
+    });
+  } else if (!hh.budget.hasBudget) {
+    out.push({
+      tone: "note",
+      text: "No budget is set for this month, so nothing here is measured against a plan.",
+    });
+  }
+
+  return out.slice(0, 4);
+}
+
+export async function homeDashboard(entity, period, today = new Date(),
+                                    money = (v) => String(v)) {
+  const prevPeriod = addMonths(period, -1);
+  const [hh, cash, movement, prevSummary, series, spendNow, spendBefore, recent, needsReview] =
+    await Promise.all([
+      householdMonth(entity, period, today),
+      cashPosition(entity),
+      cashMovement(entity, period),
+      periodSummary(prevPeriod, entity),
+      trend(13, period, entity),
+      categoryBreakdown(period, entity),
+      categoryBreakdown(prevPeriod, entity),
+      recentEntries(entity, 6),
+      reviewCount(entity),
+    ]);
+
+  const isSpend = (r) => ["cogs", "opex", "tax"].includes(r.kind) && r.direction === "out";
+  const spend = spendNow.filter(isSpend);
+  const spendTotal = spend.reduce((t, r) => t + r.amount, 0);
+
+  // Four headings and everything else. Five tiles is what fits, and an
+  // "Others" that says how many categories it folds is honest about it.
+  const named = spend.slice(0, 4).map((r) => ({
+    name: r.name, amount: r.amount, count: r.count,
+    share: spendTotal ? r.amount / spendTotal : 0,
+  }));
+  const rest = spend.slice(4);
+  const topCategories = rest.length
+    ? [...named, {
+        name: "Others", amount: rest.reduce((t, r) => t + r.amount, 0),
+        count: rest.reduce((t, r) => t + r.count, 0),
+        share: spendTotal ? rest.reduce((t, r) => t + r.amount, 0) / spendTotal : 0,
+        folds: rest.length,
+      }]
+    : named;
+
+  const s = hh.savings;
+  const prevSaved = prevSummary.revenue - prevSummary.expenses;
+
+  return {
+    ...hh,
+    // What you have, and what this month did to it. Without a bank feed this
+    // is what has been recorded, which is a different claim from a balance —
+    // so it is named for what it is.
+    cash: {
+      amount: cash.amount,
+      source: cash.source,
+      movement,
+      // Only derivable from recorded rows; a bank balance carries no history
+      // here, so it gets no comparison rather than a made-up one.
+      change: cash.source === "recorded" ? changeOn(cash.amount, cash.amount - movement) : null,
+    },
+    previous: {
+      period: prevPeriod,
+      income: prevSummary.revenue,
+      spent: prevSummary.expenses,
+      saved: prevSaved,
+    },
+    change: {
+      income: changeOn(s.income, prevSummary.revenue),
+      spent: changeOn(s.spent, prevSummary.expenses),
+      saved: changeOn(s.saved, prevSaved),
+    },
+    series,
+    topCategories,
+    spendTotal,
+    recent,
+    // What the bell counts: things that want a decision, not a notification
+    // feed. Overdue bills and rows the reader has not confirmed.
+    alerts: {
+      overdue: hh.bills.overdue.length,
+      needsReview,
+      total: hh.bills.overdue.length + needsReview,
+    },
+    insights: homeInsights(hh, prevSummary, spend, spendBefore.filter(isSpend), money),
+  };
+}
