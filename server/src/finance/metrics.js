@@ -2390,3 +2390,126 @@ export async function homeDashboard(entity, period, today = new Date(),
     insights: homeInsights(hh, prevSummary, spend, spendBefore.filter(isSpend), money),
   };
 }
+
+// ── Income, as a household reads it ──────────────────────────
+// Where the money comes from, how much of it arrived this month, and what
+// keeps arriving without being asked. Three kinds of claim, kept apart: what
+// was recorded, what recurs under a standing arrangement, and what has
+// arrived without any arrangement behind it at all.
+
+export async function incomeDashboard(entity, period, today = new Date()) {
+  const prevPeriod = addMonths(period, -1);
+  const [summary, prev, series, commitments, settled, breakdown] = await Promise.all([
+    periodSummary(period, entity),
+    periodSummary(prevPeriod, entity),
+    trend(13, period, entity),
+    activeCommitments(entity),
+    paymentMap(entity),
+    categoryBreakdown(period, entity),
+  ]);
+
+  const asOf = isoDate(today);
+  const perMonth = { weekly: 52 / 12, monthly: 1, quarterly: 1 / 3, annual: 1 / 12 };
+
+  // When each standing arrangement last actually paid, from the payments
+  // recorded against it — not from when it was supposed to.
+  const lastPaid = new Map();
+  for (const [key, rec] of settled) {
+    if (!rec?.paidDate) continue;
+    const id = Number(String(key).split(":")[0]);
+    const cur = lastPaid.get(id);
+    if (!cur || rec.paidDate > cur) lastPaid.set(id, rec.paidDate);
+  }
+
+  const incoming = commitments.filter((k) => k.direction === "in");
+  const sources = incoming.map((k) => {
+    // The next date this is due, looking from today forward.
+    let next = null;
+    for (let i = 0; i <= 3 && !next; i++) {
+      for (const occ of occurrencesIn(k, addMonths(monthStart(today), i))) {
+        if (occ.date >= asOf) { next = occ.date; break; }
+      }
+    }
+    const ends = k.end_date ? isoDate(k.end_date) : null;
+    return {
+      id: Number(k.id),
+      name: k.counterparty || k.description,
+      description: k.description,
+      type: k.category_name || "Uncategorised",
+      frequency: k.frequency,
+      amount: Number(k.base_amount_minor),
+      monthlyEquivalent: Math.round(Number(k.base_amount_minor) * (perMonth[k.frequency] ?? 1)),
+      startDate: isoDate(k.start_date),
+      endDate: ends,
+      lastReceived: lastPaid.get(Number(k.id)) ? isoDate(lastPaid.get(Number(k.id))) : null,
+      nextDue: next,
+      // Still running, or finished. A source that ended is history, not income.
+      active: !ends || ends >= asOf,
+    };
+  }).sort((a, b) => b.monthlyEquivalent - a.monthlyEquivalent);
+
+  // Money that arrived without a standing arrangement behind it. A commitment
+  // payment carries the commitment's own dedup key, so anything without one is
+  // either a one-off or a source nobody has set up yet.
+  const loose = await all(
+    `SELECT e.id, e.entry_date, e.base_amount_minor, e.description, e.dedup_key,
+            c.id AS category_id, c.name AS category_name, p.name AS counterparty
+       FROM fin_entries e
+       LEFT JOIN fin_categories c ON c.id = e.category_id
+       LEFT JOIN fin_counterparties p ON p.id = e.counterparty_id
+      WHERE e.review_status <> 'rejected'
+        AND e.direction = 'in'
+        AND COALESCE(c.kind, 'revenue') <> 'transfer'
+        AND e.dedup_key NOT LIKE 'commitment:%'
+        AND e.entry_date >= ?${ENT(entity)}
+      ORDER BY e.entry_date DESC, e.id DESC`,
+    [isoDate(new Date(today.getTime() - 120 * 86400000)), ...ENT_ARG(entity)]
+  );
+
+  // A deposit is worth offering as a recurring source only if nothing already
+  // covers it. Matched on who it came from, which is the only thing a person
+  // would recognise.
+  const known = new Set(
+    incoming.map((k) => String(k.counterparty || k.description).trim().toLowerCase())
+  );
+  const byWho = new Map();
+  for (const r of loose) {
+    const who = String(r.counterparty || r.description || "").trim();
+    if (!who || known.has(who.toLowerCase())) continue;
+    const cur = byWho.get(who.toLowerCase());
+    const row = {
+      entryId: Number(r.id),
+      who,
+      date: isoDate(r.entry_date),
+      amount: Number(r.base_amount_minor),
+      description: r.description,
+      // Carried through so a deposit turned into a standing arrangement keeps
+      // the heading it was already coded to, rather than arriving uncategorised.
+      categoryId: r.category_id ? Number(r.category_id) : null,
+      categoryName: r.category_name || null,
+    };
+    if (!cur) byWho.set(who.toLowerCase(), { ...row, times: 1 });
+    else cur.times += 1; // the newest is kept; the count says how often it came
+  }
+  const detected = [...byWho.values()].sort((a, b) => b.date.localeCompare(a.date));
+
+  const change = prev.revenue ? (summary.revenue - prev.revenue) / Math.abs(prev.revenue) : null;
+
+  return {
+    entity, period,
+    total: summary.revenue,
+    previous: prev.revenue,
+    change,
+    // What arrives every month if nothing changes. A rate, not a total — it is
+    // never added to what was recorded.
+    recurringMonthly: sources.filter((s) => s.active)
+                             .reduce((t, s) => t + s.monthlyEquivalent, 0),
+    sources,
+    // This month's income by category, as recorded.
+    byCategory: breakdown
+      .filter((r) => r.kind === "revenue" && r.direction === "in")
+      .map((r) => ({ name: r.name, total: r.amount, count: r.count })),
+    series: series.map((m) => ({ period: m.period, amount: m.revenue })),
+    detected,
+  };
+}

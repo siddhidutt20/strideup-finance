@@ -371,12 +371,18 @@ function CommitmentList({ commitments, money, onChange, busy }) {
   );
 }
 
-export function CommitmentForm({ entity, categories, currency, onAdded }) {
+// `lockDirection` pins this to money in or money out — used where the page is
+// already about one of them, and a direction picker would only be a way to put
+// a bill on the income page. `hideBooks` is for a deployment that keeps one set
+// of books: a choice with one option is not a choice.
+export function CommitmentForm({ entity, categories, currency, onAdded,
+                                 lockDirection, hideBooks }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const blank = {
-    entity, direction: "out", description: "", counterparty: "", categoryId: "",
-    amount: "", currency, frequency: "monthly", startDate: today(), endDate: "",
+    entity, direction: lockDirection || "out", description: "", counterparty: "",
+    categoryId: "", amount: "", currency, frequency: "monthly",
+    startDate: today(), endDate: "",
   };
   const [form, setForm] = useState(blank);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -402,7 +408,9 @@ export function CommitmentForm({ entity, categories, currency, onAdded }) {
         startDate: form.startDate, endDate: form.endDate || null,
       });
       setForm({ ...blank, entity: form.entity, direction: form.direction });
-      setMsg({ ok: true, text: "Committed. The projection has been updated." });
+      setMsg({ ok: true, text: lockDirection === "in"
+        ? "Added. It will show as expected income from its next date."
+        : "Committed. The projection has been updated." });
       onAdded();
     } catch (err) {
       setMsg({ ok: false, text: err.message || "Could not save that." });
@@ -413,20 +421,24 @@ export function CommitmentForm({ entity, categories, currency, onAdded }) {
 
   return (
         <form className="fin-form" onSubmit={submit}>
-          <label><span>Books</span>
-            <select value={form.entity}
-                    onChange={(e) => setForm((f) => ({ ...f, entity: e.target.value, categoryId: "" }))}>
-              <option value="strideup">StrideUp</option>
-              <option value="personal">Personal</option>
-            </select>
-          </label>
-          <label><span>Direction</span>
-            <select value={form.direction}
-                    onChange={(e) => setForm((f) => ({ ...f, direction: e.target.value, categoryId: "" }))}>
-              <option value="out">Money out</option>
-              <option value="in">Money in</option>
-            </select>
-          </label>
+          {!hideBooks && (
+            <label><span>Books</span>
+              <select value={form.entity}
+                      onChange={(e) => setForm((f) => ({ ...f, entity: e.target.value, categoryId: "" }))}>
+                <option value="strideup">StrideUp</option>
+                <option value="personal">Personal</option>
+              </select>
+            </label>
+          )}
+          {!lockDirection && (
+            <label><span>Direction</span>
+              <select value={form.direction}
+                      onChange={(e) => setForm((f) => ({ ...f, direction: e.target.value, categoryId: "" }))}>
+                <option value="out">Money out</option>
+                <option value="in">Money in</option>
+              </select>
+            </label>
+          )}
           <label className="wide"><span>What is it</span>
             <input value={form.description} onChange={set("description")}
                    placeholder="Home loan EMI" required maxLength={200} />

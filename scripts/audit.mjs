@@ -375,5 +375,70 @@ for (const ent of ENTS) {
   console.log(`  ${sharesOk?"ok  ":"FAIL"} ${"home category shares add to 100%".padEnd(52)} ${(shares*100).toFixed(2)}%`);
 }
 
+// ── Income ───────────────────────────────────────────────────
+// The income page reads the same ledger as everything else. What arrived is
+// recorded; what recurs is an arrangement. The two must never be added.
+for (const ent of ENTS) {
+  console.log(`\n══ income · ${ent} ══`);
+  const inc=(await g(`/finance/income?entity=${ent}&period=${P}`)).byEntity[ent];
+  const hh=(await g(`/finance/household?entity=${ent}&period=${P}`)).byEntity[ent];
+  const st=(await g(`/finance/statements?period=${P}&entity=${ent}`)).byEntity[ent];
+  const live=(await g("/finance/entries?limit=500")).entries
+    .filter(e=>e.entity===ent&&e.review_status!=="rejected");
+  const monthIn=live.filter(e=>e.period.slice(0,10)===P&&e.direction==="in"
+                               &&e.category_kind!=="capital"&&e.category_kind!=="transfer")
+                    .reduce((t,e)=>t+Number(e.base_amount_minor),0);
+
+  check("income total = the ledger for the month", inc.total, monthIn);
+  check("income total = the household page", inc.total, hh.savings.income);
+  check("income recurring = the household page", inc.recurringMonthly, hh.income.recurringMonthly);
+  check("income by category sums to the total",
+        inc.byCategory.reduce((t,c)=>t+c.total,0), inc.total);
+  check("income chart's last month = the month", inc.series.at(-1).amount, inc.total);
+  // A deposit that already has an arrangement behind it must never be offered
+  // as a new one — that is how a household ends up with the same salary twice.
+  const sourceNames=new Set(inc.sources.map(s=>s.name.toLowerCase()));
+  const clean=inc.detected.every(d=>!sourceNames.has(d.who.toLowerCase()));
+  clean?pass++:fail++;
+  console.log(`  ${clean?"ok  ":"FAIL"} ${"detected deposits exclude known sources".padEnd(52)} ` +
+              `${inc.detected.length} offered, ${inc.sources.length} known`);
+  // Every source must be readable: a rate, not a total.
+  const sane=inc.sources.every(s=>s.amount>0&&s.monthlyEquivalent>0&&s.type);
+  sane?pass++:fail++;
+  console.log(`  ${sane?"ok  ":"FAIL"} ${"every source has an amount, rate and type".padEnd(52)} ` +
+              `${inc.sources.length} source(s)`);
+}
+
+// ── The transaction list ─────────────────────────────────────
+// Filtering narrows; it never changes what a row is. And a page of results
+// has to be a page of the same list, not a fresh one.
+{
+  console.log(`\n══ transactions ══`);
+  const all=await g("/finance/entries?limit=500");
+  const p1=await g("/finance/entries?limit=5&offset=0");
+  const p2=await g("/finance/entries?limit=5&offset=5");
+  check("paged total = the whole ledger", p1.total, all.total ?? all.entries.length);
+  const overlap=p1.entries.some(a=>p2.entries.some(b=>a.id===b.id));
+  !overlap?pass++:fail++;
+  console.log(`  ${!overlap?"ok  ":"FAIL"} ${"page two does not repeat page one".padEnd(52)}`);
+  const seq=[...p1.entries,...p2.entries].map(e=>e.id);
+  const same=seq.every((id,i)=>id===all.entries[i]?.id);
+  same?pass++:fail++;
+  console.log(`  ${same?"ok  ":"FAIL"} ${"paging keeps the order of the whole list".padEnd(52)}`);
+
+  const ins=await g("/finance/entries?limit=500&direction=in");
+  check("money-in filter sums to money in", 
+    ins.entries.reduce((t,e)=>t+Number(e.base_amount_minor),0),
+    all.entries.filter(e=>e.direction==="in").reduce((t,e)=>t+Number(e.base_amount_minor),0));
+  const outs=await g("/finance/entries?limit=500&direction=out");
+  check("in and out add back to everything", ins.total+outs.total, all.total);
+  // A search term must narrow, never invent.
+  const q=await g("/finance/entries?limit=500&q=e");
+  const subset=q.entries.every(e=>all.entries.some(a=>a.id===e.id));
+  subset&&q.total<=all.total?pass++:fail++;
+  console.log(`  ${subset&&q.total<=all.total?"ok  ":"FAIL"} ${"search returns a subset of the ledger".padEnd(52)} ` +
+              `${q.total} of ${all.total}`);
+}
+
 console.log(`\n  ${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);

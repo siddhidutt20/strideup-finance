@@ -86,12 +86,20 @@ export const moneyInLabel = (books) =>
 export function viewsFor(views, books) {
   const personalOnly = (books ?? []).length === 1 && books[0].id === "personal";
   if (!personalOnly) return views;
+  // A household has no profit and loss statement, no revenue import to run,
+  // no vendors to manage, and no runway to forecast — those are questions a
+  // company asks. What is agreed to leave is on Bills and the Payment
+  // schedule, which is where somebody looks for it.
   const out = views
-    .filter(([id]) => !["pnl", "tools"].includes(id))
+    .filter(([id]) => !["pnl", "tools", "forecast", "vendors"].includes(id))
     .map((v) =>
       v[0] === "revenue" ? [v[0], "Income", "Income", "Where the money came from in"]
       : v[0] === "overview" ? [v[0], "Home", "Home", "How your money is doing in"]
       : v);
+  // Transactions sits with Income — the two halves of "where did my money go".
+  const afterIncome = out.findIndex(([id]) => id === "revenue");
+  out.splice(afterIncome < 0 ? out.length : afterIncome + 1, 0,
+    ["transactions", "Transactions", "Transactions", "Everything recorded, filtered"]);
   // Budget and Bills sit where a household looks for them — after the two
   // sides of the month, before anything that projects forward.
   const at = out.findIndex(([id]) => id === "cashflow");

@@ -72,6 +72,13 @@ export const api = {
     request("GET", `/finance/household?entity=${entity}&period=${period}`),
   finHome: (entity, period) =>
     request("GET", `/finance/home?entity=${entity}&period=${period}`),
+  finIncome: (entity, period) =>
+    request("GET", `/finance/income?entity=${entity}&period=${period}`),
+  // The transaction list: every filter is a query parameter, so a view of it
+  // is a URL and the server does the narrowing, not the browser.
+  finTransactions: (q) => request("GET", `/finance/entries?${new URLSearchParams(
+    Object.entries(q).filter(([, v]) => v !== "" && v != null)
+  )}`),
   finSearch: (q, entity) =>
     request("GET", `/finance/entries?limit=8&q=${encodeURIComponent(q)}` +
                    (entity && entity !== "both" ? `&entity=${entity}` : "")),

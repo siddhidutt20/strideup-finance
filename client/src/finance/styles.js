@@ -1403,3 +1403,190 @@ export const HOME_CSS = `
   .hm-plan-bar{flex-basis:100%}
 }
 `;
+
+// ── Income, transactions, budget and bills ───────────────────
+// A household's four working pages. They share one grammar: a disc, a name, a
+// figure — so the eye learns it once and reads all four the same way.
+export const MONEY_CSS = `
+/* Category pills and discs. A category keeps its colour everywhere it
+   appears; a colour that moves between pages is worse than no colour. */
+.fin-pill{display:inline-block;padding:4px 11px;border-radius:999px;font-size:11.5px;
+  font-weight:600;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.fin-pill.p-0{background:#FDF0E4;color:#8a5b12}
+.fin-pill.p-1{background:#EDF9F3;color:#0f7551}
+.fin-pill.p-2{background:#FDEFF6;color:#a8225f}
+.fin-pill.p-3{background:#EEF2FE;color:#3a4fa8}
+.fin-pill.p-4{background:#F5F1FD;color:#5B21B6}
+.fin-pill.p-5{background:#E9F6FB;color:#0a6f8c}
+.fin-pill.p-6{background:#FFF6E0;color:#8a6a15}
+.fin-pill.p-7{background:#F1F3F6;color:#4b5563}
+.hm-disc.d-0{background:#FDF0E4;color:#8a5b12}
+.hm-disc.d-1{background:#EDF9F3;color:#0f7551}
+.hm-disc.d-2{background:#FDEFF6;color:#a8225f}
+.hm-disc.d-3{background:#EEF2FE;color:#3a4fa8}
+.hm-disc.d-4{background:#F5F1FD;color:#5B21B6}
+.hm-disc.d-5{background:#E9F6FB;color:#0a6f8c}
+.hm-disc.d-6{background:#FFF6E0;color:#8a6a15}
+.hm-disc.d-7{background:#F1F3F6;color:#4b5563}
+.fe-good{color:#0f7551}
+
+/* A name with its mark, used in every table on these four pages. */
+.ic-who{display:inline-flex;align-items:center;gap:9px;min-width:0}
+.ic-who b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.ic,.tx,.hh{display:flex;flex-direction:column;gap:16px}
+.ic .fin-panel,.tx .fin-panel,.hh .fin-panel{margin:0}
+
+/* ── Income ── */
+.ic-top{display:flex;align-items:center;gap:26px;flex-wrap:wrap}
+.ic-fig{flex:1;min-width:230px;display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.ic-fig .fin-fig{font-family:var(--fin-display);font-weight:600;letter-spacing:-.025em;
+  font-size:clamp(30px,4vw,42px);line-height:1.05}
+.ic-pill{font-size:12px;font-weight:600;padding:6px 12px;border-radius:999px}
+.ic-pill.up{background:#EDF9F3;color:#0f7551}
+.ic-pill.down{background:#FEF0F2;color:var(--fin-neg)}
+.ic-pill.flat{background:var(--fin-sunk);color:var(--fin-muted)}
+.ic-rate{font-style:normal;font-size:12px;line-height:1.55;color:var(--fin-muted);max-width:34ch}
+.ic-chart{flex:1;min-width:260px}
+.ic-chart .fin-svg{width:100%;height:auto}
+.ic-tip{margin:2px 0 0;font-size:12px;color:var(--fin-muted);min-height:18px}
+.ic-tip b{font-weight:650;color:var(--fin-ink)}
+.ic-table td{vertical-align:middle}
+.ic-ended{opacity:.62}
+.ic-endtag{font-size:11.5px;color:var(--fin-faint)}
+
+/* Money that arrived with nothing set up behind it. An offer, not an alarm. */
+.ic-detect{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap;
+  background:#EDF9F3;border:1px solid #D5EFE3;border-radius:16px;padding:15px 18px}
+.ic-detect-icon{flex:none;display:grid;place-items:center;width:34px;height:34px;
+  border-radius:11px;background:#fff;color:#0f7551}
+.ic-detect-body{flex:1;min-width:230px;display:flex;flex-direction:column;gap:3px}
+.ic-detect-body b{font-size:14px;font-weight:650;color:#0f7551}
+.ic-detect-body em{font-style:normal;font-size:12.5px;line-height:1.55;color:var(--fin-muted)}
+.ic-detect-acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.fin-btn.go{background:#128a5e;border-color:#128a5e}
+.fin-btn.go:hover{background:#0f7551}
+.hm-cat-bar i.in{background:linear-gradient(90deg,#128a5e,#6ecfa8)}
+
+/* ── Transactions ── */
+.tx-filters{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.tx-search{flex:2 1 220px;height:40px}
+.tx-pick{flex:0 1 auto}
+.tx-pick select,.tx-pick input{font-family:inherit;font-size:13px;color:var(--fin-ink);
+  background:var(--fin-surface);border:1px solid var(--fin-line);border-radius:999px;
+  padding:0 13px;height:40px;cursor:pointer;max-width:170px}
+.tx-pick input[type=date]{cursor:text}
+.tx-pick select:focus-visible,.tx-pick input:focus-visible{outline:2px solid var(--fin-accent);
+  outline-offset:1px}
+.tx-clear{margin-left:2px}
+.tx-clear:disabled{opacity:.4;cursor:default}
+.tx-add{margin-left:auto;display:inline-flex;gap:8px}
+.fin-twoline i{font-style:italic;color:var(--fin-accent)}
+.fin-viewhead.fin-greet h1{line-height:1.06}
+.tx-table td{vertical-align:middle}
+.tx-date{white-space:nowrap}
+.tx-busy{opacity:.5;transition:opacity .15s}
+.tx-src{font-size:11.5px;font-weight:600;padding:4px 10px;border-radius:999px;
+  white-space:nowrap;background:var(--fin-sunk);color:var(--fin-muted)}
+.tx-src.s-doc{background:#F5F1FD;color:#5B21B6}
+.tx-src.s-sched{background:#E9F6FB;color:#0a6f8c}
+.tx-src.s-inv{background:#EDF9F3;color:#0f7551}
+.tx-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  flex-wrap:wrap;margin-top:12px;font-size:12.5px;color:var(--fin-muted)}
+.tx-pages{display:inline-flex;align-items:center;gap:3px}
+.tx-pages button{min-width:30px;height:30px;padding:0 8px;border-radius:8px;
+  border:1px solid var(--fin-line);background:var(--fin-surface);font-family:inherit;
+  font-size:12.5px;font-weight:600;color:var(--fin-muted);cursor:pointer}
+.tx-pages button:hover:not(:disabled){color:var(--fin-accent);
+  border-color:color-mix(in srgb,var(--fin-accent) 35%,var(--fin-line))}
+.tx-pages button.on{background:var(--fin-out);border-color:var(--fin-out);color:#fff}
+.tx-pages button:disabled{opacity:.35;cursor:default}
+.tx-pages em{font-style:normal;padding:0 3px;color:var(--fin-faint)}
+
+/* ── Budget ── */
+.hh-overview{display:flex;align-items:center;gap:30px;flex-wrap:wrap;padding:4px 0}
+.hh-overview .hh-ring{width:130px;height:130px;flex:none}
+.hh-ovfig{display:flex;flex-direction:column;gap:2px}
+.hh-ovfig .fin-fig{font-family:var(--fin-display);font-weight:600;letter-spacing:-.025em;
+  font-size:clamp(24px,2.6vw,32px);line-height:1.1}
+.hh-ovfig em{font-style:normal;font-size:12.5px;color:var(--fin-muted)}
+.hh-ovsplit{width:1px;align-self:stretch;background:var(--fin-line);margin:4px 0}
+.hh-bar{display:block;height:8px;border-radius:5px;background:var(--fin-sunk);
+  overflow:hidden;min-width:90px}
+.hh-bar i{display:block;height:100%;border-radius:5px;background:#1baf7a}
+.hh-bar i.warm{background:#eda100}
+.hh-bar i.hot{background:#e8697d}
+.hh-bar i.over{background:var(--fin-out)}
+.hh-barcell{display:flex;align-items:center;gap:10px}
+.hh-barcell em{font-style:normal;font-size:12px;color:var(--fin-muted);min-width:36px;
+  text-align:right}
+.hh-noplan{color:var(--fin-faint);min-width:0;text-align:left;font-size:11.5px}
+.hh-unplanned{background:#FFFCF4}
+.hh-unplanned td:first-child b{color:#8a6a15}
+
+/* One line about the month, in the tone the month deserves. */
+.hh-note{display:flex;align-items:flex-start;gap:13px;flex-wrap:wrap;
+  border-radius:16px;padding:14px 17px;border:1px solid var(--fin-hair);
+  background:var(--fin-sunk)}
+.hh-note.warn{background:#FFF8E9;border-color:#F6E7C4}
+.hh-note.good{background:#EDF9F3;border-color:#D5EFE3}
+.hh-note-icon{flex:none;display:grid;place-items:center;width:30px;height:30px;
+  border-radius:50%;background:#fff;color:var(--fin-muted)}
+.hh-note.warn .hh-note-icon{color:#a37711}
+.hh-note.good .hh-note-icon{color:#0f7551}
+.hh-note-body{flex:1;min-width:220px;display:flex;flex-direction:column;gap:2px}
+.hh-note-body b{font-size:13.5px;font-weight:650;color:var(--fin-ink)}
+.hh-note-body em{font-style:normal;font-size:12.5px;line-height:1.55;color:var(--fin-muted)}
+
+/* ── Bills ── */
+.hh-tabs{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  flex-wrap:wrap}
+.hh-tabrow button{font-size:13px;padding:8px 15px}
+.hh-live{font-size:11.5px;font-weight:600;padding:4px 11px;border-radius:999px}
+.hh-live.on{background:#EDF9F3;color:#0f7551}
+.hh-live.cold{background:#FFF8E9;color:#8a6a15}
+.hh-when{display:block;font-style:normal;font-size:11px;color:var(--fin-faint)}
+
+/* The month as a month. Which days money leaves is a spatial question. */
+.hh-cal{display:flex;flex-direction:column;gap:6px}
+.hh-calhead,.hh-calgrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.hh-calhead span{font-size:11px;font-weight:650;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--fin-faint);text-align:center;padding-bottom:2px}
+.hh-cell{min-height:78px;border:1px solid var(--fin-hair);border-radius:10px;padding:6px;
+  display:flex;flex-direction:column;gap:4px;background:var(--fin-surface)}
+.hh-cell.empty{border:0;background:none}
+.hh-cell.has{background:#F5F1FD;border-color:#E3D8FA}
+.hh-cell.late{background:#FEF0F2;border-color:#FADDE2}
+.hh-cell>b{font-size:11.5px;font-weight:650;color:var(--fin-muted)}
+.hh-cell.has>b{color:var(--fin-accent)}
+.hh-cell.late>b{color:var(--fin-neg)}
+.hh-calbill{display:block;font-size:10.5px;line-height:1.35;font-weight:600;
+  color:var(--fin-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hh-calbill em{display:block;font-style:normal;font-weight:500;color:var(--fin-muted)}
+
+/* A form in a sheet, for adding a source or a bill without leaving the page. */
+.fin-modal{position:fixed;inset:0;z-index:60;background:rgba(23,19,38,.34);
+  display:grid;place-items:center;padding:20px}
+.fin-sheet{background:var(--fin-surface);border-radius:18px;max-width:720px;width:100%;
+  max-height:88vh;overflow:auto;box-shadow:0 24px 70px rgba(23,19,38,.28)}
+.fin-sheethead{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:18px 22px 0}
+.fin-sheethead h2{margin:0;font-family:var(--fin-display);font-weight:600;font-size:19px;
+  letter-spacing:-.015em}
+.fin-sheet .fin-form{padding:14px 22px 22px}
+
+@media(max-width:900px){
+  .hh-overview{gap:18px}
+  .hh-ovsplit{display:none}
+  .tx-add{margin-left:0}
+  .tx-pick select,.tx-pick input{max-width:none;width:100%}
+  .tx-pick{flex:1 1 140px}
+  .hh-cell{min-height:56px}
+  .hh-calbill em{display:none}
+}
+@media(max-width:560px){
+  .ic-top{gap:14px}
+  .hh-calbill{font-size:0}
+  .hh-calbill::after{content:"•";font-size:14px;color:var(--fin-accent)}
+}
+`;

@@ -19,6 +19,7 @@ import {
   budgetsFor, plStatement, plTrend, topVariances, plInsights, groupSpend,
   householdMonth,
   homeDashboard,
+  incomeDashboard,
 } from "../finance/metrics.js";
 import { exportEntity, importAll, purgeEntity } from "../finance/transfer.js";
 
@@ -367,12 +368,38 @@ financeRouter.get(
     }
     const ent = entityOnly.safeParse(req.query.entity);
     if (ent.success) { where.push("e.entity = ?"); args.push(ent.data); }
+    // Filters the transaction list offers. Each one narrows; none of them
+    // change what a row means.
+    if (["in", "out"].includes(req.query.direction)) {
+      where.push("e.direction = ?"); args.push(req.query.direction);
+    }
+    if (Number.isInteger(Number(req.query.categoryId)) && Number(req.query.categoryId) > 0) {
+      where.push("e.category_id = ?"); args.push(Number(req.query.categoryId));
+    }
+    for (const [q, op] of [["from", ">="], ["to", "<="]]) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(String(req.query[q] ?? ""))) {
+        where.push(`e.entry_date ${op} ?`); args.push(req.query[q]);
+      }
+    }
+    if (req.query.needsReview === "1") where.push("e.review_status = 'needs_review'");
     const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 200));
+    const offset = Math.max(0, Number(req.query.offset) || 0);
+
+    // Paging needs to know how many there are, not only which page you asked
+    // for — "showing 1–8 of 120" is the whole point of the footer.
+    const totalRow = await get(
+      `SELECT COUNT(*) AS n
+         FROM fin_entries e
+         LEFT JOIN fin_categories c ON c.id = e.category_id
+         LEFT JOIN fin_counterparties p ON p.id = e.counterparty_id
+        WHERE ${where.join(" AND ")}`,
+      args
+    );
 
     const rows = await all(
         `SELECT e.id, e.entity, e.entry_date, e.direction, e.amount_minor, e.currency,
                 e.base_amount_minor, e.description, e.reference, e.confidence,
-                e.review_status, e.review_reason, e.document_id, e.period,
+                e.review_status, e.review_reason, e.document_id, e.period, e.dedup_key,
                 c.id AS category_id, c.name AS category_name, c.kind AS category_kind,
                 p.name AS counterparty
            FROM fin_entries e
@@ -380,10 +407,12 @@ financeRouter.get(
            LEFT JOIN fin_counterparties p ON p.id = e.counterparty_id
           WHERE ${where.join(" AND ")}
           ORDER BY e.entry_date DESC, e.id DESC
-          LIMIT ${limit}`,
+          LIMIT ${limit} OFFSET ${offset}`,
       args
     );
     res.json({
+      total: Number(totalRow?.n ?? rows.length),
+      limit, offset,
       entries: rows.map((r) => ({
         ...r,
         entry_date: isoDate(r.entry_date),
@@ -1701,6 +1730,28 @@ financeRouter.get(
       byEntity[ent] = {
         label: ENTITY_LABEL[ent],
         ...(await homeDashboard(ent, period, new Date(), money)),
+      };
+    }
+    res.json({ entity: choice, entities: list, period, byEntity,
+               baseCurrency: config.finance.baseCurrency });
+  })
+);
+
+// ── Income ───────────────────────────────────────────────────
+// Where the money comes from: what arrived this month, what keeps arriving
+// under a standing arrangement, and what has arrived with no arrangement
+// behind it at all. The three are never added together.
+financeRouter.get(
+  "/income",
+  ah(async (req, res) => {
+    const period = periodParam.safeParse(req.query.period).success
+      ? req.query.period : monthStart();
+    const { choice, list } = resolveEntities(req.query.entity);
+    const byEntity = {};
+    for (const ent of list) {
+      byEntity[ent] = {
+        label: ENTITY_LABEL[ent],
+        ...(await incomeDashboard(ent, period)),
       };
     }
     res.json({ entity: choice, entities: list, period, byEntity,

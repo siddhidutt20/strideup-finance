@@ -12,6 +12,8 @@ export const ICONS = {
   home: wrap(<><path d="M2.8 9 10 3l7.2 6" />
                 <path d="M4.6 8.2V16a1 1 0 0 0 1 1h8.8a1 1 0 0 0 1-1V8.2" />
                 <path d="M8 17v-4.4h4V17" /></>),
+  transactions: wrap(<><path d="M3 6.5h11" /><path d="M11 3.5 14 6.5 11 9.5" />
+                       <path d="M17 13.5H6" /><path d="M9 10.5 6 13.5 9 16.5" /></>),
   overview: wrap(<><rect x="2.5" y="2.5" width="6.5" height="6.5" rx="1.6" />
                    <rect x="11" y="2.5" width="6.5" height="6.5" rx="1.6" />
                    <rect x="2.5" y="11" width="6.5" height="6.5" rx="1.6" />
