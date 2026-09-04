@@ -2847,3 +2847,250 @@ export async function reports(entity, period, months = 6, today = new Date(),
     available: series.filter((m) => m.revenue || m.expenses).map((m) => m.period).reverse(),
   };
 }
+
+// ── Spending, as a household reads it ────────────────────────
+// The business Expenses page asks "where did the money go". A household asks
+// two more things on top: how much of it was never really a choice, and how
+// much is left once the unavoidable part has gone. Both need the same split —
+// spending that a standing agreement caused, and spending that did not.
+
+// Fixed is what an agreement caused: those rows carry the commitment's own
+// dedup key. Everything else is variable. Nothing is guessed from the amount
+// or the name — the ledger already knows which is which.
+const FIXED_WHEN = "e.dedup_key LIKE 'commitment:%'";
+
+async function fixedVariableTrend(entity, endPeriod, months = 13) {
+  const from = addMonths(endPeriod, -(months - 1));
+  const rows = await all(
+    `SELECT e.period,
+            ${FIXED_WHEN} AS fixed,
+            SUM(e.base_amount_minor) AS total
+       FROM fin_entries e
+       LEFT JOIN fin_categories c ON c.id = e.category_id
+      WHERE e.review_status <> 'rejected'
+        AND e.direction = 'out'
+        AND COALESCE(c.kind, 'opex') IN ('cogs','opex','tax')
+        AND e.period >= ? AND e.period <= ?${ENT(entity)}
+      GROUP BY 1, 2`,
+    [from, endPeriod, ...ENT_ARG(entity)]
+  );
+  const buckets = new Map();
+  for (let i = 0; i < months; i++) {
+    const p = addMonths(from, i);
+    buckets.set(p, { period: p, total: 0, fixed: 0, variable: 0 });
+  }
+  for (const r of rows) {
+    const b = buckets.get(isoDate(r.period));
+    if (!b) continue;
+    const v = Number(r.total);
+    b.total += v;
+    if (r.fixed === true || r.fixed === "t" || r.fixed === 1) b.fixed += v;
+    else b.variable += v;
+  }
+  return [...buckets.values()];
+}
+
+// Money that left with no agreement behind it. The mirror of the income
+// detection: what has gone out more than once, from the same place, that
+// nothing on the Bills page covers. Whether it should become a bill is a
+// judgement, so the page offers and does not decide.
+async function detectedSpending(entity, commitments, today) {
+  const since = isoDate(new Date(today.getTime() - 180 * 86400000));
+  const rows = await all(
+    `SELECT e.id, e.entry_date, e.period, e.base_amount_minor, e.description,
+            c.id AS category_id, c.name AS category_name, p.name AS counterparty
+       FROM fin_entries e
+       LEFT JOIN fin_categories c ON c.id = e.category_id
+       LEFT JOIN fin_counterparties p ON p.id = e.counterparty_id
+      WHERE e.review_status <> 'rejected'
+        AND e.direction = 'out'
+        AND COALESCE(c.kind, 'opex') IN ('cogs','opex','tax')
+        AND e.dedup_key NOT LIKE 'commitment:%'
+        AND e.entry_date >= ?${ENT(entity)}
+      ORDER BY e.entry_date DESC`,
+    [since, ...ENT_ARG(entity)]
+  );
+
+  const covered = new Set(
+    commitments.filter((k) => k.direction === "out")
+      .map((k) => String(k.counterparty || k.description).trim().toLowerCase())
+  );
+
+  const byWho = new Map();
+  for (const r of rows) {
+    const who = String(r.counterparty || r.description || "").trim();
+    if (!who || covered.has(who.toLowerCase())) continue;
+    const key = who.toLowerCase();
+    const cur = byWho.get(key) ?? {
+      who, months: new Set(), amounts: [], latest: null,
+      categoryId: r.category_id ? Number(r.category_id) : null,
+      categoryName: r.category_name || null,
+      entryId: Number(r.id),
+    };
+    cur.months.add(isoDate(r.period));
+    cur.amounts.push(Number(r.base_amount_minor));
+    if (!cur.latest || isoDate(r.entry_date) > cur.latest) cur.latest = isoDate(r.entry_date);
+    byWho.set(key, cur);
+  }
+
+  return [...byWho.values()]
+    .map((x) => {
+      const months = x.months.size;
+      const typical = Math.round(x.amounts.reduce((t, v) => t + v, 0) / x.amounts.length);
+      const spread = Math.max(...x.amounts) - Math.min(...x.amounts);
+      return {
+        entryId: x.entryId,
+        who: x.who,
+        months,
+        times: x.amounts.length,
+        typical,
+        latest: x.latest,
+        categoryId: x.categoryId,
+        categoryName: x.categoryName,
+        // What the pattern looks like, said as what was observed rather than
+        // as a category the app has decided on. "Steady" only where the
+        // amount barely moves — otherwise it is recurring but not fixed.
+        looks: months < 2 ? "one-off"
+          : spread <= Math.max(100, typical * 0.05) ? "steady"
+          : "recurring",
+      };
+    })
+    .filter((x) => x.months >= 2)
+    .sort((a, b) => b.months - a.months || b.typical - a.typical);
+}
+
+export async function expensesDashboard(entity, period, today = new Date(),
+                                        money = (v) => String(Math.round(v / 100))) {
+  const [sd, hh, series, commitments, summary, prev] = await Promise.all([
+    sideDetail(entity, period, "out", today),
+    householdMonth(entity, period, today),
+    fixedVariableTrend(entity, period, 13),
+    activeCommitments(entity),
+    periodSummary(period, entity),
+    periodSummary(addMonths(period, -1), entity),
+  ]);
+
+  const detected = await detectedSpending(entity, commitments, today);
+
+  const total = summary.expenses;
+  const fixed = sd.fixed;
+  const variable = sd.variable;
+  const subs = hh.subscriptionsMonthly;
+  const income = summary.revenue;
+
+  // What is left, and what is left once only the unavoidable part has gone.
+  // Two different questions, so two figures — the reference design showed one
+  // label over the arithmetic for the other.
+  const left = income - total;
+  const afterFixed = income - fixed;
+
+  // How much of the rest of the month a week is worth. Only answerable inside
+  // the month you are in — a finished month has no weeks left to spread over.
+  const thisPeriod = monthStart(today);
+  const daysInMonth = new Date(Date.UTC(+period.slice(0, 4), +period.slice(5, 7), 0)).getUTCDate();
+  const dayNow = Number(isoDate(today).slice(8, 10));
+  const daysLeft = period === thisPeriod ? Math.max(1, daysInMonth - dayNow + 1) : null;
+  const weekly = daysLeft && left > 0 ? Math.round((left / daysLeft) * 7) : null;
+
+  const insights = [];
+  const pctOf = (a, b) => (b ? Math.round((a / b) * 100) : null);
+
+  // The heading that moved most against last month.
+  const top = sd.ranked.filter((c) => c.change != null)
+                       .sort((a, b) => Math.abs(b.change) - Math.abs(a.change))[0];
+  if (top && Math.abs(top.change) >= 0.05) {
+    insights.push({
+      tone: top.change > 0 ? "down" : "up",
+      text: `${top.name} is ${Math.abs(Math.round(top.change * 100))}% ` +
+            `${top.change > 0 ? "higher" : "lower"} than last month ` +
+            `(${money(Math.abs(top.total - top.lastMonth))} ${top.change > 0 ? "more" : "less"}).`,
+    });
+  }
+  if (hh.subscriptions.length) {
+    insights.push({
+      tone: "note",
+      text: `You have ${hh.subscriptions.length} recurring ` +
+            `subscription${hh.subscriptions.length === 1 ? "" : "s"} costing ` +
+            `${money(subs)} a month.`,
+    });
+  }
+  // A heading on course to pass its limit, worked out from the pace so far.
+  if (daysLeft && dayNow > 3) {
+    const pace = dayNow / daysInMonth;
+    const heading = hh.budget.categories
+      .filter((c) => c.budget > 0 && c.spent > 0)
+      .map((c) => ({ ...c, projected: Math.round(c.spent / pace) }))
+      .filter((c) => c.projected > c.budget && !c.over)
+      .sort((a, b) => (b.projected - b.budget) - (a.projected - a.budget))[0];
+    if (heading) {
+      insights.push({
+        tone: "warn",
+        text: `At this pace ${heading.name.toLowerCase()} will pass its limit by ` +
+              `${money(heading.projected - heading.budget)} this month.`,
+      });
+    }
+  }
+  const stale = hh.subscriptions.filter(
+    (s) => s.lastPaid && (Date.now() - new Date(s.lastPaid)) / (30 * 86400000) >= 2
+  );
+  if (stale.length) {
+    insights.push({
+      tone: "up",
+      text: `You could save ${money(stale.reduce((t, s) => t + s.monthlyEquivalent, 0))} ` +
+            `a month by reviewing ${stale.length} subscription` +
+            `${stale.length === 1 ? "" : "s"} nothing has been paid against in two months.`,
+    });
+  }
+  const fixedBefore = series.length >= 2 ? series[series.length - 2].fixed : null;
+  if (fixedBefore != null && fixed !== fixedBefore && fixedBefore > 0) {
+    insights.push({
+      tone: fixed > fixedBefore ? "down" : "up",
+      text: `Your fixed spending ${fixed > fixedBefore ? "rose" : "fell"} by ` +
+            `${money(Math.abs(fixed - fixedBefore))} this month.`,
+    });
+  }
+  if (!insights.length && total > 0) {
+    insights.push({
+      tone: "note",
+      text: `${money(total)} left this month across ${sd.categories.length} heading` +
+            `${sd.categories.length === 1 ? "" : "s"}.`,
+    });
+  }
+
+  return {
+    entity, period,
+    total,
+    previous: prev.expenses,
+    change: prev.expenses ? (total - prev.expenses) / Math.abs(prev.expenses) : null,
+    // The three ways spending divides, and their shares of the month. Fixed
+    // and variable are exclusive and add to the total; subscriptions are a
+    // monthly rate that overlaps fixed, so it is never added to either.
+    split: {
+      fixed, variable,
+      fixedShare: total ? fixed / total : null,
+      variableShare: total ? variable / total : null,
+      subscriptionsMonthly: subs,
+      subscriptionCount: hh.subscriptions.length,
+      subscriptionShare: total ? subs / total : null,
+    },
+    income,
+    left,
+    afterFixed,
+    weekly,
+    daysLeft,
+    // What the plan says the month should leave, if there is a plan.
+    plannedLeft: hh.budget.total == null ? null : income - hh.budget.total,
+    categories: sd.categories,
+    ranked: sd.ranked,
+    parties: sd.parties,
+    variableParties: sd.variableParties,
+    recurring: hh.subscriptions,
+    bills: hh.bills,
+    budget: hh.budget,
+    series,
+    trend: sd.trend,
+    detected,
+    insights,
+    pctOf,
+  };
+}
