@@ -14,6 +14,13 @@ export const ICONS = {
                 <path d="M8 17v-4.4h4V17" /></>),
   transactions: wrap(<><path d="M3 6.5h11" /><path d="M11 3.5 14 6.5 11 9.5" />
                        <path d="M17 13.5H6" /><path d="M9 10.5 6 13.5 9 16.5" /></>),
+  wealth: wrap(<><path d="M3 16.5h14" /><rect x="4" y="9" width="3.4" height="7.5" rx="1" />
+                  <rect x="8.3" y="5.5" width="3.4" height="11" rx="1" />
+                  <rect x="12.6" y="11" width="3.4" height="5.5" rx="1" /></>),
+  goals: wrap(<><circle cx="10" cy="10" r="7" /><circle cx="10" cy="10" r="3.4" />
+                 <circle cx="10" cy="10" r=".6" fill="currentColor" /></>),
+  reports: wrap(<><rect x="3.5" y="2.5" width="13" height="15" rx="2" />
+                   <path d="M7 7h6" /><path d="M7 10.5h6" /><path d="M7 14h3.5" /></>),
   overview: wrap(<><rect x="2.5" y="2.5" width="6.5" height="6.5" rx="1.6" />
                    <rect x="11" y="2.5" width="6.5" height="6.5" rx="1.6" />
                    <rect x="2.5" y="11" width="6.5" height="6.5" rx="1.6" />

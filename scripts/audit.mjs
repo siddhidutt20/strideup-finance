@@ -1,9 +1,21 @@
 // Every figure the app shows, checked against the ledger it came from and
 // against the same figure wherever else it appears. A dashboard whose pages
 // disagree is worse than no dashboard.
-const B="http://localhost:4177/api";
+// Which instance to check. A personal deployment runs the same audit against
+// its own database — the checks are about the figures, not about whose they are.
+const B = process.env.AUDIT_BASE || "http://localhost:4177/api";
 const r=await fetch(B+"/auth/login",{method:"POST",headers:{"content-type":"application/json"},
-  body:JSON.stringify({email:"ceo@strideup.org",password:"owner-pass-1234"})});
+  body:JSON.stringify({
+    email: process.env.AUDIT_EMAIL || "ceo@strideup.org",
+    password: process.env.AUDIT_PASSWORD || "owner-pass-1234",
+  })});
+// Say so here rather than dying twenty lines later on an empty response —
+// "cannot read properties of undefined" is not a login error message.
+if (!r.ok) {
+  console.error(`  could not sign in to ${B} (${r.status}). ` +
+                `Set AUDIT_EMAIL and AUDIT_PASSWORD for this instance.`);
+  process.exit(1);
+}
 const cookie=r.headers.getSetCookie().map(c=>c.split(";")[0]).join("; ");
 const g=async p=>(await (await fetch(B+p,{headers:{cookie}})).json());
 const M=v=>(v/100).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -438,6 +450,67 @@ for (const ent of ENTS) {
   subset&&q.total<=all.total?pass++:fail++;
   console.log(`  ${subset&&q.total<=all.total?"ok  ":"FAIL"} ${"search returns a subset of the ledger".padEnd(52)} ` +
               `${q.total} of ${all.total}`);
+}
+
+// ── What you own, what you are saving toward, and the reports ──
+// These three pages add the only claims the ledger cannot make on its own.
+// They still have to be internally consistent, and Reports must never
+// disagree with the pages it is summarising.
+for (const ent of ENTS) {
+  console.log(`\n══ wealth · goals · reports · ${ent} ══`);
+  const w=(await g(`/finance/wealth?entity=${ent}`)).byEntity[ent];
+  const go=(await g(`/finance/goals?entity=${ent}`)).byEntity[ent];
+  const rp=(await g(`/finance/reports?entity=${ent}&period=${P}&months=6`)).byEntity[ent];
+  const hh=(await g(`/finance/household?entity=${ent}&period=${P}`)).byEntity[ent];
+
+  check("net worth = what you own less what you owe",
+        w.netWorth, w.totalAssets - w.totalLiabilities);
+  check("allocation adds up to what you own",
+        w.allocation.reduce((t,a)=>t+a.total,0), w.totalAssets);
+  check("debt total = total liabilities", w.debt.total, w.totalLiabilities);
+  const shares=w.allocation.reduce((t,a)=>t+a.share,0);
+  const sharesOk=!w.totalAssets||Math.abs(shares-1)<1e-6;
+  sharesOk?pass++:fail++;
+  console.log(`  ${sharesOk?"ok  ":"FAIL"} ${"allocation shares add to 100%".padEnd(52)} ${(shares*100).toFixed(2)}%`);
+  // The newest month of the carried-forward series is the position itself.
+  if (w.series.length) {
+    check("the net worth line ends at today's position", w.series.at(-1).net, w.netWorth);
+  }
+  // A return can only be claimed where a cost was entered.
+  const priced=w.assets.filter(a=>a.cost!=null);
+  const returnsOk=w.assets.every(a=>(a.cost==null)===(a.returnPct==null));
+  returnsOk?pass++:fail++;
+  console.log(`  ${returnsOk?"ok  ":"FAIL"} ${"a return is claimed only where a cost was given".padEnd(52)} ${priced.length}/${w.assets.length} priced`);
+
+  // A goal is arithmetic against a date, and every part of it has to agree.
+  const goalsOk=go.items.every(x=>
+    x.remaining===Math.max(0,x.target-x.saved) &&
+    (x.progress==null||(x.progress>=0&&x.progress<=1)) &&
+    (x.perMonth==null||x.monthsLeft==null||x.perMonth*x.monthsLeft>=x.remaining));
+  goalsOk?pass++:fail++;
+  console.log(`  ${goalsOk?"ok  ":"FAIL"} ${"every goal's figures agree with each other".padEnd(52)} ${go.items.length} goal(s)`);
+  check("goals' saved total = the sum of them",
+        go.totalSaved, go.items.reduce((t,x)=>t+x.saved,0));
+
+  // Reports summarises other pages and must not disagree with them.
+  check("report spending = the household page", rp.spending.total, hh.savings.spent);
+  check("report income = the household page", rp.income.total, hh.savings.income);
+  check("report kept = income less spending", rp.savings.saved,
+        hh.savings.income - hh.savings.spent);
+  check("report categories add to its spending",
+        rp.spending.byCategory.reduce((t,c)=>t+c.total,0), rp.spending.total);
+  const rShares=rp.spending.byCategory.reduce((t,c)=>t+c.share,0);
+  const rOk=!rp.spending.total||Math.abs(rShares-1)<1e-6;
+  rOk?pass++:fail++;
+  console.log(`  ${rOk?"ok  ":"FAIL"} ${"report category shares add to 100%".padEnd(52)} ${(rShares*100).toFixed(2)}%`);
+  check("the report's last month is the month asked for",
+        rp.series.at(-1).expenses, hh.savings.spent);
+  // Every sentence the page writes must carry its currency, not a bare number.
+  const cur=(await g(`/finance/reports?entity=${ent}&period=${P}&months=6`)).baseCurrency;
+  const money=[...rp.advice,...rp.insights].filter(a=>/\d{3,}/.test(a.text));
+  const named=money.every(a=>a.text.includes(cur)||/%/.test(a.text));
+  named?pass++:fail++;
+  console.log(`  ${named?"ok  ":"FAIL"} ${"figures in sentences carry their currency".padEnd(52)} ${money.length} line(s)`);
 }
 
 console.log(`\n  ${pass} passed, ${fail} failed`);

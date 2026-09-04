@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api.js";
-import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS, FUTURE_CSS, CASHFLOW_AHEAD_CSS, CF_NONE_CSS, VENDORS_CSS, CASH_CSS, CONTRACTS_GROUP_CSS, SIDE_CSS, CASH_BAND_CSS, NARROW_FIX_CSS, INVOICE_CSS, RECORD_CSS, OVERVIEW_CSS, PL_CSS, BOOKS_CSS, HOUSEHOLD_CSS, HOME_CSS, MONEY_CSS } from "./finance/styles.js";
+import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS, FUTURE_CSS, CASHFLOW_AHEAD_CSS, CF_NONE_CSS, VENDORS_CSS, CASH_CSS, CONTRACTS_GROUP_CSS, SIDE_CSS, CASH_BAND_CSS, NARROW_FIX_CSS, INVOICE_CSS, RECORD_CSS, OVERVIEW_CSS, PL_CSS, BOOKS_CSS, HOUSEHOLD_CSS, HOME_CSS, MONEY_CSS, LONG_CSS } from "./finance/styles.js";
 import {
   fmtAmount, monthLabel, readFile, shiftMonth, thisMonth, useMoney, ZERO_DECIMAL,
   ENTITY_LABEL, entityChoices, viewsFor, moneyInLabel, loadEntity, saveEntity,
@@ -18,6 +18,9 @@ import { PlView, BudgetEditor } from "./finance/pl.jsx";
 import { BudgetView, BillsView } from "./finance/household.jsx";
 import { IncomeView } from "./finance/income.jsx";
 import { TransactionsView } from "./finance/transactions.jsx";
+import { WealthView } from "./finance/wealth.jsx";
+import { GoalsView } from "./finance/goals.jsx";
+import { ReportsView } from "./finance/reports.jsx";
 import { HomeView, greeting } from "./finance/home.jsx";
 import { Search, Alerts, AccountMenu } from "./finance/topbar.jsx";
 import { PayInvoice, InvoiceList } from "./finance/invoice.jsx";
@@ -56,6 +59,12 @@ const PERSONAL_HEADS = {
                  "Categorised as they arrive, so you always know where your money goes."],
   budget: ["Budget", "Stay on track,", "for what matters.",
            "Set your budget, track what you actually spend, and see what is left."],
+  wealth: ["Wealth", "Grow today,", "for a brighter tomorrow.",
+           "What you own, what you owe, and what that leaves — all in one place."],
+  goals: ["Goals", "Big dreams,", "real progress.",
+          "Set goals, track your progress, and see what each one asks of a month."],
+  reports: ["Reports & insights", "Understand today,", "make better tomorrow.",
+            "Your own months, read together."],
   bills: ["Bills & subscriptions", "Never miss a payment,", "stay in control.",
           "Every bill and subscription, all in one place."],
   expenses: ["Money", "Where your money", "actually went.",
@@ -99,6 +108,10 @@ export default function FinanceDashboard({ owner, onLogout,
   const [household, setHousehold] = useState(null);
   const [home, setHome] = useState(null);
   const [income, setIncome] = useState(null);
+  const [we, setWe] = useState(null);
+  const [go, setGo] = useState(null);
+  const [rp, setRp] = useState(null);
+  const [rpMonths, setRpMonths] = useState(6);
   // Bumped to make the transaction list refetch after something changes.
   const [txKey, setTxKey] = useState(0);
   const [addingSource, setAddingSource] = useState(false);
@@ -289,6 +302,28 @@ export default function FinanceDashboard({ owner, onLogout,
     // eslint-disable-next-line
   }, [personalOnly, view, loadIncome]);
 
+  // What you own, what you are saving toward, and the months read together.
+  // Wealth is not scoped to a month — a position is a position — so it does
+  // not reload when the picker moves.
+  const loadWealth = useCallback(async () => {
+    try { setWe(await api.finWealth(entity)); }
+    catch (err) { setError(err.message || "Could not load what you own."); }
+  }, [entity]);
+  const loadGoals = useCallback(async () => {
+    try { setGo(await api.finGoals(entity)); }
+    catch (err) { setError(err.message || "Could not load your goals."); }
+  }, [entity]);
+  const loadReports = useCallback(async () => {
+    try { setRp(await api.finReports(entity, period, rpMonths)); }
+    catch (err) { setError(err.message || "Could not build that report."); }
+  }, [entity, period, rpMonths]);
+
+  useEffect(() => {
+    if (view === "wealth" || view === "goals") loadWealth();
+    if (view === "goals") loadGoals();
+    if (view === "reports") loadReports();
+  }, [view, loadWealth, loadGoals, loadReports]);
+
   // How many committed payments fall due in the next 30 days, across whichever
   // books are in view. Shown on the nav so it is visible without opening it.
   const duePending = useMemo(() => {
@@ -462,7 +497,7 @@ export default function FinanceDashboard({ owner, onLogout,
         {/* Joined in JS, not as three JSX children: a <style> element with
             several text children does not reliably end up with all of them in
             the DOM, and the symptom is a stylesheet that silently truncates. */}
-        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS + PL_CSS + BOOKS_CSS + HOUSEHOLD_CSS + HOME_CSS + MONEY_CSS}</style>
+        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS + PL_CSS + BOOKS_CSS + HOUSEHOLD_CSS + HOME_CSS + MONEY_CSS + LONG_CSS}</style>
         <div className="fin-boot"><div className="fin-spinner" /></div>
       </div>
     );
@@ -502,7 +537,7 @@ export default function FinanceDashboard({ owner, onLogout,
 
   return (
     <div className="fin-app">
-      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS + PL_CSS + BOOKS_CSS + HOUSEHOLD_CSS + HOME_CSS + MONEY_CSS}</style>
+      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS + PL_CSS + BOOKS_CSS + HOUSEHOLD_CSS + HOME_CSS + MONEY_CSS + LONG_CSS}</style>
 
       <aside className="fin-side" aria-label="Sections">
         <div className="fin-sidebrand">
@@ -708,6 +743,28 @@ export default function FinanceDashboard({ owner, onLogout,
               ))
             ) : <div className="fin-boot"><div className="fin-spinner" /></div>
           )}
+          {view === "wealth" && (we ? (
+            (we.entities ?? [entity]).map((ent) => (
+              <WealthView key={`we-${ent}`} we={we.byEntity[ent]} money={money} entity={ent}
+                          currency={data?.baseCurrency || "USD"}
+                          onChanged={() => { loadWealth(); loadGoals(); }} />
+            ))
+          ) : <div className="fin-boot"><div className="fin-spinner" /></div>)}
+          {view === "goals" && (go ? (
+            (go.entities ?? [entity]).map((ent) => (
+              <GoalsView key={`go-${ent}`} go={go.byEntity[ent]} we={we?.byEntity?.[ent]}
+                         money={money} entity={ent} currency={data?.baseCurrency || "USD"}
+                         onGo={setView}
+                         onChanged={() => { loadGoals(); loadWealth(); }} />
+            ))
+          ) : <div className="fin-boot"><div className="fin-spinner" /></div>)}
+          {view === "reports" && (rp && rp.period === period ? (
+            (rp.entities ?? [entity]).map((ent) => (
+              <ReportsView key={`rp-${ent}`} rp={rp.byEntity[ent]} money={money}
+                           period={period} months={rpMonths}
+                           onMonths={setRpMonths} onPeriod={setPeriod} />
+            ))
+          ) : <div className="fin-boot"><div className="fin-spinner" /></div>)}
           {view === "transactions" && (
             <TransactionsView entity={entity} categories={categories} money={money}
                               reloadKey={txKey}

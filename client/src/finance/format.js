@@ -106,6 +106,13 @@ export function viewsFor(views, books) {
   out.splice(at < 0 ? out.length : at, 0,
     ["budget", "Budget", "Budget", "What you planned to spend in"],
     ["bills", "Bills", "Bills and subscriptions", "What is agreed to leave, around"]);
+  // What you own, what you are saving toward, and the months read together.
+  // These sit after the month's own pages because they are about longer than
+  // a month, and Reports goes last because it reads all of them.
+  out.push(
+    ["wealth", "Wealth", "Wealth", "What you own and what you owe"],
+    ["goals", "Goals", "Goals and debt", "What you are saving toward"],
+    ["reports", "Reports", "Reports", "The months read together, ending"]);
   return out;
 }
 

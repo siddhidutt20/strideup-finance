@@ -15,7 +15,10 @@ import { monthLabel } from "./format.js";
 // normal-vision floor at 13.7. The labelled rows beside the donut carry the
 // contrast relief three of these hues need on a light surface.
 export const SLICE_COLOURS = ["#2a78d6", "#1baf7a", "#eda100", "#008300", "#4a3aa7"];
-const OTHER_COLOUR = "#9C96AE";
+// Exported: every donut in the app needs it. The five slice hues are a
+// validated set — reusing one for "everything else" puts two different things
+// in the same colour, which is the one thing a donut must never do.
+export const OTHER_COLOUR = "#9C96AE";
 const MAX_SLICES = 5;
 
 const polar = (cx, cy, r, deg) => {

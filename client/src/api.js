@@ -74,6 +74,16 @@ export const api = {
     request("GET", `/finance/home?entity=${entity}&period=${period}`),
   finIncome: (entity, period) =>
     request("GET", `/finance/income?entity=${entity}&period=${period}`),
+  finWealth: (entity) => request("GET", `/finance/wealth?entity=${entity}`),
+  addHolding: (b) => request("POST", "/finance/holdings", b),
+  updateHolding: (id, b) => request("PATCH", `/finance/holdings/${id}`, b),
+  deleteHolding: (id) => request("DELETE", `/finance/holdings/${id}`),
+  finGoals: (entity) => request("GET", `/finance/goals?entity=${entity}`),
+  addGoal: (b) => request("POST", "/finance/goals", b),
+  updateGoal: (id, b) => request("PATCH", `/finance/goals/${id}`, b),
+  deleteGoal: (id) => request("DELETE", `/finance/goals/${id}`),
+  finReports: (entity, period, months) =>
+    request("GET", `/finance/reports?entity=${entity}&period=${period}&months=${months}`),
   // The transaction list: every filter is a query parameter, so a view of it
   // is a URL and the server does the narrowing, not the browser.
   finTransactions: (q) => request("GET", `/finance/entries?${new URLSearchParams(

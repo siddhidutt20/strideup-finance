@@ -20,6 +20,9 @@ import {
   householdMonth,
   homeDashboard,
   incomeDashboard,
+  wealth,
+  goals,
+  reports,
 } from "../finance/metrics.js";
 import { exportEntity, importAll, purgeEntity } from "../finance/transfer.js";
 
@@ -1755,6 +1758,263 @@ financeRouter.get(
       };
     }
     res.json({ entity: choice, entities: list, period, byEntity,
+               baseCurrency: config.finance.baseCurrency });
+  })
+);
+
+// ── What you own and what you owe ────────────────────────────
+// Nothing here is connected to a bank or a broker, so every figure is a
+// valuation somebody entered. The date it was entered for travels with it.
+financeRouter.get(
+  "/wealth",
+  ah(async (req, res) => {
+    const { choice, list } = resolveEntities(req.query.entity);
+    const byEntity = {};
+    for (const ent of list) {
+      byEntity[ent] = { label: ENTITY_LABEL[ent], ...(await wealth(ent)) };
+    }
+    res.json({ entity: choice, entities: list, byEntity,
+               baseCurrency: config.finance.baseCurrency });
+  })
+);
+
+const holdingSchema = z.object({
+  entity: entityOnly.optional(),
+  side: z.enum(["asset", "liability"]),
+  name: z.string().trim().min(1).max(140),
+  kind: z.enum(["equity", "debt", "cash", "property", "gold", "other"]).optional(),
+  currency: z.string().trim().length(3).optional(),
+  value: z.coerce.number().min(0).max(1e12),
+  cost: z.coerce.number().min(0).max(1e12).nullish(),
+  ratePct: z.coerce.number().min(0).max(200).nullish(),
+  monthlyPayment: z.coerce.number().min(0).max(1e12).nullish(),
+  asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  note: z.string().trim().max(300).nullish(),
+});
+
+// Saving a holding always writes a valuation as well as the holding itself.
+// A present figure with no history is a number that cannot be checked later.
+async function writeValue(id, asOf, minor, baseMinor) {
+  await run(
+    `INSERT INTO fin_holding_values (holding_id, as_of, value_minor, base_value_minor)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT (holding_id, as_of)
+     DO UPDATE SET value_minor = EXCLUDED.value_minor,
+                   base_value_minor = EXCLUDED.base_value_minor`,
+    [id, asOf, minor, baseMinor]
+  );
+}
+
+financeRouter.post(
+  "/holdings",
+  ah(async (req, res) => {
+    const parsed = holdingSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: "Fill in what it is, what it is worth, and the date that figure is for.",
+      });
+    }
+    const b = parsed.data;
+    const currency = (b.currency || config.finance.baseCurrency).toUpperCase();
+    const entity = b.entity || DEFAULT_ENTITY;
+    const minor = toMinor(b.value, currency);
+    const fx = await convertToBase(minor, currency, b.asOf);
+    const costMinor = b.cost == null ? null : toMinor(b.cost, currency);
+    const costFx = costMinor == null ? null : await convertToBase(costMinor, currency, b.asOf);
+    const r = await run(
+      `INSERT INTO fin_holdings
+         (entity, side, name, kind, currency, value_minor, base_value_minor,
+          cost_minor, base_cost_minor, rate_pct, monthly_payment_minor, as_of, note)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`,
+      [entity, b.side, b.name, b.kind || "other", currency, minor, fx.baseAmountMinor,
+       costMinor, costFx?.baseAmountMinor ?? null,
+       b.ratePct ?? null,
+       b.monthlyPayment == null ? null : toMinor(b.monthlyPayment, currency),
+       b.asOf, b.note ?? null]
+    );
+    const id = lastId(r);
+    if (!id) return res.status(500).json({ error: "Could not save that." });
+    await writeValue(id, b.asOf, minor, fx.baseAmountMinor);
+    res.status(201).json({ id });
+  })
+);
+
+financeRouter.patch(
+  "/holdings/:id",
+  ah(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Bad id." });
+    const parsed = holdingSchema.partial().safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Nothing valid to change." });
+    const existing = await get("SELECT * FROM fin_holdings WHERE id = ?", [id]);
+    if (!existing) return res.status(404).json({ error: "That is gone." });
+    const b = parsed.data;
+    const currency = (b.currency || existing.currency).toUpperCase();
+    const asOf = b.asOf || isoDate(existing.as_of);
+    const minor = b.value == null ? Number(existing.value_minor) : toMinor(b.value, currency);
+    const fx = await convertToBase(minor, currency, asOf);
+    const costMinor = b.cost === undefined
+      ? (existing.cost_minor == null ? null : Number(existing.cost_minor))
+      : (b.cost == null ? null : toMinor(b.cost, currency));
+    const costFx = costMinor == null ? null : await convertToBase(costMinor, currency, asOf);
+    await run(
+      `UPDATE fin_holdings
+          SET side = ?, name = ?, kind = ?, currency = ?, value_minor = ?,
+              base_value_minor = ?, cost_minor = ?, base_cost_minor = ?,
+              rate_pct = ?, monthly_payment_minor = ?, as_of = ?, note = ?,
+              updated_at = now()
+        WHERE id = ?`,
+      [b.side || existing.side, b.name ?? existing.name, b.kind || existing.kind,
+       currency, minor, fx.baseAmountMinor, costMinor, costFx?.baseAmountMinor ?? null,
+       b.ratePct === undefined ? existing.rate_pct : b.ratePct,
+       b.monthlyPayment === undefined
+         ? existing.monthly_payment_minor
+         : (b.monthlyPayment == null ? null : toMinor(b.monthlyPayment, currency)),
+       asOf, b.note === undefined ? existing.note : b.note, id]
+    );
+    await writeValue(id, asOf, minor, fx.baseAmountMinor);
+    res.json({ ok: true });
+  })
+);
+
+financeRouter.delete(
+  "/holdings/:id",
+  ah(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Bad id." });
+    await run("DELETE FROM fin_holdings WHERE id = ?", [id]);
+    res.json({ ok: true });
+  })
+);
+
+// ── What you are saving toward ───────────────────────────────
+financeRouter.get(
+  "/goals",
+  ah(async (req, res) => {
+    const { choice, list } = resolveEntities(req.query.entity);
+    const byEntity = {};
+    for (const ent of list) {
+      // What the months have actually been keeping, so "what this asks of a
+      // month" has something real to sit beside.
+      const t = await trend(4, monthStart(), ent);
+      const closed = t.slice(0, 3);
+      const saving = closed.length
+        ? Math.round(closed.reduce((s, m) => s + (m.revenue - m.expenses), 0) / closed.length)
+        : null;
+      byEntity[ent] = { label: ENTITY_LABEL[ent], ...(await goals(ent, new Date(), saving)) };
+    }
+    res.json({ entity: choice, entities: list, byEntity,
+               baseCurrency: config.finance.baseCurrency });
+  })
+);
+
+const goalSchema = z.object({
+  entity: entityOnly.optional(),
+  name: z.string().trim().min(1).max(140),
+  kind: z.enum(["savings", "travel", "home", "education", "custom"]).optional(),
+  currency: z.string().trim().length(3).optional(),
+  target: z.coerce.number().positive().max(1e12),
+  saved: z.coerce.number().min(0).max(1e12).optional(),
+  targetDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
+  note: z.string().trim().max(300).nullish(),
+});
+
+financeRouter.post(
+  "/goals",
+  ah(async (req, res) => {
+    const parsed = goalSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Give it a name and an amount to reach." });
+    }
+    const b = parsed.data;
+    const currency = (b.currency || config.finance.baseCurrency).toUpperCase();
+    const entity = b.entity || DEFAULT_ENTITY;
+    const when = b.targetDate || isoDate(new Date());
+    const target = toMinor(b.target, currency);
+    const saved = toMinor(b.saved ?? 0, currency);
+    const tFx = await convertToBase(target, currency, when);
+    const sFx = await convertToBase(saved, currency, when);
+    const r = await run(
+      `INSERT INTO fin_goals
+         (entity, name, kind, currency, target_minor, base_target_minor,
+          saved_minor, base_saved_minor, target_date, note)
+       VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING id`,
+      [entity, b.name, b.kind || "custom", currency, target, tFx.baseAmountMinor,
+       saved, sFx.baseAmountMinor, b.targetDate ?? null, b.note ?? null]
+    );
+    res.status(201).json({ id: lastId(r) });
+  })
+);
+
+financeRouter.patch(
+  "/goals/:id",
+  ah(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Bad id." });
+    const parsed = goalSchema.partial()
+      .extend({ status: z.enum(["open", "done", "archived"]).optional() })
+      .safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Nothing valid to change." });
+    const existing = await get("SELECT * FROM fin_goals WHERE id = ?", [id]);
+    if (!existing) return res.status(404).json({ error: "That goal is gone." });
+    const b = parsed.data;
+    const currency = (b.currency || existing.currency).toUpperCase();
+    const when = b.targetDate || (existing.target_date ? isoDate(existing.target_date) : isoDate(new Date()));
+    const target = b.target == null ? Number(existing.target_minor) : toMinor(b.target, currency);
+    const saved = b.saved == null ? Number(existing.saved_minor) : toMinor(b.saved, currency);
+    const tFx = await convertToBase(target, currency, when);
+    const sFx = await convertToBase(saved, currency, when);
+    await run(
+      `UPDATE fin_goals
+          SET name = ?, kind = ?, currency = ?, target_minor = ?, base_target_minor = ?,
+              saved_minor = ?, base_saved_minor = ?, target_date = ?, status = ?,
+              note = ?, updated_at = now()
+        WHERE id = ?`,
+      [b.name ?? existing.name, b.kind || existing.kind, currency,
+       target, tFx.baseAmountMinor, saved, sFx.baseAmountMinor,
+       b.targetDate === undefined
+         ? (existing.target_date ? isoDate(existing.target_date) : null)
+         : b.targetDate,
+       b.status || existing.status,
+       b.note === undefined ? existing.note : b.note, id]
+    );
+    res.json({ ok: true });
+  })
+);
+
+financeRouter.delete(
+  "/goals/:id",
+  ah(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Bad id." });
+    await run("DELETE FROM fin_goals WHERE id = ?", [id]);
+    res.json({ ok: true });
+  })
+);
+
+// ── Reports ──────────────────────────────────────────────────
+// Nothing new is measured here: every figure is one another page already
+// shows, arranged so a run of months can be read at once.
+financeRouter.get(
+  "/reports",
+  ah(async (req, res) => {
+    const period = periodParam.safeParse(req.query.period).success
+      ? req.query.period : monthStart();
+    const months = Math.min(24, Math.max(3, Number(req.query.months) || 6));
+    const { choice, list } = resolveEntities(req.query.entity);
+    const byEntity = {};
+    for (const ent of list) {
+      // The sentences this page writes carry money in them, so they need the
+      // currency the rest of the page is in — a bare number in a sentence
+      // reads as a count.
+      const money = (v) =>
+        `${config.finance.baseCurrency} ${Math.round(v / 100).toLocaleString()}`;
+      byEntity[ent] = {
+        label: ENTITY_LABEL[ent],
+        ...(await reports(ent, period, months, new Date(), money)),
+      };
+    }
+    res.json({ entity: choice, entities: list, period, months, byEntity,
                baseCurrency: config.finance.baseCurrency });
   })
 );

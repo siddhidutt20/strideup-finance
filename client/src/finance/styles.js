@@ -1594,6 +1594,13 @@ tr:hover .ic-editcell .fin-btn,.ic-editcell .fin-btn:focus-visible{opacity:1}
 .fin-sheet .fin-form{padding:14px 22px 22px}
 
 @media(max-width:900px){
+  /* A row of tabs is a row. Wrapping them reads as two groups of tabs, so it
+     scrolls sideways instead — and min-width:0 keeps the scroller from
+     leaking its content width onto the page. */
+  .hh-tabs{align-items:stretch}
+  .hh-tabrow{flex:1 0 100%;min-width:0;max-width:100%;overflow-x:auto;
+    justify-content:flex-start}
+  .hh-tabrow button{flex:none}
   .hh-overview{gap:18px}
   .hh-ovsplit{display:none}
   .tx-add{margin-left:0}
@@ -1606,5 +1613,130 @@ tr:hover .ic-editcell .fin-btn,.ic-editcell .fin-btn:focus-visible{opacity:1}
   .ic-top{gap:14px}
   .hh-calbill{font-size:0}
   .hh-calbill::after{content:"•";font-size:14px;color:var(--fin-accent)}
+}
+`;
+
+// ── Wealth, goals and reports ────────────────────────────────
+// The three pages that are about longer than a month. They reuse the money
+// pages' grammar — a disc, a name, a figure — and add only what a position,
+// a plan against a date, and a run of months actually need.
+export const LONG_CSS = `
+.we,.go,.rp{display:flex;flex-direction:column;gap:16px}
+.we .fin-panel,.go .fin-panel,.rp .fin-panel{margin:0}
+
+.we-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.we-kpis .hm-kpi{padding:16px 18px}
+.we-chart .fin-svg{width:100%;height:auto}
+.we-split{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.we-tile{display:flex;flex-direction:column;gap:3px;padding:16px 18px}
+.we-tile .fin-fig{font-family:var(--fin-display);font-weight:600;letter-spacing:-.02em;
+  font-size:clamp(20px,2.2vw,26px)}
+.we-tile em{font-style:normal;font-size:12px;color:var(--fin-muted)}
+.we-table td{vertical-align:middle}
+.we-stale{display:block;font-style:normal;font-size:11px;color:#8a6a15;font-weight:600}
+
+/* A donut and the rows it summarises, side by side. The rows are the record —
+   the ring is a summary of them, which is why every slice is also a row. */
+.we-alloc{display:flex;align-items:center;gap:26px;flex-wrap:wrap}
+.we-alloc .sp-donut{flex:none;width:200px}
+.we-alloc .sp-donut svg{width:100%;height:auto}
+.we-legend{flex:1;min-width:220px;list-style:none;margin:0;padding:0;
+  display:flex;flex-direction:column;gap:2px}
+.we-legend li{display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;
+  gap:10px;padding:7px 2px;border-bottom:1px solid var(--fin-hair);font-size:13.5px}
+.we-legend li:last-child{border-bottom:0}
+.we-legend i{width:11px;height:11px;border-radius:3px}
+.we-legend span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.we-legend b{font-weight:650}
+.we-legend em{font-style:normal;font-size:12px;color:var(--fin-faint);min-width:34px;
+  text-align:right}
+
+/* ── Goals ── */
+.go-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.go-summary article{background:var(--fin-surface);border:1px solid var(--fin-hair);
+  border-radius:16px;padding:16px 18px;display:flex;flex-direction:column;gap:3px}
+.go-summary .fin-fig{font-family:var(--fin-display);font-weight:600;letter-spacing:-.02em;
+  font-size:clamp(20px,2.2vw,26px)}
+.go-summary em{font-style:normal;font-size:12px;color:var(--fin-muted)}
+.go-list{list-style:none;margin:2px 0 0;padding:0;display:flex;flex-direction:column;gap:2px}
+.go-list li{display:flex;align-items:center;gap:14px;padding:12px 2px;
+  border-bottom:1px solid var(--fin-hair)}
+.go-list li:last-child{border-bottom:0}
+.go-list li.done{opacity:.72}
+.go-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.go-body b{font-size:14px;font-weight:650;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.go-body em{font-style:normal;font-size:12px;color:var(--fin-muted)}
+.go-bar{display:block;height:7px;border-radius:4px;background:var(--fin-sunk);overflow:hidden}
+.go-bar i{display:block;height:100%;border-radius:4px;
+  background:linear-gradient(90deg,var(--fin-accent),var(--fin-in))}
+.go-bar i.done{background:#1baf7a}
+.go-bar i.late{background:var(--fin-out)}
+.go-pct{flex:none;font-family:var(--fin-display);font-weight:600;font-size:15px;
+  min-width:44px;text-align:right}
+.go-when{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:2px;
+  min-width:118px}
+.go-when em{font-style:normal;font-size:11px;color:var(--fin-faint)}
+.go-when b{font-size:12.5px;font-weight:600}
+.go-tag{font-style:normal;font-size:10.5px;font-weight:600;padding:3px 9px;
+  border-radius:999px;background:var(--fin-sunk);color:var(--fin-muted);white-space:nowrap}
+.go-tag.done{background:#EDF9F3;color:#0f7551}
+.go-tag.late{background:#FEF0F2;color:var(--fin-neg)}
+.go-timeline{list-style:none;margin:2px 0 0;padding:0;display:flex;gap:10px;
+  overflow-x:auto;padding-bottom:4px}
+.go-timeline li{flex:1;min-width:150px;display:flex;flex-direction:column;gap:4px;
+  padding:14px;border:1px solid var(--fin-hair);border-radius:14px;background:var(--fin-sunk)}
+.go-timeline b{font-size:13.5px;font-weight:650}
+.go-timeline em{font-style:normal;font-size:11.5px;color:var(--fin-faint)}
+.go-timeline span{font-size:12px;color:var(--fin-accent);font-weight:600}
+.go-calc{display:flex;flex-direction:column;gap:16px}
+.go-calcform{padding:0}
+.go-calcout{display:flex;align-items:center;gap:26px;flex-wrap:wrap;
+  background:var(--fin-sunk);border:1px solid var(--fin-hair);border-radius:16px;
+  padding:16px 20px}
+.go-calcout>div{display:flex;flex-direction:column;gap:2px}
+.go-calcout .fin-fig{font-family:var(--fin-display);font-weight:600;letter-spacing:-.02em;
+  font-size:clamp(22px,2.4vw,28px)}
+.go-calcout em{font-style:normal;font-size:12px;color:var(--fin-muted)}
+.go-calcout button{margin-left:auto}
+
+/* ── Reports ── */
+.rp-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;
+  align-items:stretch}
+.rp-row>*{height:100%}
+.rp-chart .fin-svg{width:100%;height:auto}
+.rp-fig{display:flex;flex-direction:column;gap:8px;align-items:flex-start;
+  justify-content:center;height:100%}
+.rp-fig .fin-fig{font-family:var(--fin-display);font-weight:600;letter-spacing:-.025em;
+  font-size:clamp(26px,3.4vw,38px);line-height:1.05}
+.rp-fig em{font-style:normal;font-size:12.5px;color:var(--fin-muted)}
+.rp-savings{display:flex;align-items:center;gap:26px;flex-wrap:wrap}
+.rp-savings .hh-ring{width:130px;height:130px;flex:none}
+.rp-months,.rp-export{list-style:none;margin:2px 0 0;padding:0;
+  display:flex;flex-direction:column;gap:2px}
+.rp-months li,.rp-export li{display:flex;align-items:center;gap:11px;padding:9px 2px;
+  border-bottom:1px solid var(--fin-hair)}
+.rp-months li:last-child,.rp-export li:last-child{border-bottom:0}
+.rp-months b{flex:1;font-size:13.5px;font-weight:600}
+.rp-export span{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.rp-export b{font-size:13.5px;font-weight:600}
+.rp-export em{font-style:normal;font-size:11.5px;line-height:1.5;color:var(--fin-muted)}
+
+@media(max-width:1100px){
+  .we-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .rp-row{grid-template-columns:minmax(0,1fr)}
+}
+@media(max-width:820px){
+  .we-split,.go-summary{grid-template-columns:minmax(0,1fr)}
+  .we-legend{min-width:0}
+  .rp-savings{gap:16px}
+  .go-list li{flex-wrap:wrap}
+  .go-when{min-width:0;align-items:flex-start}
+  .we-alloc{gap:16px}
+  .we-alloc .sp-donut{width:150px}
+}
+@media(max-width:560px){
+  .we-kpis{grid-template-columns:minmax(0,1fr)}
+  .go-calcout button{margin-left:0}
 }
 `;

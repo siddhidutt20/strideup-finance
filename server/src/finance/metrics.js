@@ -2714,7 +2714,8 @@ export async function goals(entity, today = new Date(), monthlySaving = null) {
 // show, arranged so a run of months can be read at once instead of a month at
 // a time — and said in sentences underneath, so the reader is not left to do
 // the comparison themselves.
-export async function reports(entity, period, months = 6, today = new Date()) {
+export async function reports(entity, period, months = 6, today = new Date(),
+                              money = (v) => String(Math.round(v / 100))) {
   const [series, breakdown, summary, prev, hh, budgets] = await Promise.all([
     trend(13, period, entity),
     categoryBreakdown(period, entity),
@@ -2760,7 +2761,6 @@ export async function reports(entity, period, months = 6, today = new Date()) {
 
   const insights = [];
   const advice = [];
-  const money = (v) => Math.round(v / 100).toLocaleString();
 
   if (avgSpend != null && summary.expenses > 0) {
     const d = (summary.expenses - avgSpend) / avgSpend;
