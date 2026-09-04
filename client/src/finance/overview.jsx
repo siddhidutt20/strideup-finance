@@ -124,6 +124,63 @@ function AheadKpis({ pj, period, money }) {
   );
 }
 
+// A month already behind us is read as it closed, not as things stand now.
+// Its opening, what moved inside it and where it finished are all facts about
+// that month; cash today is a fact about today and is labelled as one. Nothing
+// forward-looking belongs under a heading that has already happened.
+function PastKpis({ ov, period, money }) {
+  const c = ov.carry;
+  const closing = c.opening + c.movement;
+  const monthsSince = Math.round(
+    (new Date(ov.thisPeriod) - new Date(period)) / (30.44 * 86400000)
+  );
+  return (
+    <>
+      <article className="fc-kpi">
+        <header><span>Opened at</span></header>
+        <p className={`fin-fig${c.opening < 0 ? " fe-out" : ""}`}>{money.round(c.opening)}</p>
+        <footer>{monthLabel(c.openedFrom)}'s closing, carried forward</footer>
+      </article>
+      <article className="fc-kpi">
+        <header><span>Revenue this month</span></header>
+        <p className="fin-fig fe-in">{money.round(ov.revenue)}</p>
+        <footer>{ov.revenue ? <Change v={ov.revenueChange} />
+                            : <span className="sd-flat">nothing recorded</span>}</footer>
+      </article>
+      <article className="fc-kpi">
+        <header><span>Expenses this month</span></header>
+        <p className="fin-fig fe-out">{money.round(ov.expenses)}</p>
+        <footer>{ov.expenses ? <Change v={ov.expensesChange} invert />
+                             : <span className="sd-flat">nothing recorded</span>}</footer>
+      </article>
+      <article className="fc-kpi">
+        <header><span>Net this month</span></header>
+        <p className={`fin-fig${ov.net < 0 ? " fe-out" : ""}`}>{money.round(ov.net)}</p>
+        <footer>{c.recordedThisMonth
+          ? `${c.recordedThisMonth} entr${c.recordedThisMonth === 1 ? "y" : "ies"} recorded`
+          : <span className="sd-flat">nothing recorded</span>}</footer>
+      </article>
+      <article className="fc-kpi">
+        <header><span>Closed at</span></header>
+        <p className={`fin-fig${closing < 0 ? " fe-out" : ""}`}>{money.round(closing)}</p>
+        <footer>
+          {c.movement >= 0 ? "+" : "−"}{money.round(Math.abs(c.movement))} on the month
+        </footer>
+      </article>
+      <article className="fc-kpi">
+        <header><span>Cash today</span></header>
+        <p className={`fin-fig${ov.cash.amount < 0 ? " fe-out" : ""}`}>
+          {money.round(ov.cash.amount)}
+        </p>
+        <footer>
+          as things stand now
+          {monthsSince > 0 && `, ${monthsSince} month${monthsSince === 1 ? "" : "s"} later`}
+        </footer>
+      </article>
+    </>
+  );
+}
+
 const prevPeriod = (p) =>
   `${new Date(Date.UTC(+p.slice(0, 4), +p.slice(5, 7) - 2, 1)).toISOString().slice(0, 7)}-01`;
 
@@ -135,7 +192,12 @@ export function OverviewDash({ ov, money, period, onGo }) {
   // start at zero — the position carries, and a quiet month has to say so
   // rather than reading as an empty set of books.
   const carry = ov.carry;
-  const quiet = !pj && carry && carry.recordedThisMonth === 0;
+  // Three kinds of month, and each answers a different question. Ahead: what
+  // is agreed to happen. Behind: what did happen, and where it left off. Now:
+  // how it is going. Only "now" may show a figure taken as of today under its
+  // own headline.
+  const past = !pj && carry && period < ov.thisPeriod;
+  const quiet = !pj && !past && carry && carry.recordedThisMonth === 0;
 
   return (
     <>
@@ -148,6 +210,18 @@ export function OverviewDash({ ov, money, period, onGo }) {
           month before this one. Add an entry and it lands on top.
         </p>
       )}
+      {past && (
+        <p className="ov-ahead ov-carry">
+          <b>{monthLabel(period)} has closed.</b>{" "}
+          {carry.recordedThisMonth
+            ? `Everything above is that month as it finished. `
+            : `Nothing was ever recorded against it, so it opened and closed at
+               ${money.round(carry.opening)}. `}
+          The panels below that read "now" — what is outstanding, what needs
+          attention, what is coming up — are true today, not{" "}
+          {monthLabel(period)}.
+        </p>
+      )}
       {pj && (
         <p className="ov-ahead">
           <b>{monthLabel(period)} hasn't happened yet.</b> Nothing is recorded
@@ -157,7 +231,8 @@ export function OverviewDash({ ov, money, period, onGo }) {
         </p>
       )}
       <div className="fc-kpis ov-kpis">
-        {pj ? <AheadKpis pj={pj} period={period} money={money} /> : (
+        {pj ? <AheadKpis pj={pj} period={period} money={money} />
+         : past ? <PastKpis ov={ov} period={period} money={money} /> : (
         <>
         <article className="fc-kpi">
           <header><span>Cash today</span></header>
@@ -189,6 +264,7 @@ export function OverviewDash({ ov, money, period, onGo }) {
         </article>
         </>
         )}
+        {!past && <>
         <article className="fc-kpi">
           <header><span>Committed, 90 days</span></header>
           <p className={`fin-fig${ov.expectedIn90 < 0 ? " fe-out" : ""}`}>
@@ -210,6 +286,7 @@ export function OverviewDash({ ov, money, period, onGo }) {
                        : "not burning"}
           </footer>
         </article>
+        </>}
       </div>
 
       <div className="ov-band">
@@ -231,7 +308,9 @@ export function OverviewDash({ ov, money, period, onGo }) {
                            period={period}
                            total={pj ? pj.categoryTotal : ov.expenseTotal} />
         </Panel>
-        <Panel title="Outstanding" sub="Invoices raised and not yet settled">
+        <Panel title="Outstanding"
+               sub={past ? "Invoices raised and not yet settled, as of today"
+                         : "Invoices raised and not yet settled"}>
           <div className="ov-quad">
             <div><span>Total</span><b className="fin-fig">{money.round(ov.receivables.total)}</b></div>
             <div><span>Overdue</span>

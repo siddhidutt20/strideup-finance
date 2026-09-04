@@ -977,6 +977,10 @@ export const OVERVIEW_CSS = `
    ahead-of-time note, in the neutral tint rather than the accent one. */
 .ov-carry{background:var(--fin-sunk);border-color:var(--fin-line)}
 .ov-carry b{color:var(--fin-ink)}
+/* Books left behind in a database this app no longer reads them from. A note,
+   not an alarm — but it has to be visible enough to act on. */
+.fin-stalebooks{background:#FFF8E9;border:1px solid #F6E7C4;border-radius:12px;
+  padding:11px 14px;margin:0 0 14px;color:var(--fin-warn)}
 .ov-kpis{grid-template-columns:repeat(6,minmax(0,1fr))}
 @media(max-width:1500px){.ov-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:820px){.ov-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}

@@ -126,7 +126,7 @@ export function PnlView({ st, money, period }) {
 export function LedgerView({
   entries, categories, money, baseCurrency, period, scope, onScope, showEntity,
   onFix, onRemove, onCurrency, onAmount, commitments, onSchedule,
-  showBooks, entityList, onDone,
+  showBooks, entityList, leftover, onDone,
 }) {
   return (
     <>
@@ -156,7 +156,8 @@ export function LedgerView({
       {showBooks && (
         <Panel title="Move a set of books to another app"
                sub="For running personal and the business as two separate apps">
-          <MoveBooks entityList={entityList} entity={entityList?.[0]} onDone={onDone} />
+          <MoveBooks entityList={entityList} entity={entityList?.[0]}
+                 leftover={leftover} onDone={onDone} />
         </Panel>
       )}
     </>
@@ -596,7 +597,7 @@ export function ManualEntryForm({
 }
 
 // ── Import and close ─────────────────────────────────────────
-export function ToolsView({ period, entity, entityList, byEntity, onDone }) {
+export function ToolsView({ period, entity, entityList, byEntity, leftover, onDone }) {
   const [csv, setCsv] = useState("");
   const [msg, setMsg] = useState(null);
   const [working, setWorking] = useState(false);
@@ -650,7 +651,8 @@ export function ToolsView({ period, entity, entityList, byEntity, onDone }) {
       </div>
       {msg && <p className={msg.ok ? "fin-ok" : "fin-error"}>{msg.text}</p>}
 
-      <MoveBooks entityList={entityList} entity={entity} onDone={onDone} />
+      <MoveBooks entityList={entityList} entity={entity}
+                 leftover={leftover} onDone={onDone} />
 
       <div className="fin-closebox">
         <h3>Close {monthLabel(period)}</h3>
@@ -689,13 +691,18 @@ export function ToolsView({ period, entity, entityList, byEntity, onDone }) {
 // other two: download here, upload there, and only then remove. Nothing needs
 // a terminal or a database password, and nothing is deleted until the books
 // are demonstrably somewhere else.
-function MoveBooks({ entityList, entity, onDone }) {
+function MoveBooks({ entityList, entity, leftover = [], onDone }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const [removing, setRemoving] = useState(null);
   const [typed, setTyped] = useState("");
 
-  const books = (entityList ?? [entity]).filter((e) => e !== "both");
+  const kept = (entityList ?? [entity]).filter((e) => e !== "both");
+  // Books this app no longer shows but whose rows are still in its database.
+  // They have to be listed here or they cannot be moved out of it — and rows
+  // you cannot reach are rows you cannot delete either.
+  const stale = leftover.map((b) => b.id).filter((e) => !kept.includes(e));
+  const books = [...kept, ...stale];
 
   async function upload(file) {
     setBusy(true); setMsg(null);
@@ -736,6 +743,18 @@ function MoveBooks({ entityList, entity, onDone }) {
         books here, upload the file into the other app, check the figures there,
         and only then remove them from this one.
       </p>
+      {stale.length > 0 && (
+        <p className="fin-help fin-stalebooks">
+          This app no longer shows{" "}
+          {stale.map((e) => ENTITY_LABEL[e]).join(" or ")} — those books live in
+          their own app now. What is left here is{" "}
+          {leftover.filter((b) => stale.includes(b.id))
+                   .map((b) => `${b.entries} ${b.label.toLowerCase()} entr${b.entries === 1 ? "y" : "ies"}`)
+                   .join(" and ")}
+          , still in this database. Download them if you want a copy, then
+          remove them.
+        </p>
+      )}
 
       <ol className="fin-steps">
         <li>

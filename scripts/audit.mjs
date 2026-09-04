@@ -22,11 +22,16 @@ const near=(name,a,b,tol=1)=>{
 // these checks compare a page that takes a period against one that does not,
 // and a hard-coded month passes until the clock rolls over and then fails
 // everything at once for a reason that has nothing to do with the code.
-const P=(await g("/finance/dashboard?entity=strideup")).period;
+// Which sets of books this deployment actually keeps. A business-only
+// instance has no personal books to check, and asking for them anyway would
+// compare one entity's figures against another's ledger.
+const ENTS=(await g("/finance/categories")).entities.map(e=>e.id);
+console.log(`  books: ${ENTS.join(", ")}`);
+const P=(await g(`/finance/dashboard?entity=${ENTS[0]}`)).period;
 const isoMonth=(p,n)=>
   `${new Date(Date.UTC(+p.slice(0,4), +p.slice(5,7)-1+n, 1)).toISOString().slice(0,7)}-01`;
 console.log(`  reading ${P} — the month the server is in`);
-for (const ent of ["strideup","personal"]) {
+for (const ent of ENTS) {
   console.log(`\n══ ${ent} ══`);
   const entries=(await g(`/finance/entries?limit=500`)).entries.filter(e=>e.entity===ent);
   const live=entries.filter(e=>e.review_status!=="rejected");
@@ -314,7 +319,7 @@ console.log("\n══ export.csv ══");
 // A month opens where the one before it closed. Only the flows inside it
 // start at zero — nothing is copied, so opening plus what this month moved
 // has to land exactly on the position, in every month.
-for (const ent of ["strideup","personal"]) {
+for (const ent of ENTS) {
   console.log(`\n══ carry forward · ${ent} ══`);
   const live=(await g("/finance/entries?limit=500")).entries
     .filter(e=>e.entity===ent&&e.review_status!=="rejected");
@@ -340,7 +345,7 @@ for (const ent of ["strideup","personal"]) {
 // One call feeds the whole first screen, so every figure on it has to agree
 // with the page it was taken from. If they diverge, the home page is lying
 // about the same month twice.
-for (const ent of ["strideup","personal"]) {
+for (const ent of ENTS) {
   console.log(`\n══ home · ${ent} ══`);
   const home=(await g(`/finance/home?entity=${ent}&period=${P}`)).byEntity[ent];
   const hh=(await g(`/finance/household?entity=${ent}&period=${P}`)).byEntity[ent];

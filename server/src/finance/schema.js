@@ -286,20 +286,26 @@ export const FIN_CATEGORIES = [
 // Two sets of books. In one deployment they share a login and a database and
 // nothing else: no statement ever mixes them unless it shows them side by side.
 //
-// An instance can also be told to run only one of them. FINANCE_ENTITIES names
-// which books this deployment keeps — "personal" for a personal instance,
-// "strideup,personal" (the default) for one that keeps both. Where it names
-// one, that entity is the only one the app will read, write or accept an
+// FINANCE_ENTITIES names which books this deployment keeps — "personal" for a
+// personal instance, "strideup,personal" for one that keeps both. Where it
+// names one, that entity is the only one the app will read, write or accept an
 // upload for, and the switcher disappears because there is nothing to switch
 // between. It is a deployment's whole identity, not a preference, which is why
 // it is an environment variable and not a setting inside the app.
+//
+// The default is StrideUp alone. A household's money now lives in its own
+// deployment with its own database, so the business app carrying a Personal
+// tab was a leftover from before that split, not a feature. Books already in
+// a database that this instance no longer shows are not hidden away: the
+// Import and close page still offers to download and remove them, which is
+// the only thing left to do with them.
 export const ALL_ENTITIES = ["strideup", "personal"];
 
 const configured = String(process.env.FINANCE_ENTITIES || "")
   .split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
   .filter((e) => ALL_ENTITIES.includes(e));
 
-export const ENTITIES = configured.length ? configured : ALL_ENTITIES;
+export const ENTITIES = configured.length ? configured : ["strideup"];
 export const SINGLE_ENTITY = ENTITIES.length === 1 ? ENTITIES[0] : null;
 // What an entry belongs to when nothing says otherwise. On a single-entity
 // instance there is only one answer; on a two-entity one it is the first.

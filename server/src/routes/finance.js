@@ -7,7 +7,7 @@ import { aiLimiter } from "../security.js";
 import { config } from "../config.js";
 import { ah, isoDate } from "../util.js";
 import { ACCEPTED_MIME, sniffMime, toMinor, fromMinor, ZERO_DECIMAL } from "../finance/extract.js";
-import { ENTITIES, ENTITY_LABEL, FREQUENCIES, SINGLE_ENTITY, DEFAULT_ENTITY } from "../finance/schema.js";
+import { ALL_ENTITIES, ENTITIES, ENTITY_LABEL, FREQUENCIES, SINGLE_ENTITY, DEFAULT_ENTITY } from "../finance/schema.js";
 import { ingestDocument, learnRule, resolvePeriod, findOrCreateCounterparty, convertToBase } from "../finance/ingest.js";
 import { importGhlCsv } from "../finance/ghl.js";
 import {
@@ -39,6 +39,24 @@ const entityParam = SINGLE_ENTITY
   ? z.enum([SINGLE_ENTITY]) : z.enum(["strideup", "personal", "both"]);
 const entityOnly = SINGLE_ENTITY
   ? z.enum([SINGLE_ENTITY]) : z.enum(["strideup", "personal"]);
+
+// Moving books out is the one thing that must still work for a set of books
+// this deployment has stopped keeping. Clamping the transfer routes to the
+// configured entity would strand whatever is left in the database with no way
+// to reach it — so they validate against every entity that can exist, not
+// against the ones this instance shows.
+const entityAny = z.enum(ALL_ENTITIES);
+
+// Which sets of books actually hold rows here, whether or not this deployment
+// shows them. A leftover set has to be visible somewhere or it cannot be moved.
+async function booksPresent() {
+  const rows = await all(
+    `SELECT entity, COUNT(*) AS n FROM fin_entries
+      WHERE review_status <> 'rejected' GROUP BY entity`
+  );
+  return rows.map((r) => ({ id: r.entity, entries: Number(r.n) }))
+             .filter((r) => ALL_ENTITIES.includes(r.id));
+}
 
 // "both" is answered by running the same query once per set of books and
 // returning them separately. Nothing here ever adds two entities together.
@@ -193,6 +211,11 @@ financeRouter.get(
     res.json({
       baseCurrency: config.finance.baseCurrency,
       entities: ENTITIES.map((e) => ({ id: e, label: ENTITY_LABEL[e] })),
+      // Books still in this database that this deployment does not show. The
+      // Import and close page offers to move them out; nothing else reads them.
+      leftover: (await booksPresent())
+        .filter((b) => !ENTITIES.includes(b.id))
+        .map((b) => ({ ...b, label: ENTITY_LABEL[b.id] })),
       categories: await all(
         `SELECT id, name, kind, pnl_line, entity, spend_group AS "spendGroup"
            FROM fin_categories ORDER BY sort, name`
@@ -1468,7 +1491,7 @@ financeRouter.delete(
 financeRouter.get(
   "/books/:entity/export.json",
   ah(async (req, res) => {
-    const parsed = entityOnly.safeParse(req.params.entity);
+    const parsed = entityAny.safeParse(req.params.entity);
     if (!parsed.success) return res.status(400).json({ error: "No such books." });
     const data = await exportEntity(parsed.data);
     res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -1507,7 +1530,7 @@ financeRouter.post(
 financeRouter.post(
   "/books/:entity/remove",
   ah(async (req, res) => {
-    const parsed = entityOnly.safeParse(req.params.entity);
+    const parsed = entityAny.safeParse(req.params.entity);
     if (!parsed.success) return res.status(400).json({ error: "No such books." });
     const entity = parsed.data;
     // Typing the name is the confirmation. A dialog you can dismiss with the

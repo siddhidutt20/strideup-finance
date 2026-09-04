@@ -61,6 +61,9 @@ export default function FinanceDashboard({ owner, onLogout,
   const [entries, setEntries] = useState([]);
   const [categories, setCategories] = useState([]);
   const [books, setBooks] = useState(null);
+  // Books still in this database that this deployment no longer shows.
+  // Only the transfer tool reads them, so they can be moved out.
+  const [leftover, setLeftover] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [feed, setFeed] = useState([]);
@@ -133,6 +136,7 @@ export default function FinanceDashboard({ owner, onLogout,
         // Which sets of books this deployment keeps. A personal instance
         // answers with one, and the switcher goes away.
         if (cats.entities) setBooks(cats.entities);
+        setLeftover(cats.leftover ?? []);
         setStatements(null); // recomputed for the new month, on demand
       } catch (err) {
         setError(err.message || "Could not load your finances.");
@@ -741,7 +745,8 @@ export default function FinanceDashboard({ owner, onLogout,
                         onAmount={fixAmount}
                         commitments={scheduledRows} onSchedule={scheduleActions}
                         showBooks={!views.some((v) => v[0] === "tools")}
-                        entityList={entityList} onDone={() => { load(period); loadForecast(); }} />
+                        entityList={entityList} leftover={leftover}
+                        onDone={() => { load(period); loadForecast(); }} />
           )}
           {view === "forecast" && (forecast && commitments ? (
             <div className={entityList.length > 1 ? "" : ""}>
@@ -780,7 +785,8 @@ export default function FinanceDashboard({ owner, onLogout,
           ) : <div className="fin-boot"><div className="fin-spinner" /></div>)}
           {view === "tools" && (
             <ToolsView period={period} entity={entity} entityList={entityList}
-                       byEntity={data?.byEntity} onDone={() => load(period)} />
+                       byEntity={data?.byEntity} leftover={leftover}
+                       onDone={() => load(period)} />
           )}
           </>
         )}
