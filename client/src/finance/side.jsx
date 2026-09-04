@@ -187,11 +187,11 @@ function Expenses({ sd, money, period }) {
 }
 
 // ── Money coming in ──────────────────────────────────────────
-function Revenue({ sd, money, period }) {
+function Revenue({ sd, money, period, inLabel = "Revenue" }) {
   const st = sd.stats ?? {};
   const ar = sd.receivables;
   const hasBook = (st.issued ?? 0) > 0 || (ar?.total ?? 0) > 0;
-  const insights = revenueInsights(sd, money, period);
+  const insights = revenueInsights(sd, money, period, inLabel);
   // Invoiced and collected only mean anything where invoices are being kept.
   const points = sd.split.map((m, i) => ({
     ...m,
@@ -202,7 +202,7 @@ function Revenue({ sd, money, period }) {
   return (
     <>
       <div className="fc-kpis sd-kpis">
-        <Kpi label="Revenue recorded" tone="fe-in" value={money.round(sd.thisMonth)}
+        <Kpi label={`${inLabel} recorded`} tone="fe-in" value={money.round(sd.thisMonth)}
              foot={<Delta change={sd.change} />} />
         <Kpi label="Invoiced this month" value={money.round(st.invoicedTotal ?? 0)}
              foot={st.issued
@@ -218,7 +218,7 @@ function Revenue({ sd, money, period }) {
              foot="under contract, not yet arrived" />
       </div>
 
-      <Panel title="Revenue and collections"
+      <Panel title={`${inLabel} and collections`}
              sub="Thirteen months recorded, three months under contract">
         <MultiLine points={points} money={money} aheadFrom={firstAhead(sd.split)}
                    height={230}
@@ -451,11 +451,11 @@ function expenseInsights(sd, money, period) {
   return out;
 }
 
-function revenueInsights(sd, money, period) {
+function revenueInsights(sd, money, period, label = "Revenue") {
   const out = [];
   const st = sd.stats ?? {};
   if (sd.change != null && Math.abs(sd.change) >= 0.05) {
-    out.push(`Revenue is ${sd.change > 0 ? "up" : "down"} ${Math.abs(pct(sd.change))}% ` +
+    out.push(`${label} is ${sd.change > 0 ? "up" : "down"} ${Math.abs(pct(sd.change))}% ` +
              `on last month.`);
   }
   const top = sd.parties[0];
@@ -473,13 +473,13 @@ function revenueInsights(sd, money, period) {
   }
   if (sd.recurringMonthly > 0 && sd.thisMonth > 0) {
     out.push(`${money.round(sd.recurringMonthly)} a month is under a recurring agreement — ` +
-             `${pct(Math.min(1, sd.recurringMonthly / sd.thisMonth))}% of this month's revenue.`);
+             `${pct(Math.min(1, sd.recurringMonthly / sd.thisMonth))}% of this month's ${label.toLowerCase()}.`);
   }
   return out;
 }
 
-export function SideView({ sd, money, period }) {
+export function SideView({ sd, money, period, inLabel }) {
   return sd.direction === "in"
-    ? <Revenue sd={sd} money={money} period={period} />
+    ? <Revenue sd={sd} money={money} period={period} inLabel={inLabel} />
     : <Expenses sd={sd} money={money} period={period} />;
 }

@@ -73,6 +73,27 @@ export const readFile = (file) =>
 export const ENTITY_LABEL = { strideup: "StrideUp", personal: "Personal", both: "Both" };
 export const ENTITY_CHOICES = ["strideup", "personal", "both"];
 
+// Money coming in is revenue to a business and income to a household. Same
+// arithmetic, different word, and the wrong word makes a personal app read
+// like a company's.
+export const moneyInLabel = (books) =>
+  (books ?? []).length === 1 && books[0].id === "personal" ? "Income" : "Revenue";
+
+// The pages an instance shows. A household has no profit and loss statement
+// and no revenue import to run, so a personal-only instance does not carry
+// them — and the books transfer moves onto the Ledger rather than vanishing
+// with the page that held it.
+export function viewsFor(views, books) {
+  const personalOnly = (books ?? []).length === 1 && books[0].id === "personal";
+  if (!personalOnly) return views;
+  return views
+    .filter(([id]) => !["pnl", "tools"].includes(id))
+    .map((v) =>
+      v[0] === "revenue" ? [v[0], "Income", "Income", "Where the money came from in"]
+      : v[0] === "overview" ? [v[0], v[1], v[2], "How your money is doing in"]
+      : v);
+}
+
 // What this instance actually offers, given the books the server says it
 // keeps. One set of books means one choice and no switcher.
 export function entityChoices(books) {

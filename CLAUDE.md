@@ -140,6 +140,14 @@ is the setup, and `scripts/move-entity.mjs` moves a set of books between two
 instances in three separate steps — export, import, and a purge that refuses to
 run without `--yes-delete`.
 
+A personal instance is not a business one with a filter over it. It calls money
+coming in **Income**, drops the P&L and the revenue import, and says "how your
+money is doing" rather than naming the company. `viewsFor` and `moneyInLabel`
+in `format.js` decide that from the books the server says it keeps, so the two
+apps stay one codebase. Removing a page never removes the only way to do
+something: the books transfer moves onto the Ledger where Import & close is
+not carried.
+
 Two instances must not share `SESSION_SECRET`. A cookie issued by one would be
 accepted by the other, which is the single way the two could reach each other.
 

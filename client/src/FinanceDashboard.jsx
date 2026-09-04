@@ -3,7 +3,7 @@ import { api } from "./api.js";
 import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS, FUTURE_CSS, CASHFLOW_AHEAD_CSS, CF_NONE_CSS, VENDORS_CSS, CASH_CSS, CONTRACTS_GROUP_CSS, SIDE_CSS, CASH_BAND_CSS, NARROW_FIX_CSS, INVOICE_CSS, RECORD_CSS, OVERVIEW_CSS, PL_CSS, BOOKS_CSS } from "./finance/styles.js";
 import {
   fmtAmount, monthLabel, readFile, shiftMonth, thisMonth, useMoney, ZERO_DECIMAL,
-  ENTITY_LABEL, entityChoices, loadEntity, saveEntity,
+  ENTITY_LABEL, entityChoices, viewsFor, moneyInLabel, loadEntity, saveEntity,
 } from "./finance/format.js";
 import {
   OverviewView, LedgerView, ToolsView,
@@ -90,6 +90,14 @@ export default function FinanceDashboard({ owner, onLogout }) {
   // entity is pinned to it rather than left on whatever was last remembered
   // from another instance in the same browser.
   const choices = useMemo(() => entityChoices(books), [books]);
+  // Which pages this instance carries, and what it calls money coming in.
+  const views = useMemo(() => viewsFor(VIEWS, books), [books]);
+  const inLabel = useMemo(() => moneyInLabel(books), [books]);
+  // A page this instance does not have must not stay open behind the nav.
+  useEffect(() => {
+    if (!views.some((v) => v[0] === view)) setView("overview");
+    // eslint-disable-next-line
+  }, [views]);
   useEffect(() => {
     if (choices.length === 1 && entity !== choices[0]) setEntity(choices[0]);
     else if (choices.length > 1 && !choices.includes(entity)) setEntity(choices[0]);
@@ -378,7 +386,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
     );
   }
 
-  const [, , heading, blurbBase] = VIEWS.find((v) => v[0] === view);
+  const [, , heading, blurbBase] = (views.find((v) => v[0] === view) ?? VIEWS[0]);
   const blurb =
     view === "ledger" && ledgerScope === "all"
       ? "Every entry recorded, across all months"
@@ -416,7 +424,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
         <p className="fin-sidelabel">Menu</p>
         <nav>
           <ul>
-            {VIEWS.map(([id, label]) => (
+            {views.map(([id, label]) => (
               <li key={id}>
                 <button className={view === id ? "on" : ""}
                         aria-current={view === id ? "page" : undefined}
@@ -558,7 +566,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
             <EntityBlock key={ent} show={(sides.in.entities ?? []).length > 1}
                          label={sides.in.byEntity[ent].label}>
               <SideView sd={sides.in.byEntity[ent]} money={money} period={period}
-                        trend={trendFor(ent)} />
+                        inLabel={inLabel} trend={trendFor(ent)} />
             </EntityBlock>
           ))}
           {view === "revenue" && invoices && (
@@ -572,7 +580,7 @@ export default function FinanceDashboard({ owner, onLogout }) {
             <EntityBlock key={ent} show={(sides.out.entities ?? []).length > 1}
                          label={sides.out.byEntity[ent].label}>
               <SideView sd={sides.out.byEntity[ent]} money={money} period={period}
-                        trend={trendFor(ent)} />
+                        inLabel={inLabel} trend={trendFor(ent)} />
             </EntityBlock>
           ))}
           {view === "cashflow" && (
@@ -629,7 +637,9 @@ export default function FinanceDashboard({ owner, onLogout }) {
                         scope={ledgerScope} onScope={setLedgerScope}
                         onFix={fixEntry} onRemove={removeEntry} onCurrency={fixCurrency}
                         onAmount={fixAmount}
-                        commitments={scheduledRows} onSchedule={scheduleActions} />
+                        commitments={scheduledRows} onSchedule={scheduleActions}
+                        showBooks={!views.some((v) => v[0] === "tools")}
+                        entityList={entityList} onDone={() => { load(period); loadForecast(); }} />
           )}
           {view === "forecast" && (forecast && commitments ? (
             <div className={entityList.length > 1 ? "" : ""}>

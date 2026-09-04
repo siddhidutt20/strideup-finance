@@ -126,6 +126,7 @@ export function PnlView({ st, money, period }) {
 export function LedgerView({
   entries, categories, money, baseCurrency, period, scope, onScope, showEntity,
   onFix, onRemove, onCurrency, onAmount, commitments, onSchedule,
+  showBooks, entityList, onDone,
 }) {
   return (
     <>
@@ -148,6 +149,16 @@ export function LedgerView({
       <ScheduledFromContracts commitments={commitments} categories={categories}
                               money={money} onSchedule={onSchedule}
                               showEntity={showEntity} />
+
+      {/* Where there is no Import & close page, the books transfer lives here
+          rather than nowhere — an app you cannot move your books into is an
+          app you cannot set up. */}
+      {showBooks && (
+        <Panel title="Move a set of books to another app"
+               sub="For running personal and the business as two separate apps">
+          <MoveBooks entityList={entityList} entity={entityList?.[0]} onDone={onDone} />
+        </Panel>
+      )}
     </>
   );
 }
