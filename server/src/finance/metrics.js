@@ -3015,10 +3015,16 @@ export async function expensesDashboard(entity, period, today = new Date(),
     });
   }
   // A heading on course to pass its limit, worked out from the pace so far.
-  if (daysLeft && dayNow > 3) {
+  //
+  // Only where a daily rate means anything. One rent payment on the 3rd is
+  // not "spending at a rate" — extrapolating it says the month will hold ten
+  // more rents. So the claim needs several separate payments behind it, and
+  // enough of the month gone to have a rate at all.
+  const counted = new Map(sd.categories.map((c) => [c.name, c.count ?? 0]));
+  if (daysLeft && dayNow >= 7) {
     const pace = dayNow / daysInMonth;
     const heading = hh.budget.categories
-      .filter((c) => c.budget > 0 && c.spent > 0)
+      .filter((c) => c.budget > 0 && c.spent > 0 && (counted.get(c.name) ?? 0) >= 3)
       .map((c) => ({ ...c, projected: Math.round(c.spent / pace) }))
       .filter((c) => c.projected > c.budget && !c.over)
       .sort((a, b) => (b.projected - b.budget) - (a.projected - a.budget))[0];

@@ -74,6 +74,8 @@ export const api = {
     request("GET", `/finance/home?entity=${entity}&period=${period}`),
   finIncome: (entity, period) =>
     request("GET", `/finance/income?entity=${entity}&period=${period}`),
+  finExpenses: (entity, period) =>
+    request("GET", `/finance/expenses?entity=${entity}&period=${period}`),
   finWealth: (entity) => request("GET", `/finance/wealth?entity=${entity}`),
   addHolding: (b) => request("POST", "/finance/holdings", b),
   updateHolding: (id, b) => request("PATCH", `/finance/holdings/${id}`, b),

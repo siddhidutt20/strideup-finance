@@ -152,8 +152,12 @@ function EntryEditor({ entry, categories, entity, onClose, onSaved }) {
   );
 }
 
-export function TransactionsView({ entity, categories, money, onAdd, onChanged, reloadKey }) {
-  const [f, setF] = useState(BLANK);
+// `fixedDirection` pins the list to money in or money out — used where the
+// page is already about one of them, and a Type filter would only be a way to
+// show income on the expenses page.
+export function TransactionsView({ entity, categories, money, onAdd, onChanged,
+                                   reloadKey, fixedDirection }) {
+  const [f, setF] = useState({ ...BLANK, direction: fixedDirection ?? "" });
   const [page, setPage] = useState(0);
   const [rows, setRows] = useState(null);
   const [total, setTotal] = useState(0);
@@ -163,7 +167,8 @@ export function TransactionsView({ entity, categories, money, onAdd, onChanged, 
   const [bump, setBump] = useState(0);
 
   const set = (k) => (e) => { setF((x) => ({ ...x, [k]: e.target.value })); setPage(0); };
-  const dirty = Object.keys(BLANK).some((k) => f[k] !== BLANK[k]);
+  const base = { ...BLANK, direction: fixedDirection ?? "" };
+  const dirty = Object.keys(base).some((k) => f[k] !== base[k]);
 
   const load = useCallback(async () => {
     setBusy(true); setErr("");
@@ -215,15 +220,17 @@ export function TransactionsView({ entity, categories, money, onAdd, onChanged, 
             {usable.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </label>
-        <label className="tx-pick"><span className="fin-sr">Type</span>
-          <select value={f.direction} onChange={set("direction")} aria-label="Money in or out">
-            <option value="">In and out</option>
-            <option value="in">Money in</option>
-            <option value="out">Money out</option>
-          </select>
-        </label>
+        {!fixedDirection && (
+          <label className="tx-pick"><span className="fin-sr">Type</span>
+            <select value={f.direction} onChange={set("direction")} aria-label="Money in or out">
+              <option value="">In and out</option>
+              <option value="in">Money in</option>
+              <option value="out">Money out</option>
+            </select>
+          </label>
+        )}
         <button className="fin-link tx-clear" disabled={!dirty}
-                onClick={() => { setF(BLANK); setPage(0); }}>Clear all</button>
+                onClick={() => { setF(base); setPage(0); }}>Clear all</button>
         <span className="tx-add">
           <a className="fin-btn ghost" href={api.finExportUrl()}
              title="Every entry, as a spreadsheet">Export</a>

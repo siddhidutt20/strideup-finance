@@ -1741,3 +1741,91 @@ export const LONG_CSS = `
   .go-calcout button{margin-left:0}
 }
 `;
+
+// ── Spending ─────────────────────────────────────────────────
+// The one page with five figures across the top, because a household asks
+// five questions of a month rather than four.
+export const EXPENSES_CSS = `
+.ex{display:flex;flex-direction:column;gap:16px}
+.ex .fin-panel{margin:0}
+.ex-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+.ex-kpis .hm-kpi{padding:15px 16px}
+.ex-kpis .hm-kpi-fig{font-size:clamp(19px,2vw,24px)}
+.ex-row-a{display:grid;grid-template-columns:minmax(0,4.4fr) minmax(0,4fr) minmax(0,3.6fr);
+  gap:14px;align-items:stretch}
+.ex-row-b{display:grid;grid-template-columns:minmax(0,4.2fr) minmax(0,4fr) minmax(0,3.8fr);
+  gap:14px;align-items:stretch}
+.ex-row-a>*,.ex-row-b>*{height:100%}
+
+/* Two exclusive halves and one rate beside them. The rate is set apart by a
+   rule, not by colour, so it is never read as a third slice of the same pie. */
+.ex-split{list-style:none;margin:2px 0 0;padding:0;display:flex;flex-direction:column;gap:14px}
+.ex-split li{display:grid;grid-template-columns:1fr auto;gap:5px 12px;align-items:center}
+.ex-split .hh-bar{grid-column:1;height:10px}
+.ex-split-pct{grid-column:2;grid-row:2;font-family:var(--fin-display);font-weight:600;
+  font-size:14px;min-width:40px;text-align:right}
+.ex-split-head{grid-column:1/-1;display:flex;align-items:baseline;
+  justify-content:space-between;gap:12px}
+.ex-split-head b{font-size:13.5px;font-weight:600}
+.ex-split-head em{font-style:normal;font-family:var(--fin-display);font-weight:600;
+  font-size:15px}
+.ex-split-aside{padding-top:14px;border-top:1px dashed var(--fin-line)}
+.ex-tip{margin-top:14px}
+
+.ex-plan{list-style:none;margin:2px 0 0;padding:0;display:flex;flex-direction:column;gap:2px}
+.ex-plan li{display:grid;grid-template-columns:auto 1fr auto;align-items:center;
+  gap:3px 10px;padding:9px 8px;border-radius:10px}
+.ex-plan li.over{background:#FEF5F8}
+.ex-plan li.unplanned{background:#FFFCF4}
+.ex-plan-name{grid-column:2;font-size:13.5px;font-weight:600;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.ex-plan-fig{grid-column:3;display:flex;flex-direction:column;align-items:flex-end}
+.ex-plan-fig b{font-size:13.5px;font-weight:650}
+.ex-plan-fig em{font-style:normal;font-size:11px;color:var(--fin-faint)}
+.ex-plan .ex-planbar{grid-column:2/-1}
+.ex-planname{min-width:130px}
+.ex-planbar{display:flex;align-items:center;gap:9px;margin-top:6px}
+.ex-planbar .hh-bar{flex:1;min-width:0}
+.ex-planbar em{font-style:normal;font-size:11px;font-weight:600;color:var(--fin-muted);
+  min-width:32px;text-align:right}
+.ex-plancap{display:block;font-style:normal;font-size:11px;color:var(--fin-faint);
+  font-weight:500;margin-top:2px}
+.ex-detect td{vertical-align:middle}
+.ex-looks{font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;
+  background:var(--fin-sunk);color:var(--fin-muted);white-space:nowrap}
+.ex-looks.l-steady{background:#EEF2FE;color:#3a4fa8}
+.ex-seen{display:block;font-style:normal;font-size:11px;color:var(--fin-faint);margin-top:3px}
+
+/* The month as one sentence of arithmetic, with the operators drawn. */
+.ex-glance{display:flex;align-items:center;gap:22px;flex-wrap:wrap;padding:18px 20px}
+.ex-glance-lead{display:flex;flex-direction:column;gap:2px;min-width:170px}
+.ex-glance-lead b{font-family:var(--fin-display);font-weight:600;font-size:15px}
+.ex-glance-lead em{font-style:normal;font-size:12px;color:var(--fin-muted)}
+.ex-sum{flex:1;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.ex-sum>span{display:flex;flex-direction:column;gap:1px}
+.ex-sum b{font-family:var(--fin-display);font-weight:600;letter-spacing:-.02em;
+  font-size:clamp(17px,1.8vw,21px)}
+.ex-sum em{font-style:normal;font-size:11.5px;color:var(--fin-muted)}
+.ex-sum i{font-style:normal;font-size:17px;color:var(--fin-faint);font-weight:600}
+.ex-sum-out{padding:8px 14px;border-radius:12px;background:#EDF9F3;border:1px solid #D5EFE3}
+.ex-glance-side{display:flex;flex-direction:column;gap:1px;padding-left:20px;
+  border-left:1px solid var(--fin-line);max-width:230px}
+.ex-glance-side b{font-family:var(--fin-display);font-weight:600;font-size:17px}
+.ex-glance-side em{font-style:normal;font-size:11.5px;line-height:1.5;color:var(--fin-muted)}
+
+@media(max-width:1400px){
+  .ex-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .ex-row-a,.ex-row-b{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .ex-row-a>*:nth-child(3),.ex-row-b>*:nth-child(3){grid-column:1/-1}
+}
+@media(max-width:900px){
+  .ex-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ex-row-a,.ex-row-b{grid-template-columns:minmax(0,1fr)}
+  .ex-row-a>*:nth-child(3),.ex-row-b>*:nth-child(3){grid-column:auto}
+  .ex-glance-side{padding-left:0;border-left:0;max-width:none}
+}
+@media(max-width:560px){
+  .ex-kpis{grid-template-columns:minmax(0,1fr)}
+  .ex-sum{gap:9px}
+}
+`;

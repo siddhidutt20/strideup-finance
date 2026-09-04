@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api.js";
-import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS, FUTURE_CSS, CASHFLOW_AHEAD_CSS, CF_NONE_CSS, VENDORS_CSS, CASH_CSS, CONTRACTS_GROUP_CSS, SIDE_CSS, CASH_BAND_CSS, NARROW_FIX_CSS, INVOICE_CSS, RECORD_CSS, OVERVIEW_CSS, PL_CSS, BOOKS_CSS, HOUSEHOLD_CSS, HOME_CSS, MONEY_CSS, LONG_CSS } from "./finance/styles.js";
+import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS, FUTURE_CSS, CASHFLOW_AHEAD_CSS, CF_NONE_CSS, VENDORS_CSS, CASH_CSS, CONTRACTS_GROUP_CSS, SIDE_CSS, CASH_BAND_CSS, NARROW_FIX_CSS, INVOICE_CSS, RECORD_CSS, OVERVIEW_CSS, PL_CSS, BOOKS_CSS, HOUSEHOLD_CSS, HOME_CSS, MONEY_CSS, LONG_CSS, EXPENSES_CSS } from "./finance/styles.js";
 import {
   fmtAmount, monthLabel, readFile, shiftMonth, thisMonth, useMoney, ZERO_DECIMAL,
   ENTITY_LABEL, entityChoices, viewsFor, moneyInLabel, loadEntity, saveEntity,
@@ -17,6 +17,7 @@ import { SideView } from "./finance/side.jsx";
 import { PlView, BudgetEditor } from "./finance/pl.jsx";
 import { BudgetView, BillsView } from "./finance/household.jsx";
 import { IncomeView } from "./finance/income.jsx";
+import { ExpensesView } from "./finance/expenses.jsx";
 import { TransactionsView } from "./finance/transactions.jsx";
 import { WealthView } from "./finance/wealth.jsx";
 import { GoalsView } from "./finance/goals.jsx";
@@ -49,6 +50,10 @@ const VIEWS = [
 ];
 const NEEDS_STATEMENTS = new Set(["revenue", "expenses", "cashflow"]);
 
+// Household pages that carry their own Export and Add. The generic header row
+// would only repeat them a few pixels away.
+const SELF_SERVED = new Set(["expenses"]);
+
 // What a household's pages call themselves. Two lines and a sentence: the
 // second line is the one that carries the colour, so the sentence reads as
 // one thing rather than a heading with a label stuck under it.
@@ -67,8 +72,8 @@ const PERSONAL_HEADS = {
             "Your own months, read together."],
   bills: ["Bills & subscriptions", "Never miss a payment,", "stay in control.",
           "Every bill and subscription, all in one place."],
-  expenses: ["Money", "Where your money", "actually went.",
-             "Every heading, largest first, for the month you are looking at."],
+  expenses: ["Expenses", "Understand your spending,", "make better choices.",
+             "Categorised as it comes in, with what follows from the figures."],
 };
 
 // Months ahead the picker will walk to. Future months hold no actuals — the
@@ -108,6 +113,7 @@ export default function FinanceDashboard({ owner, onLogout,
   const [household, setHousehold] = useState(null);
   const [home, setHome] = useState(null);
   const [income, setIncome] = useState(null);
+  const [spend, setSpend] = useState(null);
   const [we, setWe] = useState(null);
   const [go, setGo] = useState(null);
   const [rp, setRp] = useState(null);
@@ -301,6 +307,19 @@ export default function FinanceDashboard({ owner, onLogout,
     loadIncome();
     // eslint-disable-next-line
   }, [personalOnly, view, loadIncome]);
+
+  // Spending, for a household: the same ledger, split by what an agreement
+  // caused and what did not.
+  const loadSpend = useCallback(async () => {
+    try { setSpend(await api.finExpenses(entity, period)); }
+    catch (err) { setError(err.message || "Could not load your spending."); }
+  }, [entity, period]);
+
+  useEffect(() => {
+    if (!(personalOnly && view === "expenses")) return;
+    loadSpend();
+    // eslint-disable-next-line
+  }, [personalOnly, view, loadSpend]);
 
   // What you own, what you are saving toward, and the months read together.
   // Wealth is not scoped to a month — a position is a position — so it does
@@ -497,7 +516,7 @@ export default function FinanceDashboard({ owner, onLogout,
         {/* Joined in JS, not as three JSX children: a <style> element with
             several text children does not reliably end up with all of them in
             the DOM, and the symptom is a stylesheet that silently truncates. */}
-        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS + PL_CSS + BOOKS_CSS + HOUSEHOLD_CSS + HOME_CSS + MONEY_CSS + LONG_CSS}</style>
+        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS + PL_CSS + BOOKS_CSS + HOUSEHOLD_CSS + HOME_CSS + MONEY_CSS + LONG_CSS + EXPENSES_CSS}</style>
         <div className="fin-boot"><div className="fin-spinner" /></div>
       </div>
     );
@@ -537,7 +556,7 @@ export default function FinanceDashboard({ owner, onLogout,
 
   return (
     <div className="fin-app">
-      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS + PL_CSS + BOOKS_CSS + HOUSEHOLD_CSS + HOME_CSS + MONEY_CSS + LONG_CSS}</style>
+      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS + PL_CSS + BOOKS_CSS + HOUSEHOLD_CSS + HOME_CSS + MONEY_CSS + LONG_CSS + EXPENSES_CSS}</style>
 
       <aside className="fin-side" aria-label="Sections">
         <div className="fin-sidebrand">
@@ -637,7 +656,7 @@ export default function FinanceDashboard({ owner, onLogout,
             </p>
           )}
           <div className="fin-headctl">
-            {RECORD_VIEWS[view] && (
+            {RECORD_VIEWS[view] && !(personalOnly && SELF_SERVED.has(view)) && (
               <span className="fin-headacts">
                 <a className="fin-btn ghost" href={api.finExportUrl()}
                    title="Every entry, as a spreadsheet">Export</a>
@@ -785,7 +804,19 @@ export default function FinanceDashboard({ owner, onLogout,
                            onPay={setPaying} onDelete={removeInvoice} />
             </Panel>
           )}
-          {view === "expenses" && sides?.out && (sides.out.entities ?? [entity]).map((ent) => (
+          {personalOnly && view === "expenses" && (
+            spend && spend.period === period ? (
+              (spend.entities ?? [entity]).map((ent) => (
+                <ExpensesView key={`ex-${ent}`} ex={spend.byEntity[ent]} money={money}
+                              period={period} entity={ent} categories={categories}
+                              currency={data?.baseCurrency || "USD"}
+                              onGo={setView}
+                              onAdd={() => { setUploadKindPick(null); setAdding(true); }}
+                              onChanged={() => { loadSpend(); load(period); loadForecast(); }} />
+              ))
+            ) : <div className="fin-boot"><div className="fin-spinner" /></div>
+          )}
+          {!personalOnly && view === "expenses" && sides?.out && (sides.out.entities ?? [entity]).map((ent) => (
             <EntityBlock key={ent} show={(sides.out.entities ?? []).length > 1}
                          label={sides.out.byEntity[ent].label}>
               <SideView sd={sides.out.byEntity[ent]} money={money} period={period}

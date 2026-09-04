@@ -452,6 +452,42 @@ for (const ent of ENTS) {
               `${q.total} of ${all.total}`);
 }
 
+// ── Spending ─────────────────────────────────────────────────
+// The whole page rests on one split: what a standing agreement caused, and
+// what did not. If those two stop adding to the month, every figure above
+// them is wrong, so that is checked in every month the page draws.
+for (const ent of ENTS) {
+  console.log(`\n══ spending · ${ent} ══`);
+  const ex=(await g(`/finance/expenses?entity=${ent}&period=${P}`)).byEntity[ent];
+  const hh=(await g(`/finance/household?entity=${ent}&period=${P}`)).byEntity[ent];
+  const st=(await g(`/finance/statements?period=${P}&entity=${ent}`)).byEntity[ent];
+
+  check("spending = the household page", ex.total, hh.savings.spent);
+  check("agreed + decided = the month", ex.split.fixed + ex.split.variable, ex.total);
+  check("headings add up to the month",
+        ex.categories.reduce((t,c)=>t+c.total,0), ex.total);
+  check("income = the household page", ex.income, hh.savings.income);
+  check("left = income less spending", ex.left, ex.income - ex.total);
+  check("after the agreed part = income less that part", ex.afterFixed, ex.income - ex.split.fixed);
+  const shares=ex.categories.reduce((t,c)=>t+c.share,0);
+  const sOk=!ex.total||Math.abs(shares-1)<1e-6;
+  sOk?pass++:fail++;
+  console.log(`  ${sOk?"ok  ":"FAIL"} ${"heading shares add to 100%".padEnd(52)} ${(shares*100).toFixed(2)}%`);
+  // Every month on the chart, not just this one.
+  const splitOk=ex.series.every(m=>m.fixed+m.variable===m.total);
+  splitOk?pass++:fail++;
+  console.log(`  ${splitOk?"ok  ":"FAIL"} ${"every month's split adds to its total".padEnd(52)} ${ex.series.length} months`);
+  // Nothing already under an agreement may be offered as something to set up.
+  const covered=new Set(ex.recurring.map(r=>r.name.toLowerCase()));
+  const clean=ex.detected.every(d=>!covered.has(d.who.toLowerCase()));
+  clean?pass++:fail++;
+  console.log(`  ${clean?"ok  ":"FAIL"} ${"nothing already agreed is offered again".padEnd(52)} ${ex.detected.length} offered`);
+  // And everything offered really has been seen more than once.
+  const twice=ex.detected.every(d=>d.months>=2);
+  twice?pass++:fail++;
+  console.log(`  ${twice?"ok  ":"FAIL"} ${"only repeats are offered as a bill".padEnd(52)}`);
+}
+
 // ── What you own, what you are saving toward, and the reports ──
 // These three pages add the only claims the ledger cannot make on its own.
 // They still have to be internally consistent, and Reports must never

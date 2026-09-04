@@ -20,6 +20,7 @@ import {
   householdMonth,
   homeDashboard,
   incomeDashboard,
+  expensesDashboard,
   wealth,
   goals,
   reports,
@@ -1755,6 +1756,30 @@ financeRouter.get(
       byEntity[ent] = {
         label: ENTITY_LABEL[ent],
         ...(await incomeDashboard(ent, period)),
+      };
+    }
+    res.json({ entity: choice, entities: list, period, byEntity,
+               baseCurrency: config.finance.baseCurrency });
+  })
+);
+
+// ── Spending ─────────────────────────────────────────────────
+// Where the money went, how much of it a standing agreement caused, and what
+// that leaves. The split is read from the ledger — a row an agreement caused
+// carries that agreement's dedup key — not guessed from the amount or name.
+financeRouter.get(
+  "/expenses",
+  ah(async (req, res) => {
+    const period = periodParam.safeParse(req.query.period).success
+      ? req.query.period : monthStart();
+    const { choice, list } = resolveEntities(req.query.entity);
+    const money = (v) =>
+      `${config.finance.baseCurrency} ${Math.round(v / 100).toLocaleString()}`;
+    const byEntity = {};
+    for (const ent of list) {
+      byEntity[ent] = {
+        label: ENTITY_LABEL[ent],
+        ...(await expensesDashboard(ent, period, new Date(), money)),
       };
     }
     res.json({ entity: choice, entities: list, period, byEntity,
