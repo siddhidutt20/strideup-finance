@@ -23,6 +23,8 @@ const near=(name,a,b,tol=1)=>{
 // and a hard-coded month passes until the clock rolls over and then fails
 // everything at once for a reason that has nothing to do with the code.
 const P=(await g("/finance/dashboard?entity=strideup")).period;
+const isoMonth=(p,n)=>
+  `${new Date(Date.UTC(+p.slice(0,4), +p.slice(5,7)-1+n, 1)).toISOString().slice(0,7)}-01`;
 console.log(`  reading ${P} — the month the server is in`);
 for (const ent of ["strideup","personal"]) {
   console.log(`\n══ ${ent} ══`);
@@ -305,6 +307,32 @@ console.log("\n══ export.csv ══");
   if (linked.length) {
     const res = await fetch(linked[0][col("document_link")], { headers: { cookie } });
     check("csv first document link resolves", res.status, 200);
+  }
+}
+
+// ── Carrying a month forward ─────────────────────────────────
+// A month opens where the one before it closed. Only the flows inside it
+// start at zero — nothing is copied, so opening plus what this month moved
+// has to land exactly on the position, in every month.
+for (const ent of ["strideup","personal"]) {
+  console.log(`\n══ carry forward · ${ent} ══`);
+  const live=(await g("/finance/entries?limit=500")).entries
+    .filter(e=>e.entity===ent&&e.review_status!=="rejected");
+  const netBefore=(p)=>live.filter(e=>e.period.slice(0,10)<p&&e.category_kind!=="transfer")
+    .reduce((t,e)=>t+(e.direction==="in"?1:-1)*Number(e.base_amount_minor),0);
+  for (const p of [P, isoMonth(P,-1), isoMonth(P,1)]) {
+    const o=(await g(`/finance/dashboard?period=${p}&entity=${ent}`)).byEntity[ent];
+    check(`${p} opens at what was recorded before it`, o.carry.opening, netBefore(p));
+    check(`${p} opening + movement = the position`,
+          o.carry.opening + o.carry.movement,
+          netBefore(p) + live.filter(e=>e.period.slice(0,10)===p&&e.category_kind!=="transfer")
+            .reduce((t,e)=>t+(e.direction==="in"?1:-1)*Number(e.base_amount_minor),0));
+    // The whole point: a quiet month keeps its charts, its position and its
+    // commitments. Only a book with nothing in it at all is empty.
+    const keeps = o.entriesEver === live.length && o.trend.length > 0;
+    keeps?pass++:fail++;
+    console.log(`  ${keeps?"ok  ":"FAIL"} ${(p+" keeps its history when quiet").padEnd(52)} ` +
+                `entriesEver=${o.entriesEver} trend=${o.trend.length}`);
   }
 }
 

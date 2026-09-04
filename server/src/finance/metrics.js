@@ -183,6 +183,32 @@ export async function cashPosition(entity) {
   return { source: "recorded", amount: Number(rec?.net ?? 0) };
 }
 
+// What the books held before a month opened, and how many entries exist at
+// all. A month with nothing recorded in it is not an empty set of books: the
+// position carries over from the month before, and the page has to say so
+// rather than going blank.
+export async function cashBefore(period, entity) {
+  const r = await get(
+    `SELECT COALESCE(${SIGNED}, 0) AS net
+       FROM fin_entries e
+       LEFT JOIN fin_categories c ON c.id = e.category_id
+      WHERE e.review_status <> 'rejected'
+        AND COALESCE(c.kind, 'opex') <> 'transfer'
+        AND e.period < ?${ENT(entity)}`,
+    [period, ...ENT_ARG(entity)]
+  );
+  return Number(r?.net ?? 0);
+}
+
+export async function entriesEver(entity) {
+  const r = await get(
+    `SELECT COUNT(*) AS n FROM fin_entries e
+      WHERE e.review_status <> 'rejected'${ENT(entity)}`,
+    ENT_ARG(entity)
+  );
+  return Number(r?.n ?? 0);
+}
+
 // Burn excludes capital events — otherwise an investment round reads as
 // profit and runway becomes fiction.
 export async function burnAndRunway(cashMinor, entity) {
@@ -1680,7 +1706,8 @@ export async function overviewDashboard(entity, today = new Date(), period = nul
   const target = period && period !== thisPeriod ? period : thisPeriod;
   const ahead = target > thisPeriod;
   const asOf = isoDate(today);
-  const [cash, summary, prev, recorded, breakdown, ar, cashDash, vendors] =
+  const [cash, summary, prev, recorded, breakdown, ar, cashDash, vendors,
+         opening, everCount] =
     await Promise.all([
       cashPosition(entity),
       periodSummary(target, entity),
@@ -1690,6 +1717,8 @@ export async function overviewDashboard(entity, today = new Date(), period = nul
       receivables(today, entity),
       cashDashboard(entity, 3, today),
       vendorManagement(entity, today, 30),
+      cashBefore(target, entity),
+      entriesEver(entity),
     ]);
 
   // Read once and used twice: the month's own projection, and the months past
@@ -1724,6 +1753,19 @@ export async function overviewDashboard(entity, today = new Date(), period = nul
 
   return {
     entity, asOf, period: target, thisPeriod, ahead,
+    // How many entries exist at all, in any month. The difference between
+    // "this month is quiet" and "this book is empty" — the first must never
+    // be shown as the second.
+    entriesEver: everCount,
+    // The position carried forward. A month opens where the one before it
+    // closed; only the flows inside it start at zero. Nothing is copied —
+    // the opening figure is the same ledger read up to a different date.
+    carry: {
+      openedFrom: addMonths(target, -1),
+      opening,
+      movement: summary.revenue - summary.expenses + summary.capital - summary.capex,
+      recordedThisMonth: summary.entryCount,
+    },
     projected: ahead
       ? projectedMonth(commitments, settled, target, thisPeriod, cash, asOf)
       : null,

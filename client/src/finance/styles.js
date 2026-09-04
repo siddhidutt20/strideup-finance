@@ -973,6 +973,10 @@ export const OVERVIEW_CSS = `
   padding:13px 16px;margin:0 0 16px;font-size:13px;line-height:1.6;
   color:var(--fin-muted)}
 .ov-ahead b{color:var(--fin-accent);font-weight:600}
+/* A quiet month carries a position, not a warning. Same shape as the
+   ahead-of-time note, in the neutral tint rather than the accent one. */
+.ov-carry{background:var(--fin-sunk);border-color:var(--fin-line)}
+.ov-carry b{color:var(--fin-ink)}
 .ov-kpis{grid-template-columns:repeat(6,minmax(0,1fr))}
 @media(max-width:1500px){.ov-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:820px){.ov-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}

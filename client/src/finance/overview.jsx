@@ -131,9 +131,23 @@ export function OverviewDash({ ov, money, period, onGo }) {
   const r = ov.runway;
   const trend = ov.trend.slice(-7);
   const pj = ov.ahead ? ov.projected : null;
+  // A month opens where the one before it closed. Only the flows inside it
+  // start at zero — the position carries, and a quiet month has to say so
+  // rather than reading as an empty set of books.
+  const carry = ov.carry;
+  const quiet = !pj && carry && carry.recordedThisMonth === 0;
 
   return (
     <>
+      {quiet && (
+        <p className="ov-ahead ov-carry">
+          <b>Nothing is recorded against {monthLabel(period)} yet.</b> The month
+          opens with {money.round(carry.opening)} carried forward from{" "}
+          {monthLabel(carry.openedFrom)}'s closing. Everything below is still
+          live — the position, what is committed, what is outstanding and every
+          month before this one. Add an entry and it lands on top.
+        </p>
+      )}
       {pj && (
         <p className="ov-ahead">
           <b>{monthLabel(period)} hasn't happened yet.</b> Nothing is recorded
@@ -148,22 +162,30 @@ export function OverviewDash({ ov, money, period, onGo }) {
         <article className="fc-kpi">
           <header><span>Cash today</span></header>
           <p className="fin-fig">{money.round(ov.cash.amount)}</p>
-          <footer>{ov.cash.source === "bank" ? "from your bank feed" : "everything recorded"}</footer>
+          <footer>
+            {carry
+              ? <>opened at {money.round(carry.opening)}, {carry.movement >= 0 ? "+" : "−"}
+                  {money.round(Math.abs(carry.movement))} this month</>
+              : ov.cash.source === "bank" ? "from your bank feed" : "everything recorded"}
+          </footer>
         </article>
         <article className="fc-kpi">
           <header><span>Revenue this month</span></header>
           <p className="fin-fig fe-in">{money.round(ov.revenue)}</p>
-          <footer><Change v={ov.revenueChange} /></footer>
+          <footer>{quiet ? <span className="sd-flat">nothing recorded yet</span>
+                         : <Change v={ov.revenueChange} />}</footer>
         </article>
         <article className="fc-kpi">
           <header><span>Expenses this month</span></header>
           <p className="fin-fig fe-out">{money.round(ov.expenses)}</p>
-          <footer><Change v={ov.expensesChange} invert /></footer>
+          <footer>{quiet ? <span className="sd-flat">nothing recorded yet</span>
+                         : <Change v={ov.expensesChange} invert />}</footer>
         </article>
         <article className="fc-kpi">
           <header><span>Net this month</span></header>
           <p className={`fin-fig${ov.net < 0 ? " fe-out" : ""}`}>{money.round(ov.net)}</p>
-          <footer><Change v={ov.netChange} /></footer>
+          <footer>{quiet ? <span className="sd-flat">nothing recorded yet</span>
+                         : <Change v={ov.netChange} />}</footer>
         </article>
         </>
         )}

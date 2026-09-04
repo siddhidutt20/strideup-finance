@@ -446,10 +446,17 @@ export default function FinanceDashboard({ owner, onLogout,
   const recordSide = RECORD_VIEWS[view];
   const uploadKind = uploadKindPick ??
     (view === "revenue" ? "revenue" : view === "vendors" ? "contract" : "expense");
-  const isEmpty = entityList.every(
-    (e) => (data?.byEntity?.[e]?.summary?.entryCount ?? 0) === 0 &&
-           !data?.byEntity?.[e]?.receivables?.total
-  );
+  // "Empty" means these books hold nothing at all, in any month — not that
+  // the month you happen to be looking at is quiet. A new month opens with
+  // last month's position carried forward, and blanking the page over it
+  // threw away cash, commitments, outstanding invoices and every chart.
+  const isEmpty = entityList.every((e) => {
+    const ov = dash?.byEntity?.[e];
+    if (ov && typeof ov.entriesEver === "number") return ov.entriesEver === 0;
+    // Before the overview lands, fall back to what the month knows.
+    return (data?.byEntity?.[e]?.summary?.entryCount ?? 0) === 0 &&
+           !data?.byEntity?.[e]?.receivables?.total;
+  });
 
   return (
     <div className="fin-app">
@@ -590,7 +597,7 @@ export default function FinanceDashboard({ owner, onLogout,
 
       {view === "overview" && isEmpty && period <= thisMonth() ? (
         <div className="fin-empty">
-          <h2>Nothing recorded for {monthLabel(period)} yet</h2>
+          <h2>Nothing recorded yet</h2>
           <p>
             Drop an invoice above, or open the Ledger and write an entry by hand —
             capital you put in, a payment that never had a document, anything at all.
