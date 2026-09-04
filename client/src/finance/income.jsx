@@ -195,12 +195,101 @@ function SourceEditor({ source, entity, categories, currency, money, onClose, on
   );
 }
 
+// ── Recording that money actually arrived ────────────────────
+// An arrangement says money is due; only a recorded receipt says it came.
+// That had to be done on the Payment schedule, which is a strange place to
+// go looking for your own salary — so it happens on the row instead.
+//
+// The date offered is one the schedule actually produces. A free-text date is
+// how a receipt ends up recorded against an occurrence that does not exist.
+function MarkReceived({ source, money, onClose, onSaved }) {
+  const [dueDate, setDueDate] = useState(source.dueNow ?? source.openDates?.[0] ?? "");
+  const [paidDate, setPaidDate] = useState(source.dueNow ?? new Date().toISOString().slice(0, 10));
+  const [amount, setAmount] = useState(String((source.amount ?? 0) / 100));
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  const expected = (source.amount ?? 0) / 100;
+  const differs = Number(amount) && Math.abs(Number(amount) - expected) > 0.004;
+
+  async function save(e) {
+    e.preventDefault();
+    setBusy(true); setMsg(null);
+    try {
+      await api.markPaid(source.id, {
+        dueDate,
+        paidDate,
+        amount: differs ? Number(amount) : undefined,
+      });
+      onSaved();
+    } catch (err) {
+      setMsg(err.message || "Could not record that.");
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="fin-modal" role="dialog" aria-label="Record a receipt">
+      <div className="fin-sheet">
+        <header className="fin-sheethead">
+          <h2>Record money received from “{source.name}”</h2>
+          <button className="fin-x" onClick={onClose} aria-label="Close">×</button>
+        </header>
+        <form className="fin-form" onSubmit={save}>
+          {!source.openDates?.length ? (
+            <p className="fc-none wide">
+              Every date this was due already has a receipt recorded against it.
+              The next one is {source.nextDue ?? "not scheduled"}.
+            </p>
+          ) : (
+            <>
+              <label><span>Which payment</span>
+                <select value={dueDate} onChange={(e) => setDueDate(e.target.value)} required>
+                  {source.openDates.map((d) => (
+                    <option key={d} value={d}>{dayLabel(d)}{d > new Date().toISOString().slice(0,10) ? " (not due yet)" : ""}</option>
+                  ))}
+                </select>
+                <em className="fin-hint">
+                  The dates this arrangement falls due and nothing has been
+                  recorded for yet.
+                </em>
+              </label>
+              <label><span>When it arrived</span>
+                <input type="date" value={paidDate}
+                       onChange={(e) => setPaidDate(e.target.value)} required />
+              </label>
+              <label><span>How much arrived</span>
+                <input type="number" step="0.01" min="0.01" value={amount}
+                       onChange={(e) => setAmount(e.target.value)} required />
+                <em className="fin-hint">
+                  {differs
+                    ? `Different from the ${money.exact(source.amount)} expected — what is ` +
+                      `recorded is what arrived, not what was agreed.`
+                    : `The arrangement says ${money.exact(source.amount)}.`}
+                </em>
+              </label>
+              {msg && <p className="fin-error wide">{msg}</p>}
+              <div className="fin-formacts wide">
+                <span className="ic-spacer" />
+                <button type="button" className="fin-btn ghost" onClick={onClose}>Cancel</button>
+                <button className="fin-btn" disabled={busy || !dueDate}>
+                  {busy ? "Recording…" : "Record it"}
+                </button>
+              </div>
+            </>
+          )}
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export function IncomeView({ inc, money, period, entity, categories, currency,
                             onChanged, onAdd, adding, onCloseAdd }) {
   const [busy, setBusy] = useState(false);
   const [dismissed, setDismissed] = useState([]);
   const [recurring, setRecurring] = useState(null);
   const [editing, setEditing] = useState(null);
+  const [marking, setMarking] = useState(null);
   const [span, setSpan] = useState("year");
 
   const series = useMemo(() => {
@@ -344,7 +433,12 @@ export function IncomeView({ inc, money, period, entity, categories, currency,
                     <td className="fc-date">
                       {s.lastReceived
                         ? dayLabel(s.lastReceived)
-                        : <span className="fin-dash">never recorded</span>}
+                        : <span className="fin-dash">nothing recorded yet</span>}
+                      {s.active && s.dueNow && (
+                        <em className="ic-duenow">
+                          {dayLabel(s.dueNow)} is due and unrecorded
+                        </em>
+                      )}
                     </td>
                     <td className="fc-date">
                       {s.active
@@ -352,6 +446,12 @@ export function IncomeView({ inc, money, period, entity, categories, currency,
                         : <span className="ic-endtag">ended {dayLabel(s.endDate)}</span>}
                     </td>
                     <td className="ic-editcell">
+                      {s.active && s.openDates?.length > 0 && (
+                        <button className={`fin-btn sm${s.dueNow ? "" : " ghost"}`}
+                                onClick={() => setMarking(s)}>
+                          Mark received
+                        </button>
+                      )}
                       <button className="fin-btn ghost sm" onClick={() => setEditing(s)}>
                         Edit
                       </button>
@@ -364,7 +464,9 @@ export function IncomeView({ inc, money, period, entity, categories, currency,
         )}
         <p className="fc-note">
           A source is an arrangement, not money. It reaches this month's total
-          when a payment against it is actually recorded.
+          when a receipt against it is recorded — which is what
+          <b> Mark received</b> does. Until then the arrangement is what is
+          agreed, and the total is what arrived.
         </p>
       </Panel>
 
@@ -386,6 +488,12 @@ export function IncomeView({ inc, money, period, entity, categories, currency,
             ))}
           </ul>
         </Panel>
+      )}
+
+      {marking && (
+        <MarkReceived source={marking} money={money}
+                      onClose={() => setMarking(null)}
+                      onSaved={() => { setMarking(null); onChanged(); }} />
       )}
 
       {editing && (

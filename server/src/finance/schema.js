@@ -207,6 +207,66 @@ export const FIN_SCHEMA = [
      created_at     timestamptz NOT NULL DEFAULT now(),
      UNIQUE (commitment_id, due_date)
    )`,
+
+  // ── What you own and what you owe ──────────────────────────
+  // A fifth kind of claim, and the only one the ledger cannot answer on its
+  // own: the ledger records money moving, not what a holding is worth today.
+  // Nobody's bank or broker is connected here, so every figure on this table
+  // is a valuation somebody entered, carrying the date they entered it for.
+  // That is why `as_of` is not optional — a net worth with no date is a
+  // number, not a claim.
+  `CREATE TABLE IF NOT EXISTS fin_holdings (
+     id           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+     entity       text NOT NULL DEFAULT 'strideup',
+     side         text NOT NULL,
+     name         text NOT NULL,
+     kind         text NOT NULL DEFAULT 'other',
+     currency     text NOT NULL DEFAULT 'USD',
+     value_minor  bigint NOT NULL DEFAULT 0,
+     base_value_minor bigint NOT NULL DEFAULT 0,
+     cost_minor   bigint,
+     base_cost_minor bigint,
+     rate_pct     numeric(7,3),
+     monthly_payment_minor bigint,
+     as_of        date NOT NULL,
+     note         text,
+     created_at   timestamptz NOT NULL DEFAULT now(),
+     updated_at   timestamptz NOT NULL DEFAULT now()
+   )`,
+
+  // Every valuation ever entered, so net worth has a history rather than only
+  // a present. A holding's current figure is the newest row here.
+  `CREATE TABLE IF NOT EXISTS fin_holding_values (
+     id          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+     holding_id  bigint NOT NULL REFERENCES fin_holdings(id) ON DELETE CASCADE,
+     as_of       date NOT NULL,
+     value_minor bigint NOT NULL,
+     base_value_minor bigint NOT NULL,
+     created_at  timestamptz NOT NULL DEFAULT now(),
+     UNIQUE (holding_id, as_of)
+   )`,
+
+  // ── What you are saving toward ─────────────────────────────
+  // A goal is a plan, like a budget: never summed into a position, never
+  // counted as money. `saved_minor` is what you say you have put aside for
+  // it, which is a different claim from what the ledger recorded — the two
+  // are shown side by side rather than added.
+  `CREATE TABLE IF NOT EXISTS fin_goals (
+     id           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+     entity       text NOT NULL DEFAULT 'strideup',
+     name         text NOT NULL,
+     kind         text NOT NULL DEFAULT 'custom',
+     currency     text NOT NULL DEFAULT 'USD',
+     target_minor bigint NOT NULL,
+     base_target_minor bigint NOT NULL,
+     saved_minor  bigint NOT NULL DEFAULT 0,
+     base_saved_minor bigint NOT NULL DEFAULT 0,
+     target_date  date,
+     status       text NOT NULL DEFAULT 'open',
+     note         text,
+     created_at   timestamptz NOT NULL DEFAULT now(),
+     updated_at   timestamptz NOT NULL DEFAULT now()
+   )`,
 ];
 
 // ── Chart of accounts ────────────────────────────────────────

@@ -2422,12 +2422,24 @@ export async function incomeDashboard(entity, period, today = new Date()) {
   }
 
   const incoming = commitments.filter((k) => k.direction === "in");
+  const thisPeriod = monthStart(today);
   const sources = incoming.map((k) => {
     // The next date this is due, looking from today forward.
     let next = null;
     for (let i = 0; i <= 3 && !next; i++) {
-      for (const occ of occurrencesIn(k, addMonths(monthStart(today), i))) {
+      for (const occ of occurrencesIn(k, addMonths(thisPeriod, i))) {
         if (occ.date >= asOf) { next = occ.date; break; }
+      }
+    }
+    // Dates this was due and nothing has been recorded against. Recording a
+    // receipt has to happen against a date the schedule actually produces, so
+    // the page offers those dates rather than a free-text box that can be
+    // typed wrong.
+    const openDates = [];
+    for (let i = -6; i <= 1; i++) {
+      for (const occ of occurrencesIn(k, addMonths(thisPeriod, i))) {
+        if (settled.get(occKey(k.id, occ.date))) continue;
+        openDates.push(occ.date);
       }
     }
     const ends = k.end_date ? isoDate(k.end_date) : null;
@@ -2443,6 +2455,10 @@ export async function incomeDashboard(entity, period, today = new Date()) {
       endDate: ends,
       lastReceived: lastPaid.get(Number(k.id)) ? isoDate(lastPaid.get(Number(k.id))) : null,
       nextDue: next,
+      openDates: openDates.sort(),
+      // The most recent date already past that nothing has been recorded for —
+      // what somebody means when they say "mark it received".
+      dueNow: openDates.filter((d) => d <= asOf).sort().at(-1) ?? null,
       // Still running, or finished. A source that ended is history, not income.
       active: !ends || ends >= asOf,
     };
@@ -2511,5 +2527,323 @@ export async function incomeDashboard(entity, period, today = new Date()) {
       .map((r) => ({ name: r.name, total: r.amount, count: r.count })),
     series: series.map((m) => ({ period: m.period, amount: m.revenue })),
     detected,
+  };
+}
+
+// ── What you own and what you owe ────────────────────────────
+// The ledger records money moving. It cannot say what a holding is worth
+// today, because nothing here is connected to a bank or a broker — so every
+// figure below is a valuation somebody entered, and carries the date they
+// entered it for. A net worth with no date is a number, not a claim.
+
+const HOLDING_KINDS = ["equity", "debt", "cash", "property", "gold", "other"];
+
+export async function wealth(entity, today = new Date(), months = 12) {
+  const asOf = isoDate(today);
+  const rows = await all(
+    `SELECT h.*, (SELECT MAX(as_of) FROM fin_holding_values v WHERE v.holding_id = h.id) AS latest
+       FROM fin_holdings h
+      WHERE 1=1${entity && entity !== "both" ? " AND h.entity = ?" : ""}
+      ORDER BY h.side, ABS(h.base_value_minor) DESC`,
+    entity && entity !== "both" ? [entity] : []
+  );
+
+  const shape = (r) => ({
+    id: Number(r.id),
+    side: r.side,
+    name: r.name,
+    kind: r.kind,
+    currency: r.currency,
+    value: Number(r.base_value_minor),
+    valueAsWritten: Number(r.value_minor),
+    cost: r.base_cost_minor == null ? null : Number(r.base_cost_minor),
+    // Return is only meaningful where a cost was entered. No cost, no return —
+    // not a zero, which would read as "it went nowhere".
+    returnPct: r.base_cost_minor && Number(r.base_cost_minor) !== 0
+      ? (Number(r.base_value_minor) - Number(r.base_cost_minor)) / Math.abs(Number(r.base_cost_minor))
+      : null,
+    ratePct: r.rate_pct == null ? null : Number(r.rate_pct),
+    monthlyPayment: r.monthly_payment_minor == null ? null : Number(r.monthly_payment_minor),
+    asOf: isoDate(r.as_of),
+    // How long ago somebody last said what this was worth. A year-old
+    // valuation is not wrong, but it is not today either.
+    staleDays: Math.round((new Date(asOf) - new Date(isoDate(r.as_of))) / 86400000),
+    note: r.note ?? null,
+  });
+
+  const assets = rows.filter((r) => r.side === "asset").map(shape);
+  const liabilities = rows.filter((r) => r.side === "liability").map(shape);
+  const totalAssets = assets.reduce((t, a) => t + a.value, 0);
+  const totalLiabilities = liabilities.reduce((t, a) => t + a.value, 0);
+
+  // Every valuation ever entered, folded into a month-end series so net worth
+  // has a history. A month with no new valuation carries the last one — the
+  // holding did not stop existing because nobody re-priced it.
+  const hist = await all(
+    `SELECT v.holding_id, v.as_of, v.base_value_minor, h.side
+       FROM fin_holding_values v
+       JOIN fin_holdings h ON h.id = v.holding_id
+      WHERE 1=1${entity && entity !== "both" ? " AND h.entity = ?" : ""}
+      ORDER BY v.as_of`,
+    entity && entity !== "both" ? [entity] : []
+  );
+  const series = [];
+  const running = new Map();
+  const from = addMonths(monthStart(today), -(months - 1));
+  const seen = [...hist].map((r) => ({ ...r, as_of: isoDate(r.as_of) }));
+  for (let i = 0; i < months; i++) {
+    const p = addMonths(from, i);
+    const end = isoDate(new Date(Date.UTC(+p.slice(0, 4), +p.slice(5, 7), 0)));
+    for (const r of seen) {
+      if (r.as_of <= end) running.set(Number(r.holding_id), r);
+    }
+    let a = 0, l = 0;
+    for (const r of running.values()) {
+      if (r.side === "asset") a += Number(r.base_value_minor);
+      else l += Number(r.base_value_minor);
+    }
+    series.push({ period: p, assets: a, liabilities: l, net: a - l });
+  }
+
+  // How the assets split. A slice per kind, largest first, so the allocation
+  // is read the same way the spend groups are.
+  const byKind = new Map();
+  for (const a of assets) {
+    const k = HOLDING_KINDS.includes(a.kind) ? a.kind : "other";
+    byKind.set(k, (byKind.get(k) ?? 0) + a.value);
+  }
+  const allocation = [...byKind.entries()]
+    .map(([kind, total]) => ({
+      kind, total, share: totalAssets ? total / totalAssets : 0,
+    }))
+    .sort((x, y) => y.total - x.total);
+
+  const priced = assets.filter((a) => a.cost != null);
+  const costTotal = priced.reduce((t, a) => t + a.cost, 0);
+  const pricedValue = priced.reduce((t, a) => t + a.value, 0);
+
+  // A year ago, on the same carried-forward basis as the series.
+  const yearAgo = series.length >= 13 ? series[series.length - 13] : series[0];
+
+  return {
+    entity, asOf,
+    totalAssets, totalLiabilities, netWorth: totalAssets - totalLiabilities,
+    change: yearAgo && yearAgo.net
+      ? (totalAssets - totalLiabilities - yearAgo.net) / Math.abs(yearAgo.net) : null,
+    changeFrom: yearAgo?.period ?? null,
+    assets, liabilities, allocation, series,
+    // Only over the holdings that carry a cost. Averaging in the ones that do
+    // not would be reporting a return on money nobody said they paid.
+    performance: priced.length
+      ? { cost: costTotal, value: pricedValue, count: priced.length,
+          returnPct: costTotal ? (pricedValue - costTotal) / Math.abs(costTotal) : null }
+      : null,
+    // Debt, read the way somebody paying it reads it.
+    debt: {
+      total: totalLiabilities,
+      monthlyPayment: liabilities.reduce((t, l) => t + (l.monthlyPayment ?? 0), 0),
+      items: liabilities,
+    },
+    // A valuation nobody has touched in three months is worth saying so about.
+    stale: [...assets, ...liabilities].filter((h) => h.staleDays >= 90).length,
+  };
+}
+
+// ── What you are saving toward ───────────────────────────────
+// A goal is a plan, like a budget. It is never summed into a position and
+// never counted as money. What it adds is arithmetic against a date: what is
+// left, how long there is, and what that works out to a month.
+export async function goals(entity, today = new Date(), monthlySaving = null) {
+  const asOf = isoDate(today);
+  const rows = await all(
+    `SELECT * FROM fin_goals
+      WHERE status <> 'archived'${entity && entity !== "both" ? " AND entity = ?" : ""}
+      ORDER BY (target_date IS NULL), target_date, id`,
+    entity && entity !== "both" ? [entity] : []
+  );
+
+  const items = rows.map((r) => {
+    const target = Number(r.base_target_minor);
+    const saved = Number(r.base_saved_minor);
+    const remaining = Math.max(0, target - saved);
+    const date = r.target_date ? isoDate(r.target_date) : null;
+    const days = date ? Math.round((new Date(date) - new Date(asOf)) / 86400000) : null;
+    // Months left, never below one: "you need the whole thing this month" is
+    // the honest answer when the date is next week, not a division by zero.
+    const monthsLeft = days == null ? null : Math.max(1, Math.round(days / 30.44));
+    return {
+      id: Number(r.id),
+      name: r.name,
+      kind: r.kind,
+      currency: r.currency,
+      target, saved, remaining,
+      targetAsWritten: Number(r.target_minor),
+      progress: target ? Math.min(1, saved / target) : null,
+      targetDate: date,
+      daysLeft: days,
+      monthsLeft,
+      perMonth: monthsLeft ? Math.ceil(remaining / monthsLeft) : null,
+      done: target > 0 && saved >= target,
+      // Past its date and not there yet is a different thing from behind pace.
+      overdue: days != null && days < 0 && saved < target,
+      note: r.note ?? null,
+    };
+  });
+
+  const open = items.filter((g) => !g.done);
+  const needed = open.reduce((t, g) => t + (g.perMonth ?? 0), 0);
+
+  return {
+    entity, asOf,
+    items,
+    totalTarget: items.reduce((t, g) => t + g.target, 0),
+    totalSaved: items.reduce((t, g) => t + g.saved, 0),
+    // What every open goal together asks of a month, against what the months
+    // have actually been keeping. Both are real; neither is a promise.
+    neededPerMonth: needed,
+    savingPerMonth: monthlySaving,
+    shortfall: monthlySaving == null ? null : needed - Math.max(0, monthlySaving),
+    // Soonest first, for the timeline.
+    timeline: items.filter((g) => g.targetDate && !g.done)
+                   .sort((a, b) => a.targetDate.localeCompare(b.targetDate)),
+  };
+}
+
+// ── Reports ──────────────────────────────────────────────────
+// Nothing new is measured here. Every figure is one the other pages already
+// show, arranged so a run of months can be read at once instead of a month at
+// a time — and said in sentences underneath, so the reader is not left to do
+// the comparison themselves.
+export async function reports(entity, period, months = 6, today = new Date()) {
+  const [series, breakdown, summary, prev, hh, budgets] = await Promise.all([
+    trend(13, period, entity),
+    categoryBreakdown(period, entity),
+    periodSummary(period, entity),
+    periodSummary(addMonths(period, -1), entity),
+    householdMonth(entity, period, today),
+    budgetsFor(entity, period),
+  ]);
+
+  const window = series.slice(-months);
+  const isSpend = (r) => ["cogs", "opex", "tax"].includes(r.kind) && r.direction === "out";
+  const spend = breakdown.filter(isSpend);
+  const spendTotal = spend.reduce((t, r) => t + r.amount, 0);
+
+  // Four named headings and everything else, the same shape the home page
+  // uses, so the two pages never disagree about what "Others" holds.
+  const named = spend.slice(0, 5).map((r) => ({
+    name: r.name, total: r.amount,
+    share: spendTotal ? r.amount / spendTotal : 0,
+  }));
+  const rest = spend.slice(5);
+  const byCategory = rest.length
+    ? [...named, {
+        name: "Others", total: rest.reduce((t, r) => t + r.amount, 0),
+        share: spendTotal ? rest.reduce((t, r) => t + r.amount, 0) / spendTotal : 0,
+        folds: rest.length,
+      }]
+    : named;
+
+  const saved = summary.revenue - summary.expenses;
+  const prevSaved = prev.revenue - prev.expenses;
+  const rate = summary.revenue > 0 ? saved / summary.revenue : null;
+  const prevRate = prev.revenue > 0 ? prevSaved / prev.revenue : null;
+
+  // The months before this one, for "against your own average" — this month
+  // is excluded because a month in progress is not comparable with finished
+  // ones, and comparing it with itself proves nothing.
+  const before = window.slice(0, -1);
+  const avgSpend = before.length
+    ? before.reduce((t, m) => t + m.expenses, 0) / before.length : null;
+  const avgIn = before.length
+    ? before.reduce((t, m) => t + m.revenue, 0) / before.length : null;
+
+  const insights = [];
+  const advice = [];
+  const money = (v) => Math.round(v / 100).toLocaleString();
+
+  if (avgSpend != null && summary.expenses > 0) {
+    const d = (summary.expenses - avgSpend) / avgSpend;
+    if (Math.abs(d) >= 0.05) {
+      insights.push({
+        tone: d < 0 ? "up" : "down",
+        text: `You spent ${Math.abs(Math.round(d * 100))}% ${d < 0 ? "less" : "more"} ` +
+              `than your ${before.length}-month average.`,
+      });
+    }
+  }
+  if (rate != null && prevRate != null && Math.abs(rate - prevRate) >= 0.01) {
+    insights.push({
+      tone: rate >= prevRate ? "up" : "down",
+      text: `Your savings rate moved from ${Math.round(prevRate * 100)}% to ` +
+            `${Math.round(rate * 100)}% on the month before.`,
+    });
+  }
+  const biggest = spend[0];
+  if (biggest && spendTotal) {
+    insights.push({
+      tone: "note",
+      text: `${biggest.name} is your largest heading at ` +
+            `${Math.round((biggest.amount / spendTotal) * 100)}% of what went out.`,
+    });
+  }
+  if (hh.subscriptionsMonthly > 0 && spendTotal > 0) {
+    insights.push({
+      tone: "note",
+      text: `Subscriptions are ${Math.round((hh.subscriptionsMonthly / spendTotal) * 100)}% ` +
+            `of your spending — ${money(hh.subscriptionsMonthly)} a month.`,
+    });
+  }
+
+  // Advice, only where the figures behind it are on this page. Nothing here
+  // is a recommendation about money nobody has told the app about.
+  const unusedSubs = hh.subscriptions.filter(
+    (s) => s.lastPaid && (Date.now() - new Date(s.lastPaid)) / (30 * 86400000) >= 2
+  );
+  if (unusedSubs.length) {
+    advice.push({
+      text: `Nothing has been recorded against ${unusedSubs.length} subscription` +
+            `${unusedSubs.length === 1 ? "" : "s"} for two months. Cancelling ` +
+            `${unusedSubs.length === 1 ? "it" : "them"} would save ` +
+            `${money(unusedSubs.reduce((t, s) => t + s.monthlyEquivalent, 0))} a month.`,
+    });
+  }
+  const unplanned = hh.budget.categories.filter((c) => c.spent > 0 && !c.budget);
+  if (unplanned.length) {
+    advice.push({
+      text: `${money(unplanned.reduce((t, c) => t + c.spent, 0))} went on ` +
+            `${unplanned.map((c) => c.name).slice(0, 2).join(" and ")}` +
+            `${unplanned.length > 2 ? " and others" : ""} with no limit set. ` +
+            `A budget for ${unplanned.length === 1 ? "it" : "them"} would make the ` +
+            `month measurable.`,
+    });
+  }
+  if (avgSpend != null && avgSpend > 0) {
+    advice.push({
+      text: `Three to six months of your average spending is ` +
+            `${money(avgSpend * 3)} to ${money(avgSpend * 6)}. That is the size an ` +
+            `emergency fund is usually set to.`,
+    });
+  }
+  const over = hh.budget.categories.filter((c) => c.over && c.budget > 0);
+  if (over.length) {
+    advice.push({
+      text: `${over.map((c) => c.name).join(", ")} went over plan this month. ` +
+            `Either the limit is wrong or the spending is — worth deciding which.`,
+    });
+  }
+
+  return {
+    entity, period, months,
+    series: window,
+    spending: { total: spendTotal, byCategory, average: avgSpend },
+    income: { total: summary.revenue, average: avgIn,
+              change: prev.revenue ? (summary.revenue - prev.revenue) / Math.abs(prev.revenue) : null },
+    savings: { saved, rate, previousRate: prevRate,
+               change: prevSaved ? (saved - prevSaved) / Math.abs(prevSaved) : null },
+    budgetLines: budgets.length,
+    insights, advice,
+    // The months this report can be run for, newest first.
+    available: series.filter((m) => m.revenue || m.expenses).map((m) => m.period).reverse(),
   };
 }

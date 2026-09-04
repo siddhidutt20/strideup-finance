@@ -1526,7 +1526,10 @@ export const MONEY_CSS = `
 
 /* Editing, wherever a row can be corrected. The button stays quiet until the
    row is under the pointer — a table of Edit buttons reads as a form. */
-.ic-editcell{width:1%;white-space:nowrap;text-align:right}
+.ic-editcell{width:1%;white-space:nowrap;text-align:right;display:flex;gap:6px;
+  justify-content:flex-end;align-items:center}
+.ic-duenow{display:block;font-style:normal;font-size:11px;color:var(--fin-neg);
+  font-weight:600;margin-top:2px}
 .fin-btn.sm{padding:5px 11px;font-size:12px}
 .ic-editcell .fin-btn{opacity:.45;transition:opacity .12s}
 tr:hover .ic-editcell .fin-btn,.ic-editcell .fin-btn:focus-visible{opacity:1}

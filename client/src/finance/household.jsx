@@ -271,11 +271,79 @@ function BillCalendar({ bills, money, period }) {
   );
 }
 
+// ── Recording that a bill was actually paid ──────────────────
+// The same gap as on Income: an agreement says money is due, and only a
+// recorded payment says it left. That belonged on the Payment schedule and
+// nowhere else, which is a long way to walk from the list you are reading.
+function MarkPaid({ bill, money, onClose, onSaved }) {
+  const [paidDate, setPaidDate] = useState(new Date().toISOString().slice(0, 10));
+  const [amount, setAmount] = useState(String((bill.amount ?? 0) / 100));
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const expected = (bill.amount ?? 0) / 100;
+  const differs = Number(amount) && Math.abs(Number(amount) - expected) > 0.004;
+
+  async function save(e) {
+    e.preventDefault();
+    setBusy(true); setMsg(null);
+    try {
+      await api.markPaid(bill.commitmentId, {
+        dueDate: bill.date,
+        paidDate,
+        amount: differs ? Number(amount) : undefined,
+      });
+      onSaved();
+    } catch (err) {
+      setMsg(err.message || "Could not record that.");
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="fin-modal" role="dialog" aria-label="Record a payment">
+      <div className="fin-sheet">
+        <header className="fin-sheethead">
+          <h2>Record the payment to “{bill.name}”</h2>
+          <button className="fin-x" onClick={onClose} aria-label="Close">×</button>
+        </header>
+        <form className="fin-form" onSubmit={save}>
+          <label><span>Which payment</span>
+            <input value={dayLabel(bill.date)} readOnly />
+            <em className="fin-hint">The date this one fell due.</em>
+          </label>
+          <label><span>When it left</span>
+            <input type="date" value={paidDate}
+                   onChange={(e) => setPaidDate(e.target.value)} required />
+          </label>
+          <label><span>How much left</span>
+            <input type="number" step="0.01" min="0.01" value={amount}
+                   onChange={(e) => setAmount(e.target.value)} required />
+            <em className="fin-hint">
+              {differs
+                ? `Different from the ${money.exact(bill.amount)} agreed — what is ` +
+                  `recorded is what left, not what was expected.`
+                : `The agreement says ${money.exact(bill.amount)}.`}
+            </em>
+          </label>
+          {msg && <p className="fin-error wide">{msg}</p>}
+          <div className="fin-formacts wide">
+            <span className="ic-spacer" />
+            <button type="button" className="fin-btn ghost" onClick={onClose}>Cancel</button>
+            <button className="fin-btn" disabled={busy}>
+              {busy ? "Recording…" : "Record it"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export function BillsView({ hh, money, period, entity, categories, currency,
                            onUpload, onGo, onChanged, adding, onAdd, onCloseAdd }) {
   const bills = hh.bills;
   const subs = hh.subscriptions;
   const [tab, setTab] = useState("bills");
+  const [paying, setPaying] = useState(null);
   const unused = subs.filter(stale);
   const all = useMemo(() => [...bills.overdue, ...bills.upcoming], [bills]);
   const clear = bills.overdue.length === 0;
@@ -319,7 +387,8 @@ export function BillsView({ hh, money, period, entity, categories, currency,
               <table className="fin-table hh-table">
                 <thead>
                   <tr><th>Name</th><th className="num">Amount</th><th>Due date</th>
-                      <th>How often</th><th>Last paid</th><th>Status</th></tr>
+                      <th>How often</th><th>Last paid</th><th>Status</th>
+                      <th aria-label="Record" /></tr>
                 </thead>
                 <tbody>
                   {all.map((x, i) => (
@@ -348,6 +417,12 @@ export function BillsView({ hh, money, period, entity, categories, currency,
                           {x.status === "overdue" ? "Overdue" : "Upcoming"}
                         </span>
                       </td>
+                      <td className="ic-editcell">
+                        <button className={`fin-btn sm${x.status === "overdue" ? "" : " ghost"}`}
+                                onClick={() => setPaying(x)}>
+                          Mark paid
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -356,7 +431,9 @@ export function BillsView({ hh, money, period, entity, categories, currency,
           )}
           <p className="fc-note">
             A bill is what an agreement says will leave. It reaches the ledger,
-            and your spending, when you record it as paid on the Payment schedule.
+            and your spending, when you record it as paid — which is what
+            <b> Mark paid</b> does. Until then the bill is what is agreed, and
+            your spending is what actually went.
           </p>
         </Panel>
       )}
@@ -504,6 +581,12 @@ export function BillsView({ hh, money, period, entity, categories, currency,
           </div>
         )}
       </Panel>
+
+      {paying && (
+        <MarkPaid bill={paying} money={money}
+                  onClose={() => setPaying(null)}
+                  onSaved={() => { setPaying(null); onChanged(); }} />
+      )}
 
       {adding && (
         <div className="fin-modal" role="dialog" aria-label="Add a bill">
