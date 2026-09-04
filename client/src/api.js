@@ -68,6 +68,8 @@ export const api = {
   finPl: (entity, period, span, compare) =>
     request("GET", `/finance/pl?entity=${entity}&period=${period}&span=${span}` +
                    (compare ? `&compare=${compare}` : "")),
+  finHousehold: (entity, period) =>
+    request("GET", `/finance/household?entity=${entity}&period=${period}`),
   finBudgets: (entity, period) =>
     request("GET", `/finance/budgets?entity=${entity}&period=${period}`),
   saveBudgets: (b) => request("PUT", "/finance/budgets", b),

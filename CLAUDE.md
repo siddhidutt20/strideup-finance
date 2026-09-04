@@ -153,6 +153,13 @@ because the login page renders before anyone is signed in to ask, and it sets
 the browser tab. The StrideUp wordmark belongs to the company; anything that is
 not the company's books shows its name in type instead.
 
+A personal instance also carries two pages the business one does not: Budget,
+which reads the same `fin_budgets` plan as actual-against-plan for a household,
+and Bills, which reads the same commitments as what is about to leave and what
+recurs. `householdMonth` assembles both from the ledger, the commitments and
+the plan that were already there — no new kind of data, only the arrangement a
+person asks for rather than the one a company reports.
+
 A personal instance is not a business one with a filter over it. It calls money
 coming in **Income**, drops the P&L and the revenue import, and says "how your
 money is doing" rather than naming the company. `viewsFor` and `moneyInLabel`
@@ -286,6 +293,12 @@ different files per case.
   legible, and inside an `overflow-x:auto` wrapper that is meant to scroll. As
   a grid item, `.fin` grew to 736px on a 390px phone instead. `min-width:0` was
   not enough; `width:100%` with `box-sizing:border-box` is what pins it.
+- **A catch-all heading is only a catch-all where headings exist.** The budget
+  folded any category with no spend group into "G&A". Every business operating
+  category has a group, so that was invisible there; on the personal chart none
+  do, and rent, groceries, loan interest and transport collapsed into a single
+  line called general and administrative. A category with no group is its own
+  heading.
 - **An audit that hard-codes "this month" fails on the first of the month.**
   Half these checks compare a page that takes a period against one that does
   not, so a fixed `P` passed until the clock rolled over and then failed

@@ -17,6 +17,7 @@ import {
   contractSchedule, occurrencesIn, occKey, statusOf, outstandingOn, commitmentsForMonth, paymentMap, committedRunUp,
   vendorManagement, contractLibrary, cashDashboard, sideDetail, overviewDashboard,
   budgetsFor, plStatement, plTrend, topVariances, plInsights, groupSpend,
+  householdMonth,
 } from "../finance/metrics.js";
 import { exportEntity, importAll, purgeEntity } from "../finance/transfer.js";
 
@@ -1626,6 +1627,27 @@ financeRouter.post(
       );
     }
     res.json({ ok: true, copied: rows.length, from });
+  })
+);
+
+// ── The household month ──────────────────────────────────────
+// Budget, bills, subscriptions and income for one month, arranged the way
+// somebody asks about their own money rather than the way a company reports.
+financeRouter.get(
+  "/household",
+  ah(async (req, res) => {
+    const period = periodParam.safeParse(req.query.period).success
+      ? req.query.period : monthStart();
+    const { choice, list } = resolveEntities(req.query.entity);
+    const byEntity = {};
+    for (const ent of list) {
+      byEntity[ent] = {
+        label: ENTITY_LABEL[ent],
+        ...(await householdMonth(ent, period)),
+      };
+    }
+    res.json({ entity: choice, entities: list, period, byEntity,
+               baseCurrency: config.finance.baseCurrency });
   })
 );
 

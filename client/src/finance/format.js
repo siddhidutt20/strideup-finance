@@ -86,12 +86,19 @@ export const moneyInLabel = (books) =>
 export function viewsFor(views, books) {
   const personalOnly = (books ?? []).length === 1 && books[0].id === "personal";
   if (!personalOnly) return views;
-  return views
+  const out = views
     .filter(([id]) => !["pnl", "tools"].includes(id))
     .map((v) =>
       v[0] === "revenue" ? [v[0], "Income", "Income", "Where the money came from in"]
       : v[0] === "overview" ? [v[0], v[1], v[2], "How your money is doing in"]
       : v);
+  // Budget and Bills sit where a household looks for them — after the two
+  // sides of the month, before anything that projects forward.
+  const at = out.findIndex(([id]) => id === "cashflow");
+  out.splice(at < 0 ? out.length : at, 0,
+    ["budget", "Budget", "Budget", "What you planned to spend in"],
+    ["bills", "Bills", "Bills and subscriptions", "What is agreed to leave, around"]);
+  return out;
 }
 
 // What this instance actually offers, given the books the server says it

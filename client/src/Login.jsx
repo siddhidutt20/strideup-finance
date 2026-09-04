@@ -38,7 +38,10 @@ export default function Login({ onAuthed, brand = { name: "StrideUp Finance", wo
           <>
             <img src={brand.wordmarkSrc} alt={brand.name} className="lg-wordmark"
                  onError={() => setLogoFailed(true)} />
-            <h1 className="lg-title">{brand.wordmark ? "Finance" : tail}</h1>
+            {/* A one-word name is already in the mark above it. */}
+            {(brand.wordmark || words.length > 1) && (
+              <h1 className="lg-title">{brand.wordmark ? "Finance" : tail}</h1>
+            )}
           </>
         ) : (
           <>

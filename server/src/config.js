@@ -6,9 +6,6 @@ import path from "node:path";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
-// "Siddhi" → "Siddhi's"; a name already ending in s takes the apostrophe alone.
-const possessive = (name) => (/s$/i.test(name) ? `${name}'` : `${name}'s`);
-
 const isProd = process.env.NODE_ENV === "production";
 const isServerless = !!(process.env.VERCEL || process.env.AWS_REGION);
 const rawSecret = process.env.SESSION_SECRET || "";
@@ -80,16 +77,9 @@ export const config = {
   // it does not wear StrideUp's name or its wordmark — the brand is part of
   // what makes two instances feel like two apps rather than one app twice.
   brand: {
-    // A personal instance is somebody's, so it says whose. Falls back to
-    // "Personal Finance" where no name is set, and FINANCE_APP_NAME overrides
-    // either.
     name:
       process.env.FINANCE_APP_NAME ||
-      (SINGLE_ENTITY === "personal"
-        ? (process.env.OWNER_NAME
-            ? `${possessive(process.env.OWNER_NAME.trim())} Finance`
-            : "Personal Finance")
-        : "StrideUp Finance"),
+      (SINGLE_ENTITY === "personal" ? "myFinance" : "StrideUp Finance"),
     // The wordmark and the icon belong to the company. Anything that is not
     // the company's books carries its own mark.
     wordmark: SINGLE_ENTITY !== "personal",

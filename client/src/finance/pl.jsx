@@ -377,7 +377,7 @@ export function PlView({ pl, money, period, span, compare, onSpan, onCompare, ca
 // visible as what you filled in. A blank is no plan; a zero is a plan to spend
 // nothing, and the two are stored differently because they mean different
 // things.
-function BudgetEditor({ entity, period, categories, money, onClose, onSaved }) {
+export function BudgetEditor({ entity, period, categories, money, onClose, onSaved }) {
   const [values, setValues] = useState(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");

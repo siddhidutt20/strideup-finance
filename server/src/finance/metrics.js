@@ -1837,9 +1837,14 @@ export async function plStatement(entity, period, months = 1) {
     if (!anyPlan) return null;
     return budgets.filter(pred).reduce((t, b) => t + b.amount, 0);
   };
+  // A category with no spend group is its own heading. On the business chart
+  // every operating category has one, so nothing changes there; on the personal
+  // chart none do, and falling back to "G&A" collapsed rent, groceries, loan
+  // interest and transport into a single line called general and
+  // administrative — which is not a sentence anybody says about their own money.
   const opexPlanByGroup = new Map();
   for (const b of budgets.filter((x) => x.kind === "opex")) {
-    const g = b.group ?? "G&A";
+    const g = b.group ?? b.name;
     opexPlanByGroup.set(g, (opexPlanByGroup.get(g) ?? 0) + b.amount);
   }
 
@@ -1992,4 +1997,129 @@ export function plInsights(st, prev, trend, money) {
     watch.push(`This is the lowest net margin of the last ${trend.length} months.`);
   }
   return { overall, positives, watch, pctOf };
+}
+
+// ── The household view ───────────────────────────────────────
+// A budget that is read as "how much of this month have I used", a bill list
+// that is read as "what is about to leave", and the income behind it. Same
+// figures the business pages use — the same ledger, the same commitments, the
+// same plan — arranged the way somebody asks about their own money.
+export async function householdMonth(entity, period, today = new Date()) {
+  const [st, commitments, settled, breakdown, summary] = await Promise.all([
+    plStatement(entity, period, 1),
+    activeCommitments(entity),
+    paymentMap(entity),
+    categoryBreakdown(period, entity),
+    periodSummary(period, entity),
+  ]);
+
+  // Budget against actual, per heading, with what is left. A heading with a
+  // plan and nothing spent belongs here as much as one that is overspent —
+  // an untouched budget is exactly what someone opens this page to find.
+  const categories = st.opex.map((l) => ({
+    name: l.name,
+    budget: l.budget,
+    spent: l.actual,
+    remaining: l.budget == null ? null : l.budget - l.actual,
+    usedPct: l.budget ? l.actual / l.budget : null,
+    over: l.budget != null && l.actual > l.budget,
+  }));
+  const budgetTotal = st.opexTotal.budget;
+  const spentTotal = st.opexTotal.actual;
+
+  // What is agreed to leave, from today forward, and what has already gone.
+  const asOf = isoDate(today);
+  const thisPeriod = monthStart(today);
+  const bills = [];
+  for (let i = 0; i <= 1; i++) {
+    const p = addMonths(thisPeriod, i);
+    for (const k of commitments) {
+      if (k.direction !== "out") continue;
+      for (const occ of occurrencesIn(k, p)) {
+        const rec = settled.get(occKey(k.id, occ.date));
+        const status = statusOf(occ.date, asOf, rec);
+        if (status === "paid" || status === "waived") continue;
+        const days = Math.round((new Date(occ.date) - new Date(asOf)) / 86400000);
+        if (days > 45) continue;
+        bills.push({
+          commitmentId: k.id, date: occ.date, days,
+          name: k.counterparty || k.description,
+          description: k.description,
+          categoryName: k.category_name,
+          amount: outstandingOn(Number(k.base_amount_minor), rec),
+          frequency: k.frequency,
+          status,
+        });
+      }
+    }
+  }
+  bills.sort((a, b) => a.date.localeCompare(b.date));
+
+  // Anything that recurs is a subscription in the sense that matters here:
+  // it will take money again next month unless something is done about it.
+  const perMonth = { weekly: 52 / 12, monthly: 1, quarterly: 1 / 3, annual: 1 / 12 };
+  const lastPaid = new Map();
+  for (const [key, rec] of settled) {
+    if (!rec?.paidDate) continue;
+    const id = Number(String(key).split(":")[0]);
+    const cur = lastPaid.get(id);
+    if (!cur || rec.paidDate > cur) lastPaid.set(id, rec.paidDate);
+  }
+  const recurring = (direction) => commitments
+    .filter((k) => k.direction === direction && k.frequency !== "once")
+    .map((k) => ({
+      id: Number(k.id),
+      name: k.counterparty || k.description,
+      description: k.description,
+      categoryName: k.category_name,
+      amount: Number(k.base_amount_minor),
+      frequency: k.frequency,
+      monthlyEquivalent: Math.round(Number(k.base_amount_minor) * (perMonth[k.frequency] ?? 1)),
+      startDate: isoDate(k.start_date),
+      endDate: k.end_date ? isoDate(k.end_date) : null,
+      lastPaid: lastPaid.get(Number(k.id)) ? isoDate(lastPaid.get(Number(k.id))) : null,
+    }))
+    .sort((a, b) => b.monthlyEquivalent - a.monthlyEquivalent);
+
+  const subscriptions = recurring("out");
+  const incomeSources = recurring("in");
+
+  // One-off income recorded this month, so the income page shows what
+  // actually arrived and not only what recurs.
+  const incomeOther = breakdown
+    .filter((r) => r.kind === "revenue" && r.direction === "in")
+    .map((r) => ({ name: r.name, total: r.amount, count: r.count }));
+
+  return {
+    entity, period,
+    income: {
+      total: summary.revenue,
+      sources: incomeSources,
+      recurringMonthly: incomeSources.reduce((t, s) => t + s.monthlyEquivalent, 0),
+      byCategory: incomeOther,
+    },
+    budget: {
+      total: budgetTotal,
+      spent: spentTotal,
+      remaining: budgetTotal == null ? null : budgetTotal - spentTotal,
+      usedPct: budgetTotal ? spentTotal / budgetTotal : null,
+      categories,
+      hasBudget: st.hasBudget,
+    },
+    bills: {
+      upcoming: bills.filter((b) => b.status === "due"),
+      overdue: bills.filter((b) => b.status === "overdue"),
+      total: bills.reduce((t, b) => t + b.amount, 0),
+    },
+    subscriptions,
+    subscriptionsMonthly: subscriptions.reduce((t, s) => t + s.monthlyEquivalent, 0),
+    // Money in, money out, and what is left of the month — the three figures a
+    // household actually asks for.
+    savings: {
+      income: summary.revenue,
+      spent: summary.expenses,
+      saved: summary.revenue - summary.expenses,
+      rate: summary.revenue > 0 ? (summary.revenue - summary.expenses) / summary.revenue : null,
+    },
+  };
 }

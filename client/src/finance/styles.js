@@ -1118,3 +1118,32 @@ export const BOOKS_CSS = `
   border:1px solid var(--fin-line);border-radius:9px;background:var(--fin-surface);
   color:var(--fin-ink)}
 `;
+
+export const HOUSEHOLD_CSS = `
+.hh-kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media(max-width:900px){.hh-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:460px){.hh-kpis{grid-template-columns:minmax(0,1fr)}}
+
+/* One figure against one limit, so a ring rather than a donut of parts. */
+.hh-budget{display:grid;grid-template-columns:auto minmax(0,1fr);gap:22px;align-items:center}
+@container fin-panel (max-width: 560px){.hh-budget{grid-template-columns:minmax(0,1fr)}}
+.hh-ringwrap{display:flex;flex-direction:column;align-items:center;gap:8px}
+.hh-ring{width:130px;height:130px;display:block}
+.hh-ringfig{text-anchor:middle;font-family:var(--fin-display);font-size:26px;
+  font-weight:600;fill:var(--fin-ink)}
+.hh-ringlabel{display:flex;flex-direction:column;align-items:center;gap:2px;
+  font-size:11.5px;color:var(--fin-muted);text-align:center}
+.hh-ringlabel b{font-size:17px;font-weight:600;color:var(--fin-ink)}
+
+.hh-table{min-width:480px}
+.hh-table tr.hh-over td,.hh-table tr.hh-stale td{
+  background:color-mix(in srgb, var(--fin-out) 5%, transparent)}
+.hh-barcell{white-space:nowrap}
+.hh-barcell em{font-style:normal;font-size:11.5px;color:var(--fin-muted);
+  margin-left:8px;font-variant-numeric:tabular-nums}
+.hh-bar{display:inline-block;width:84px;height:7px;border-radius:99px;
+  background:var(--fin-sunk);overflow:hidden;vertical-align:middle}
+.hh-bar i{display:block;height:100%;border-radius:99px;background:#1baf7a}
+.hh-bar i.over{background:var(--fin-out)}
+.hh-when{display:block;font-style:normal;font-size:11px;color:var(--fin-faint)}
+`;

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api.js";
-import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS, FUTURE_CSS, CASHFLOW_AHEAD_CSS, CF_NONE_CSS, VENDORS_CSS, CASH_CSS, CONTRACTS_GROUP_CSS, SIDE_CSS, CASH_BAND_CSS, NARROW_FIX_CSS, INVOICE_CSS, RECORD_CSS, OVERVIEW_CSS, PL_CSS, BOOKS_CSS } from "./finance/styles.js";
+import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS, FUTURE_CSS, CASHFLOW_AHEAD_CSS, CF_NONE_CSS, VENDORS_CSS, CASH_CSS, CONTRACTS_GROUP_CSS, SIDE_CSS, CASH_BAND_CSS, NARROW_FIX_CSS, INVOICE_CSS, RECORD_CSS, OVERVIEW_CSS, PL_CSS, BOOKS_CSS, HOUSEHOLD_CSS } from "./finance/styles.js";
 import {
   fmtAmount, monthLabel, readFile, shiftMonth, thisMonth, useMoney, ZERO_DECIMAL,
   ENTITY_LABEL, entityChoices, viewsFor, moneyInLabel, loadEntity, saveEntity,
@@ -14,7 +14,8 @@ import { VendorsView } from "./finance/vendors.jsx";
 import { CashView } from "./finance/cash.jsx";
 import { OverviewDash } from "./finance/overview.jsx";
 import { SideView } from "./finance/side.jsx";
-import { PlView } from "./finance/pl.jsx";
+import { PlView, BudgetEditor } from "./finance/pl.jsx";
+import { BudgetView, BillsView } from "./finance/household.jsx";
 import { PayInvoice, InvoiceList } from "./finance/invoice.jsx";
 import { NewRecord } from "./finance/record.jsx";
 import { DueSoon } from "./finance/spend.jsx";
@@ -72,6 +73,8 @@ export default function FinanceDashboard({ owner, onLogout,
   const [dash, setDash] = useState(null);
   const [dashFailed, setDashFailed] = useState(false);
   const [pl, setPl] = useState(null);
+  const [household, setHousehold] = useState(null);
+  const [budgeting, setBudgeting] = useState(false);
   const [plSpan, setPlSpan] = useState("month");
   // Which period the statement is read against. Null follows the month
   // picker — one back — until a month is chosen deliberately.
@@ -207,6 +210,20 @@ export default function FinanceDashboard({ owner, onLogout,
     if (view !== "pnl") return;
     loadPl();
   }, [view, loadPl]);
+
+  // Budget and Bills read one month of the household view.
+  const loadHousehold = useCallback(async () => {
+    try {
+      setHousehold(await api.finHousehold(entity, period));
+    } catch (err) {
+      setError(err.message || "Could not load the month.");
+    }
+  }, [entity, period]);
+
+  useEffect(() => {
+    if (!["budget", "bills"].includes(view)) return;
+    loadHousehold();
+  }, [view, loadHousehold]);
 
   // How many committed payments fall due in the next 30 days, across whichever
   // books are in view. Shown on the nav so it is visible without opening it.
@@ -381,7 +398,7 @@ export default function FinanceDashboard({ owner, onLogout,
         {/* Joined in JS, not as three JSX children: a <style> element with
             several text children does not reliably end up with all of them in
             the DOM, and the symptom is a stylesheet that silently truncates. */}
-        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS + PL_CSS + BOOKS_CSS}</style>
+        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS + PL_CSS + BOOKS_CSS + HOUSEHOLD_CSS}</style>
         <div className="fin-boot"><div className="fin-spinner" /></div>
       </div>
     );
@@ -414,7 +431,7 @@ export default function FinanceDashboard({ owner, onLogout,
 
   return (
     <div className="fin-app">
-      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS + PL_CSS + BOOKS_CSS}</style>
+      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS + PL_CSS + BOOKS_CSS + HOUSEHOLD_CSS}</style>
 
       <aside className="fin-side" aria-label="Sections">
         <div className="fin-sidebrand">
@@ -629,6 +646,29 @@ export default function FinanceDashboard({ owner, onLogout,
           ) : (
             <div className="fin-boot"><div className="fin-spinner" /></div>
           ))}
+          {["budget", "bills"].includes(view) && (
+            household && household.period === period ? (
+              (household.entities ?? [entity]).map((ent) => (
+                <EntityBlock key={`hh-${ent}`} show={(household.entities ?? []).length > 1}
+                             label={household.byEntity[ent].label}>
+                  {view === "budget" ? (
+                    <BudgetView hh={household.byEntity[ent]} money={money} period={period}
+                                onEditBudget={() => setBudgeting(true)} />
+                  ) : (
+                    <BillsView hh={household.byEntity[ent]} money={money} period={period}
+                               onUpload={() => { setUploadKindPick("expense"); setUploading(true); }}
+                               onGo={setView} />
+                  )}
+                </EntityBlock>
+              ))
+            ) : <div className="fin-boot"><div className="fin-spinner" /></div>
+          )}
+          {budgeting && (
+            <BudgetEditor entity={entity === "both" ? entityList[0] : entity}
+                          period={period} categories={categories} money={money}
+                          onClose={() => setBudgeting(false)}
+                          onSaved={() => { setBudgeting(false); loadHousehold(); loadPl(); }} />
+          )}
           {view === "ledger" && (
             <LedgerView entries={entries} categories={categories} money={money}
                         baseCurrency={data?.baseCurrency || "USD"} period={period}
@@ -946,9 +986,10 @@ export function Brand({ brand, height }) {
       <>
         <img src={brand.wordmarkSrc} alt={brand.name} className="fin-wordmark"
              style={{ height }} onError={() => setFailed(true)} />
-        {/* A logo says who; the word under it says what. Both instances want
-            both, so the product word is not the company's to keep. */}
-        <span className="fin-product">{words.at(-1)}</span>
+        {/* A logo says who; the word under it says what. Where the name is one
+            word the logo has already said it, and repeating it under the mark
+            is noise. */}
+        {words.length > 1 && <span className="fin-product">{words.at(-1)}</span>}
       </>
     );
   }

@@ -23,6 +23,13 @@ export const ICONS = {
                   <path d="M13 12.6c2.3-.2 4.5 1.2 4.5 3.9" /></>),
   contracts: wrap(<><path d="M5 2.5h7l3.5 3.5v11a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5v-13A1.5 1.5 0 0 1 5 2.5Z" />
                     <path d="M11.5 2.5v4h4" /><path d="M6.5 11.5l2 2 4.5-4.5" /></>),
+  // A ring with a slice gone: how much of the plan is used.
+  budget: wrap(<><circle cx="10" cy="10" r="7" />
+                 <path d="M10 3a7 7 0 0 1 6.1 10.4" strokeWidth="2.6" />
+                 <circle cx="10" cy="10" r="2.2" /></>),
+  // A bill with a due date on it.
+  bills: wrap(<><path d="M4.5 2.5h11v15l-2.2-1.5-2.15 1.5L9 16l-2.15 1.5L4.5 16Z" />
+                <path d="M7.5 6.5h5M7.5 9.5h5M7.5 12.5h3" /></>),
   pnl: wrap(<><rect x="3.5" y="2.5" width="13" height="15" rx="2" />
               <path d="M6.5 7h7M6.5 10h7M6.5 13h4" /></>),
   ledger: wrap(<><rect x="3" y="3" width="14" height="14" rx="2" />
