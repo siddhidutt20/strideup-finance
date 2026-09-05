@@ -347,7 +347,7 @@ function HoldingTable({ rows, money, showReturn, showDebt, onEdit, empty }) {
 }
 
 const TABS = [["overview", "Overview"], ["investments", "Investments"],
-              ["net", "Net worth"], ["allocation", "Asset allocation"]];
+              ["debt", "Debt"], ["net", "Net worth"], ["allocation", "Asset allocation"]];
 
 export function WealthView({ we, money, entity, currency, onChanged }) {
   const [tab, setTab] = useState("overview");
@@ -523,8 +523,25 @@ export function WealthView({ we, money, entity, currency, onChanged }) {
             </Panel>
           )}
 
-          {tab === "net" && (
+          {tab === "debt" && (
             <>
+              <div className="go-summary">
+                <article><strong className="fin-fig fe-out">{money.round(we.debt.total)}</strong>
+                  <em>owed in total</em></article>
+                <article><strong className="fin-fig">{money.round(we.debt.monthlyPayment)}</strong>
+                  <em>going out on it each month</em></article>
+                <article>
+                  <strong className="fin-fig">
+                    {we.debt.monthlyPayment > 0 && we.debt.total
+                      ? `${Math.ceil(we.debt.total / we.debt.monthlyPayment)} mo` : "—"}
+                  </strong>
+                  <em>
+                    {we.debt.monthlyPayment > 0 && we.debt.total
+                      ? "at that rate, ignoring interest"
+                      : "no monthly payment recorded"}
+                  </em>
+                </article>
+              </div>
               <Panel title="What you owe"
                      sub={we.debt.monthlyPayment
                        ? `${money.round(we.debt.total)} outstanding, ${money.round(we.debt.monthlyPayment)} a month`
@@ -534,7 +551,43 @@ export function WealthView({ we, money, entity, currency, onChanged }) {
                      </button>}>
                 <HoldingTable rows={we.liabilities} money={money} showDebt onEdit={setEditing}
                               empty="Nothing is recorded as a liability." />
+                <p className="fc-note">
+                  "Months to clear" divides what is owed by what goes out each
+                  month. It ignores interest, so it is the best case and not a
+                  payoff date — a real one needs the rate and the compounding,
+                  which differ per agreement.
+                </p>
               </Panel>
+              {we.liabilities.some((d) => d.ratePct != null) && (
+                <div className="hh-note">
+                  <span className="hh-note-icon" aria-hidden="true">
+                    <svg viewBox="0 0 20 20" width="17" height="17" fill="none" stroke="currentColor"
+                         strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M8 16.5h4" />
+                      <path d="M7 13a5 5 0 1 1 6 0c-.6.5-1 1.1-1 1.8h-4c0-.7-.4-1.3-1-1.8Z" />
+                    </svg>
+                  </span>
+                  <span className="hh-note-body">
+                    <b>
+                      {[...we.liabilities].filter((d) => d.ratePct != null)
+                        .sort((a, b) => b.ratePct - a.ratePct)[0].name} carries your
+                      highest rate at{" "}
+                      {[...we.liabilities].filter((d) => d.ratePct != null)
+                        .sort((a, b) => b.ratePct - a.ratePct)[0].ratePct}%.
+                    </b>
+                    <em>
+                      Anything paid above the minimum costs least when it goes at
+                      the highest rate first. That is arithmetic, not advice about
+                      your situation.
+                    </em>
+                  </span>
+                </div>
+              )}
+            </>
+          )}
+
+          {tab === "net" && (
+            <>
               <Panel title="Net worth, month by month"
                      sub="What you owned less what you owed, at each month end">
                 <div className="fin-tablewrap">

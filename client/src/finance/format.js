@@ -86,34 +86,23 @@ export const moneyInLabel = (books) =>
 export function viewsFor(views, books) {
   const personalOnly = (books ?? []).length === 1 && books[0].id === "personal";
   if (!personalOnly) return views;
-  // A household has no profit and loss statement, no revenue import to run,
-  // no vendors to manage, and no runway to forecast — those are questions a
-  // company asks. What is agreed to leave is on Bills and the Payment
-  // schedule, which is where somebody looks for it.
-  const out = views
-    .filter(([id]) => !["pnl", "tools", "forecast", "vendors"].includes(id))
-    .map((v) =>
-      v[0] === "revenue" ? [v[0], "Income", "Income", "Where the money came from in"]
-      : v[0] === "overview" ? [v[0], "Home", "Home", "How your money is doing in"]
-      : v);
-  // Transactions sits with Income — the two halves of "where did my money go".
-  const afterIncome = out.findIndex(([id]) => id === "revenue");
-  out.splice(afterIncome < 0 ? out.length : afterIncome + 1, 0,
-    ["transactions", "Transactions", "Transactions", "Everything recorded, filtered"]);
-  // Budget and Bills sit where a household looks for them — after the two
-  // sides of the month, before anything that projects forward.
-  const at = out.findIndex(([id]) => id === "cashflow");
-  out.splice(at < 0 ? out.length : at, 0,
+  // Seven pages, because a household has seven questions — not twelve pages
+  // reading one ledger and disagreeing about which columns to show.
+  //
+  // Money holds what used to be Income, Transactions, Expenses and Ledger:
+  // three questions about one set of rows, plus the rows themselves. Bills
+  // holds what used to be Bills and Payment schedule. Cash flow, Forecast and
+  // Vendor management are gone — runway, projections and vendor tables are
+  // questions a company asks.
+  return [
+    ["overview", "Home", "Home", "How your money is doing in"],
+    ["money", "Money", "Money", "Everything that moved in"],
     ["budget", "Budget", "Budget", "What you planned to spend in"],
-    ["bills", "Bills", "Bills and subscriptions", "What is agreed to leave, around"]);
-  // What you own, what you are saving toward, and the months read together.
-  // These sit after the month's own pages because they are about longer than
-  // a month, and Reports goes last because it reads all of them.
-  out.push(
+    ["bills", "Bills", "Bills and subscriptions", "What is agreed to leave, around"],
     ["wealth", "Wealth", "Wealth", "What you own and what you owe"],
-    ["goals", "Goals", "Goals and debt", "What you are saving toward"],
-    ["reports", "Reports", "Reports", "The months read together, ending"]);
-  return out;
+    ["goals", "Goals", "Goals", "What you are saving toward"],
+    ["reports", "Reports", "Reports", "The months read together, ending"],
+  ];
 }
 
 // What this instance actually offers, given the books the server says it

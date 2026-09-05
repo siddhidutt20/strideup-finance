@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api.js";
-import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS, FUTURE_CSS, CASHFLOW_AHEAD_CSS, CF_NONE_CSS, VENDORS_CSS, CASH_CSS, CONTRACTS_GROUP_CSS, SIDE_CSS, CASH_BAND_CSS, NARROW_FIX_CSS, INVOICE_CSS, RECORD_CSS, OVERVIEW_CSS, PL_CSS, BOOKS_CSS, HOUSEHOLD_CSS, HOME_CSS, MONEY_CSS, LONG_CSS, EXPENSES_CSS } from "./finance/styles.js";
+import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS, FUTURE_CSS, CASHFLOW_AHEAD_CSS, CF_NONE_CSS, VENDORS_CSS, CASH_CSS, CONTRACTS_GROUP_CSS, SIDE_CSS, CASH_BAND_CSS, NARROW_FIX_CSS, INVOICE_CSS, RECORD_CSS, OVERVIEW_CSS, PL_CSS, BOOKS_CSS, HOUSEHOLD_CSS, HOME_CSS, MONEY_CSS, LONG_CSS, EXPENSES_CSS, MERGE_CSS } from "./finance/styles.js";
 import {
   fmtAmount, monthLabel, readFile, shiftMonth, thisMonth, useMoney, ZERO_DECIMAL,
   ENTITY_LABEL, entityChoices, viewsFor, moneyInLabel, loadEntity, saveEntity,
@@ -16,9 +16,7 @@ import { OverviewDash } from "./finance/overview.jsx";
 import { SideView } from "./finance/side.jsx";
 import { PlView, BudgetEditor } from "./finance/pl.jsx";
 import { BudgetView, BillsView } from "./finance/household.jsx";
-import { IncomeView } from "./finance/income.jsx";
-import { ExpensesView } from "./finance/expenses.jsx";
-import { TransactionsView } from "./finance/transactions.jsx";
+import { MoneyView } from "./finance/money.jsx";
 import { WealthView } from "./finance/wealth.jsx";
 import { GoalsView } from "./finance/goals.jsx";
 import { ReportsView } from "./finance/reports.jsx";
@@ -52,16 +50,12 @@ const NEEDS_STATEMENTS = new Set(["revenue", "expenses", "cashflow"]);
 
 // Household pages that carry their own Export and Add. The generic header row
 // would only repeat them a few pixels away.
-const SELF_SERVED = new Set(["expenses"]);
+const SELF_SERVED = new Set(["money"]);
 
 // What a household's pages call themselves. Two lines and a sentence: the
 // second line is the one that carries the colour, so the sentence reads as
 // one thing rather than a heading with a label stuck under it.
 const PERSONAL_HEADS = {
-  revenue: ["Money", "Your income,", "all in one place.",
-            "Track it, keep it in one place, and see it grow."],
-  transactions: ["Money", "All your transactions,", "sorted for you.",
-                 "Categorised as they arrive, so you always know where your money goes."],
   budget: ["Budget", "Stay on track,", "for what matters.",
            "Set your budget, track what you actually spend, and see what is left."],
   wealth: ["Wealth", "Grow today,", "for a brighter tomorrow.",
@@ -72,8 +66,8 @@ const PERSONAL_HEADS = {
             "Your own months, read together."],
   bills: ["Bills & subscriptions", "Never miss a payment,", "stay in control.",
           "Every bill and subscription, all in one place."],
-  expenses: ["Expenses", "Understand your spending,", "make better choices.",
-             "Categorised as it comes in, with what follows from the figures."],
+  money: ["Money", "Everything that moved,", "in one place.",
+          "What came in, what went out, and every row behind both."],
 };
 
 // Months ahead the picker will walk to. Future months hold no actuals — the
@@ -303,7 +297,7 @@ export default function FinanceDashboard({ owner, onLogout,
   }, [entity, period]);
 
   useEffect(() => {
-    if (!(personalOnly && view === "revenue")) return;
+    if (!(personalOnly && view === "money")) return;
     loadIncome();
     // eslint-disable-next-line
   }, [personalOnly, view, loadIncome]);
@@ -316,7 +310,7 @@ export default function FinanceDashboard({ owner, onLogout,
   }, [entity, period]);
 
   useEffect(() => {
-    if (!(personalOnly && view === "expenses")) return;
+    if (!(personalOnly && view === "money")) return;
     loadSpend();
     // eslint-disable-next-line
   }, [personalOnly, view, loadSpend]);
@@ -338,7 +332,7 @@ export default function FinanceDashboard({ owner, onLogout,
   }, [entity, period, rpMonths]);
 
   useEffect(() => {
-    if (view === "wealth" || view === "goals") loadWealth();
+    if (view === "wealth") loadWealth();
     if (view === "goals") loadGoals();
     if (view === "reports") loadReports();
   }, [view, loadWealth, loadGoals, loadReports]);
@@ -516,7 +510,7 @@ export default function FinanceDashboard({ owner, onLogout,
         {/* Joined in JS, not as three JSX children: a <style> element with
             several text children does not reliably end up with all of them in
             the DOM, and the symptom is a stylesheet that silently truncates. */}
-        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS + PL_CSS + BOOKS_CSS + HOUSEHOLD_CSS + HOME_CSS + MONEY_CSS + LONG_CSS + EXPENSES_CSS}</style>
+        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS + PL_CSS + BOOKS_CSS + HOUSEHOLD_CSS + HOME_CSS + MONEY_CSS + LONG_CSS + EXPENSES_CSS + MERGE_CSS}</style>
         <div className="fin-boot"><div className="fin-spinner" /></div>
       </div>
     );
@@ -556,7 +550,7 @@ export default function FinanceDashboard({ owner, onLogout,
 
   return (
     <div className="fin-app">
-      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS + PL_CSS + BOOKS_CSS + HOUSEHOLD_CSS + HOME_CSS + MONEY_CSS + LONG_CSS + EXPENSES_CSS}</style>
+      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS + PL_CSS + BOOKS_CSS + HOUSEHOLD_CSS + HOME_CSS + MONEY_CSS + LONG_CSS + EXPENSES_CSS + MERGE_CSS}</style>
 
       <aside className="fin-side" aria-label="Sections">
         <div className="fin-sidebrand">
@@ -749,18 +743,19 @@ export default function FinanceDashboard({ owner, onLogout,
               </Panel>
             </EntityBlock>
           ))}
-          {personalOnly && view === "revenue" && (
-            income && income.period === period ? (
-              (income.entities ?? [entity]).map((ent) => (
-                <IncomeView key={`ic-${ent}`} inc={income.byEntity[ent]} money={money}
-                            period={period} entity={ent} categories={categories}
-                            currency={data?.baseCurrency || "USD"}
-                            adding={addingSource}
-                            onAdd={() => setAddingSource(true)}
-                            onCloseAdd={() => setAddingSource(false)}
-                            onChanged={() => { loadIncome(); load(period); loadForecast(); }} />
-              ))
-            ) : <div className="fin-boot"><div className="fin-spinner" /></div>
+          {personalOnly && view === "money" && (
+            <MoneyView ex={spend?.period === period ? spend.byEntity[entity] : null}
+                       inc={income?.period === period ? income.byEntity[entity] : null}
+                       money={money} period={period} entity={entity}
+                       categories={categories} currency={data?.baseCurrency || "USD"}
+                       books={entityList} leftover={leftover}
+                       onGo={setView}
+                       onAdd={() => { setUploadKindPick(null); setAdding(true); }}
+                       onUpload={() => { setUploadKindPick("expense"); setUploading(true); }}
+                       onBooksDone={() => { load(period); loadForecast(); }}
+                       onChanged={() => {
+                         loadSpend(); loadIncome(); load(period); loadForecast();
+                       }} />
           )}
           {view === "wealth" && (we ? (
             (we.entities ?? [entity]).map((ent) => (
@@ -771,7 +766,7 @@ export default function FinanceDashboard({ owner, onLogout,
           ) : <div className="fin-boot"><div className="fin-spinner" /></div>)}
           {view === "goals" && (go ? (
             (go.entities ?? [entity]).map((ent) => (
-              <GoalsView key={`go-${ent}`} go={go.byEntity[ent]} we={we?.byEntity?.[ent]}
+              <GoalsView key={`go-${ent}`} go={go.byEntity[ent]}
                          money={money} entity={ent} currency={data?.baseCurrency || "USD"}
                          onGo={setView}
                          onChanged={() => { loadGoals(); loadWealth(); }} />
@@ -784,12 +779,6 @@ export default function FinanceDashboard({ owner, onLogout,
                            onMonths={setRpMonths} onPeriod={setPeriod} />
             ))
           ) : <div className="fin-boot"><div className="fin-spinner" /></div>)}
-          {view === "transactions" && (
-            <TransactionsView entity={entity} categories={categories} money={money}
-                              reloadKey={txKey}
-                              onChanged={() => { load(period); loadForecast(); }}
-                              onAdd={() => { setUploadKindPick(null); setAdding(true); }} />
-          )}
           {!personalOnly && view === "revenue" && sides?.in && (sides.in.entities ?? [entity]).map((ent) => (
             <EntityBlock key={ent} show={(sides.in.entities ?? []).length > 1}
                          label={sides.in.byEntity[ent].label}>
@@ -804,19 +793,7 @@ export default function FinanceDashboard({ owner, onLogout,
                            onPay={setPaying} onDelete={removeInvoice} />
             </Panel>
           )}
-          {personalOnly && view === "expenses" && (
-            spend && spend.period === period ? (
-              (spend.entities ?? [entity]).map((ent) => (
-                <ExpensesView key={`ex-${ent}`} ex={spend.byEntity[ent]} money={money}
-                              period={period} entity={ent} categories={categories}
-                              currency={data?.baseCurrency || "USD"}
-                              onGo={setView}
-                              onAdd={() => { setUploadKindPick(null); setAdding(true); }}
-                              onChanged={() => { loadSpend(); load(period); loadForecast(); }} />
-              ))
-            ) : <div className="fin-boot"><div className="fin-spinner" /></div>
-          )}
-          {!personalOnly && view === "expenses" && sides?.out && (sides.out.entities ?? [entity]).map((ent) => (
+          {view === "expenses" && sides?.out && (sides.out.entities ?? [entity]).map((ent) => (
             <EntityBlock key={ent} show={(sides.out.entities ?? []).length > 1}
                          label={sides.out.byEntity[ent].label}>
               <SideView sd={sides.out.byEntity[ent]} money={money} period={period}
@@ -881,6 +858,8 @@ export default function FinanceDashboard({ owner, onLogout,
                   ) : (
                     <BillsView hh={household.byEntity[ent]} money={money} period={period}
                                entity={ent} categories={categories}
+                               schedule={schedule?.byEntity?.[ent]}
+                               onScheduleChange={() => { loadForecast(); loadHousehold(); }}
                                currency={data?.baseCurrency || "USD"}
                                adding={addingSource}
                                onAdd={() => setAddingSource(true)}

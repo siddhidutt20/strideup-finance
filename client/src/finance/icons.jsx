@@ -14,6 +14,9 @@ export const ICONS = {
                 <path d="M8 17v-4.4h4V17" /></>),
   transactions: wrap(<><path d="M3 6.5h11" /><path d="M11 3.5 14 6.5 11 9.5" />
                        <path d="M17 13.5H6" /><path d="M9 10.5 6 13.5 9 16.5" /></>),
+  money: wrap(<><rect x="2.5" y="5" width="15" height="10" rx="2.5" />
+                 <circle cx="10" cy="10" r="2.4" />
+                 <path d="M5.5 10h.01" /><path d="M14.5 10h.01" /></>),
   wealth: wrap(<><path d="M3 16.5h14" /><rect x="4" y="9" width="3.4" height="7.5" rx="1" />
                   <rect x="8.3" y="5.5" width="3.4" height="11" rx="1" />
                   <rect x="12.6" y="11" width="3.4" height="5.5" rx="1" /></>),

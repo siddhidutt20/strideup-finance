@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../api.js";
 import { Panel } from "./pieces.jsx";
 import { Disc, CategoryPill } from "./glyphs.jsx";
+import { MoveBooks } from "./views.jsx";
 import { CURRENCIES, majorOf } from "./format.js";
 
 // ── Every transaction, filtered ──────────────────────────────
@@ -156,7 +157,9 @@ function EntryEditor({ entry, categories, entity, onClose, onSaved }) {
 // page is already about one of them, and a Type filter would only be a way to
 // show income on the expenses page.
 export function TransactionsView({ entity, categories, money, onAdd, onChanged,
-                                   reloadKey, fixedDirection }) {
+                                   reloadKey, fixedDirection, period,
+                                   showDocs, showScope, books, leftover,
+                                   onBooksDone }) {
   const [f, setF] = useState({ ...BLANK, direction: fixedDirection ?? "" });
   const [page, setPage] = useState(0);
   const [rows, setRows] = useState(null);
@@ -165,6 +168,9 @@ export function TransactionsView({ entity, categories, money, onAdd, onChanged,
   const [err, setErr] = useState("");
   const [editing, setEditing] = useState(null);
   const [bump, setBump] = useState(0);
+  // The Ledger scoped to a month or to everything. Kept, because "everything"
+  // is how you find a row you cannot date, and a month is how you check one.
+  const [scope, setScope] = useState(showScope ? "month" : "all");
 
   const set = (k) => (e) => { setF((x) => ({ ...x, [k]: e.target.value })); setPage(0); };
   const base = { ...BLANK, direction: fixedDirection ?? "" };
@@ -175,13 +181,14 @@ export function TransactionsView({ entity, categories, money, onAdd, onChanged,
     try {
       const r = await api.finTransactions({
         ...f, entity: entity === "both" ? "" : entity,
+        ...(scope === "month" && period && !dirty ? { period } : {}),
         limit: PAGE, offset: page * PAGE,
       });
       setRows(r.entries); setTotal(r.total ?? r.entries.length);
     } catch (e) {
       setErr(e.message || "Could not load your transactions."); setRows([]);
     } finally { setBusy(false); }
-  }, [f, entity, page]);
+  }, [f, entity, page, scope, period]);
 
   // Typing should not fire a request per keystroke, and a slow answer must
   // never overwrite a fast one that came after it.
@@ -229,6 +236,14 @@ export function TransactionsView({ entity, categories, money, onAdd, onChanged,
             </select>
           </label>
         )}
+        {showScope && (
+          <span className="fin-scope tx-scope">
+            <button className={scope === "month" ? "on" : ""}
+                    onClick={() => { setScope("month"); setPage(0); }}>This month</button>
+            <button className={scope === "all" ? "on" : ""}
+                    onClick={() => { setScope("all"); setPage(0); }}>Everything</button>
+          </span>
+        )}
         <button className="fin-link tx-clear" disabled={!dirty}
                 onClick={() => { setF(base); setPage(0); }}>Clear all</button>
         <span className="tx-add">
@@ -253,6 +268,7 @@ export function TransactionsView({ entity, categories, money, onAdd, onChanged,
               <thead>
                 <tr><th>Date</th><th>Description</th><th>Category</th>
                     <th>Where from</th><th className="num">Amount</th>
+                    {showDocs && <th>Document</th>}
                     <th aria-label="Edit" /></tr>
               </thead>
               <tbody className={busy ? "tx-busy" : undefined}>
@@ -274,6 +290,14 @@ export function TransactionsView({ entity, categories, money, onAdd, onChanged,
                       <td className={`num fin-fig ${r.direction === "in" ? "fe-in" : "fe-out"}`}>
                         {r.direction === "in" ? "+" : "−"} {money.exact(r.base_amount_minor)}
                       </td>
+                      {showDocs && (
+                        <td>
+                          {r.document_id ? (
+                            <a className="fin-link" href={api.finDocUrl(r.document_id)}
+                               target="_blank" rel="noreferrer">Open</a>
+                          ) : <span className="fin-dash">—</span>}
+                        </td>
+                      )}
                       <td className="ic-editcell">
                         <button className="fin-btn ghost sm" onClick={() => setEditing(r)}>
                           Edit
@@ -312,6 +336,14 @@ export function TransactionsView({ entity, categories, money, onAdd, onChanged,
           total that counted it is recomputed from the same ledger.
         </p>
       </Panel>
+
+      {books && books.length > 0 && onBooksDone && (
+        <Panel title="Move a set of books to another app"
+               sub="For running personal and the business as two separate apps">
+          <MoveBooks entityList={books} entity={books[0]} leftover={leftover}
+                     onDone={onBooksDone} />
+        </Panel>
+      )}
 
       {editing && (
         <EntryEditor entry={editing} categories={categories} entity={entity}

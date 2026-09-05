@@ -4,6 +4,7 @@ import { Panel } from "./pieces.jsx";
 import { Disc } from "./glyphs.jsx";
 import { monthLabel } from "./format.js";
 import { CommitmentForm } from "./forecast.jsx";
+import { ContractsView } from "./contracts.jsx";
 
 // ── A household's month ──────────────────────────────────────
 // The same ledger, the same commitments and the same plan the business pages
@@ -339,7 +340,8 @@ function MarkPaid({ bill, money, onClose, onSaved }) {
 }
 
 export function BillsView({ hh, money, period, entity, categories, currency,
-                           onUpload, onGo, onChanged, adding, onAdd, onCloseAdd }) {
+                           schedule, onUpload, onGo, onChanged, adding, onAdd,
+                           onCloseAdd, onScheduleChange }) {
   const bills = hh.bills;
   const subs = hh.subscriptions;
   const [tab, setTab] = useState("bills");
@@ -360,6 +362,9 @@ export function BillsView({ hh, money, period, entity, categories, currency,
           </button>
           <button className={tab === "cal" ? "on" : ""} onClick={() => setTab("cal")}>
             Calendar
+          </button>
+          <button className={tab === "sched" ? "on" : ""} onClick={() => setTab("sched")}>
+            Every payment
           </button>
         </span>
         <span className="fin-scope">
@@ -500,6 +505,16 @@ export function BillsView({ hh, money, period, entity, categories, currency,
         </Panel>
       )}
 
+      {/* The full schedule, months back and months ahead, where a payment can
+          be recorded or un-recorded. The tabs above answer "what is coming";
+          this answers "what happened to the one from March". */}
+      {tab === "sched" && (
+        schedule
+          ? <ContractsView sched={schedule} money={money} period={period}
+                           onChange={onScheduleChange} />
+          : <div className="fin-boot"><div className="fin-spinner" /></div>
+      )}
+
       <div className={`hh-note${clear ? " good" : " warn"}`}>
         <span className="hh-note-icon" aria-hidden="true">
           {clear ? (
@@ -543,50 +558,6 @@ export function BillsView({ hh, money, period, entity, categories, currency,
           Payment schedule →
         </button>
       </div>
-
-      <Panel title="Where the money comes from"
-             sub={`${money.round(hh.income.recurringMonthly)} a month under a standing arrangement`}
-             action={<button className="fin-link" onClick={() => onGo("revenue")}>
-               Open Income →
-             </button>}>
-        {hh.income.sources.length === 0 ? (
-          <p className="fc-none">
-            Nothing recurring is recorded as coming in. Add a salary or a rent on
-            the Income page and it appears here.
-          </p>
-        ) : (
-          <div className="fin-tablewrap">
-            <table className="fin-table hh-table">
-              <thead>
-                <tr><th>Source</th><th>What</th><th>How often</th>
-                    <th className="num">Each time</th><th className="num">A month</th></tr>
-              </thead>
-              <tbody>
-                {hh.income.sources.map((x) => (
-                  <tr key={x.id}>
-                    <td>
-                      <span className="ic-who">
-                        <Disc name={x.categoryName || x.name} size="sm" />
-                        <b>{x.name}</b>
-                      </span>
-                    </td>
-                    <td className="ct-what">{x.categoryName || x.description}</td>
-                    <td>{FREQ[x.frequency] ?? x.frequency}</td>
-                    <td className="num fin-fig fe-in">{money.exact(x.amount)}</td>
-                    <td className="num fin-fig fe-in">{money.round(x.monthlyEquivalent)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Panel>
-
-      {paying && (
-        <MarkPaid bill={paying} money={money}
-                  onClose={() => setPaying(null)}
-                  onSaved={() => { setPaying(null); onChanged(); }} />
-      )}
 
       {adding && (
         <div className="fin-modal" role="dialog" aria-label="Add a bill">

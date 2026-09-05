@@ -1,10 +1,9 @@
 import { useMemo, useState } from "react";
 import { api } from "../api.js";
 import { Panel } from "./pieces.jsx";
-import { Disc, CategoryPill } from "./glyphs.jsx";
+import { Disc } from "./glyphs.jsx";
 import { segment, SLICE_COLOURS, OTHER_COLOUR } from "./spend.jsx";
 import { monthLabel } from "./format.js";
-import { TransactionsView } from "./transactions.jsx";
 
 // ── Where the money went ─────────────────────────────────────
 // A household asks two things a company does not: how much of this month's
@@ -50,7 +49,7 @@ function Kpi({ tone, icon, label, value, negative, children }) {
   );
 }
 
-function Donut({ rows, money, total }) {
+function Donut({ rows, money, total, ranked }) {
   const [hover, setHover] = useState(null);
   const clean = rows.filter((r) => r.total > 0);
   if (!clean.length) return <p className="fc-none">Nothing recorded as spending this month.</p>;
@@ -70,8 +69,14 @@ function Donut({ rows, money, total }) {
     return { ...r, from, to: at,
              colour: rolled ? OTHER_COLOUR : SLICE_COLOURS[hue++ % SLICE_COLOURS.length] };
   });
+  // The ring is a summary of the rows; the rows are the record. Where a
+  // ranked list is supplied it becomes the legend, carrying the change on the
+  // month as well — so the two are one panel rather than the same figures
+  // printed twice side by side.
+  const colourOf = new Map(slices.map((x) => [x.name, x.colour]));
+  const list = ranked ?? slices;
   return (
-    <div className="we-alloc">
+    <div className="we-alloc ex-alloc">
       <div className="sp-donut">
         <svg viewBox="0 0 200 200" role="img" aria-label="Spending by heading">
           {slices.length === 1 ? (
@@ -85,13 +90,21 @@ function Donut({ rows, money, total }) {
           <text x="100" y="116" className="sp-donutsub">total out</text>
         </svg>
       </div>
-      <ul className="we-legend">
-        {slices.map((s) => (
-          <li key={s.name} onMouseEnter={() => setHover(s.name)} onMouseLeave={() => setHover(null)}>
-            <i style={{ background: s.colour }} aria-hidden="true" />
-            <span title={s.folds ? `${s.folds} more headings` : undefined}>{s.name}</span>
-            <b className="fin-fig">{money.round(s.total)}</b>
-            <em>{pct(s.share)}%</em>
+      <ul className="we-legend ex-legend">
+        {list.map((r) => (
+          <li key={r.name} onMouseEnter={() => setHover(r.name)} onMouseLeave={() => setHover(null)}
+              className={hover && hover !== r.name ? "dim" : undefined}>
+            <i style={{ background: colourOf.get(r.name) ?? OTHER_COLOUR }} aria-hidden="true" />
+            <span title={r.folds ? `${r.folds} more headings` : undefined}>{r.name}</span>
+            <b className="fin-fig">{money.round(r.total)}</b>
+            <em>{pct(r.share)}%</em>
+            {r.change !== undefined && (
+              <s className={r.change == null ? "" : r.change > 0 ? "fe-out" : "fe-good"}>
+                {r.change == null ? "new"
+                  : Math.abs(r.change) < 0.005 ? "level"
+                  : `${r.change > 0 ? "+" : "−"}${Math.abs(pct(r.change))}%`}
+              </s>
+            )}
           </li>
         ))}
       </ul>
@@ -164,13 +177,12 @@ const INS_ICON = {
   note: <><circle cx="10" cy="10" r="7.2" /><path d="M10 13.5V9.5" /><path d="M10 6.8v.2" /></>,
 };
 
-const TABS = [["overview", "Overview"], ["transactions", "Transactions"],
-              ["categories", "Categories"], ["fixed", "Fixed & recurring"],
-              ["variable", "Variable"], ["trends", "Trends"]];
-
-export function ExpensesView({ ex, money, period, entity, categories, currency,
-                               onGo, onChanged, onAdd }) {
-  const [tab, setTab] = useState("overview");
+// ── Spending, in three sections ──────────────────────────────
+// Money owns the tab bar; this renders whichever section it asks for. Keeping
+// the tabs in one place is the point of the merge — a page that carried its
+// own set inside another page's set was two rows of tabs saying the same thing.
+export function ExpensesView({ ex, money, period, entity, currency,
+                              section = "overview", onGo, onChanged }) {
   const [setting, setSetting] = useState(null);
   const s = ex.split;
 
@@ -181,21 +193,7 @@ export function ExpensesView({ ex, money, period, entity, categories, currency,
 
   return (
     <div className="ex">
-      <div className="hh-tabs">
-        <span className="fin-scope hh-tabrow">
-          {TABS.map(([id, label]) => (
-            <button key={id} className={tab === id ? "on" : ""} onClick={() => setTab(id)}>
-              {label}
-            </button>
-          ))}
-        </span>
-        <span className="fin-scope">
-          <a className="fin-link" href={api.finExportUrl()}>Export CSV</a>
-          <button className="fin-btn" onClick={onAdd}>+ Add expense</button>
-        </span>
-      </div>
-
-      {tab === "overview" && (
+      {section === "overview" && (
         <>
           <div className="ex-kpis">
             <Kpi tone="out" icon="total" label={`Spent in ${monthLabel(period, true)}`}
@@ -222,9 +220,7 @@ export function ExpensesView({ ex, money, period, entity, categories, currency,
             </Kpi>
             <Kpi tone="in" icon="subs" label="Subscriptions"
                  value={money.round(s.subscriptionsMonthly)}>
-              <em className="hm-flat">
-                {s.subscriptionCount} recurring, a month
-              </em>
+              <em className="hm-flat">{s.subscriptionCount} recurring, a month</em>
             </Kpi>
             <Kpi tone="in" icon="left" label="Left this month"
                  value={money.round(ex.left)} negative={ex.left < 0}>
@@ -235,10 +231,6 @@ export function ExpensesView({ ex, money, period, entity, categories, currency,
           </div>
 
           <div className="ex-row-a">
-            <Panel title="Where it went" sub={`${monthLabel(period)} · ${money.round(ex.total)}`}>
-              <Donut rows={ex.categories} money={money} total={ex.total} />
-            </Panel>
-
             <Panel title="Agreed against decided"
                    sub="What a standing agreement caused, and what did not">
               <ul className="ex-split">
@@ -285,45 +277,13 @@ export function ExpensesView({ ex, money, period, entity, categories, currency,
                   <span className="hh-note-body">
                     <b>{pct(s.fixedShare)}% of this month was under an agreement.</b>
                     <em>
-                      That part does not move when you decide to spend less. The
-                      Bills page is where it changes.
+                      That part does not move when you decide to spend less. Bills
+                      is where it changes.
                     </em>
                   </span>
                   <button className="fin-link" onClick={() => onGo("bills")}>Open Bills →</button>
                 </div>
               )}
-            </Panel>
-
-            <Panel title="What the figures say"
-                   sub="Arithmetic on your own entries"
-                   action={<button className="fin-link" onClick={() => onGo("reports")}>
-                     See all →
-                   </button>}>
-              <ul className="hm-insights">
-                {ex.insights.map((x, i) => (
-                  <li key={i}>
-                    <span className={`hm-ins-icon t-${x.tone}`} aria-hidden="true">
-                      <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor"
-                           strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                        {INS_ICON[x.tone] ?? INS_ICON.note}
-                      </svg>
-                    </span>
-                    {x.text}
-                  </li>
-                ))}
-              </ul>
-            </Panel>
-          </div>
-
-          <div className="ex-row-b">
-            <Panel title="Spending, month by month"
-                   sub="Total, and the two halves it divides into">
-              <SplitLines series={series} money={money} current={period} />
-              <p className="fc-note">
-                The subscription line is a rate, not what each month recorded —
-                it is what your standing subscriptions cost per month as they
-                stand today.
-              </p>
             </Panel>
 
             <Panel title="Against the plan"
@@ -337,9 +297,6 @@ export function ExpensesView({ ex, money, period, entity, categories, currency,
                   limit and a bar.
                 </p>
               ) : (
-                /* A list, not a table. In a panel this narrow a table's
-                   minimum column widths win and the last column is cut off;
-                   a two-line row flexes to whatever space there is. */
                 <ul className="ex-plan">
                   {ex.budget.categories.map((c) => (
                     <li key={c.name}
@@ -367,55 +324,24 @@ export function ExpensesView({ ex, money, period, entity, categories, currency,
               )}
             </Panel>
 
-            <Panel title="Going out with nothing set up"
-                   sub="Seen in more than one month, and no agreement covers it"
-                   action={<button className="fin-link" onClick={() => onGo("bills")}>
-                     Open Bills →
+            <Panel title="What the figures say"
+                   sub="Arithmetic on your own entries"
+                   action={<button className="fin-link" onClick={() => onGo("reports")}>
+                     See all →
                    </button>}>
-              {ex.detected.length === 0 ? (
-                <p className="fc-none">
-                  Nothing is leaving repeatedly without a bill behind it. Anything
-                  that starts to will show up here.
-                </p>
-              ) : (
-                <div className="fin-tablewrap">
-                  <table className="fin-table ex-detect">
-                    <thead>
-                      <tr><th>Who</th><th className="num">Typically</th>
-                          <th>Pattern</th><th aria-label="Set up" /></tr>
-                    </thead>
-                    <tbody>
-                      {ex.detected.slice(0, 6).map((d) => (
-                        <tr key={d.entryId}>
-                          <td>
-                            <span className="ic-who">
-                              <Disc name={d.categoryName || d.who} size="sm" />
-                              <b>{d.who}</b>
-                            </span>
-                          </td>
-                          <td className="num fin-fig fe-out">{money.round(d.typical)}</td>
-                          <td>
-                            <span className={`ex-looks l-${d.looks}`}>
-                              {d.looks === "steady" ? "Same amount" : "Varies"}
-                            </span>
-                            <em className="ex-seen">{d.months} months, {d.times} times</em>
-                          </td>
-                          <td className="ic-editcell">
-                            <button className="fin-btn ghost sm" onClick={() => setSetting(d)}>
-                              Set up as a bill
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              <p className="fc-note">
-                Nothing here has been categorised for you. It is money that has
-                left more than once from the same place with no agreement behind
-                it — whether that should become a bill is your call.
-              </p>
+              <ul className="hm-insights">
+                {ex.insights.map((x, i) => (
+                  <li key={i}>
+                    <span className={`hm-ins-icon t-${x.tone}`} aria-hidden="true">
+                      <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor"
+                           strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        {INS_ICON[x.tone] ?? INS_ICON.note}
+                      </svg>
+                    </span>
+                    {x.text}
+                  </li>
+                ))}
+              </ul>
             </Panel>
           </div>
 
@@ -446,168 +372,107 @@ export function ExpensesView({ ex, money, period, entity, categories, currency,
         </>
       )}
 
-      {tab === "transactions" && (
-        <TransactionsView entity={entity} categories={categories} money={money}
-                          fixedDirection="out" onAdd={onAdd} onChanged={onChanged} />
-      )}
-
-      {tab === "categories" && (
-        <Panel title="Every heading, largest first"
-               sub={`${monthLabel(period)} · ${money.round(ex.total)} across ${ex.ranked.length}`}>
-          {ex.ranked.length === 0 ? (
-            <p className="fc-none">Nothing recorded as spending this month.</p>
-          ) : (
-            <div className="fin-tablewrap">
-              <table className="fin-table hh-table">
-                <thead>
-                  <tr><th>Heading</th><th className="num">This month</th>
-                      <th className="num">Last month</th><th className="num">Change</th>
-                      <th>Share</th></tr>
-                </thead>
-                <tbody>
-                  {ex.ranked.map((c) => (
-                    <tr key={c.name}>
-                      <td>
-                        <span className="ic-who">
-                          <Disc name={c.name} size="sm" /><b>{c.name}</b>
-                        </span>
-                      </td>
-                      <td className="num fin-fig fe-out">{money.round(c.total)}</td>
-                      <td className="num fin-fig">
-                        {c.lastMonth ? money.round(c.lastMonth) : <span className="fin-dash">—</span>}
-                      </td>
-                      <td className={`num${c.change == null ? "" : c.change > 0 ? " fe-out" : " fe-good"}`}>
-                        {c.change == null ? <span className="fin-dash">new</span>
-                          : `${c.change >= 0 ? "+" : "−"}${Math.abs(pct(c.change))}%`}
-                      </td>
-                      <td className="hh-barcell">
-                        <span className="hh-bar">
-                          <i style={{ width: `${c.share * 100}%` }} />
-                        </span>
-                        <em>{pct(c.share)}%</em>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Panel>
-      )}
-
-      {tab === "fixed" && (
+      {section === "spending" && (
         <>
-          <Panel title="What an agreement caused"
-                 sub={`${money.round(s.fixed)} of ${money.round(ex.total)} this month`}
-                 action={<button className="fin-link" onClick={() => onGo("bills")}>
-                   Open Bills →
-                 </button>}>
-            {ex.recurring.length === 0 ? (
+          <div className="ex-row-s">
+            <Panel title="Where it went"
+                   sub={`${monthLabel(period)} · ${money.round(ex.total)} across ${ex.ranked.length}`}>
+              <Donut rows={ex.categories} money={money} total={ex.total} ranked={ex.ranked} />
+              <p className="fc-note">
+                The ring is a summary of the rows beside it. The last column is
+                how each heading moved against last month.
+              </p>
+            </Panel>
+            <Panel title="Going out with nothing set up"
+                   sub="Seen in more than one month, and no agreement covers it"
+                   action={<button className="fin-link" onClick={() => onGo("bills")}>
+                     Open Bills →
+                   </button>}>
+              {ex.detected.length === 0 ? (
+                <p className="fc-none">
+                  Nothing is leaving repeatedly without a bill behind it. Anything
+                  that starts to will show up here.
+                </p>
+              ) : (
+                <ul className="ex-plan">
+                  {ex.detected.slice(0, 6).map((d) => (
+                    <li key={d.entryId}>
+                      <Disc name={d.categoryName || d.who} size="sm" />
+                      <b className="ex-plan-name">{d.who}</b>
+                      <span className="ex-plan-fig">
+                        <b className="fin-fig fe-out">{money.round(d.typical)}</b>
+                        <em>{d.months} months, {d.times} times</em>
+                      </span>
+                      <span className="ex-planbar ex-detectrow">
+                        <span className={`ex-looks l-${d.looks}`}>
+                          {d.looks === "steady" ? "Same amount each time" : "Amount varies"}
+                        </span>
+                        <button className="fin-btn ghost sm" onClick={() => setSetting(d)}>
+                          Set up as a bill
+                        </button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="fc-note">
+                Nothing here has been categorised for you. It is money that has
+                left more than once from the same place with no agreement behind
+                it — whether that should become a bill is your call.
+              </p>
+            </Panel>
+          </div>
+
+          <Panel title="Spending nothing had agreed"
+                 sub={`${money.round(s.variable)} this month, across ${ex.variableParties?.length ?? 0}`}>
+            {!ex.variableParties?.length ? (
               <p className="fc-none">
-                Nothing recurring is on the books. Add a bill and what it costs
-                shows here.
+                Everything recorded this month was under a standing agreement.
               </p>
             ) : (
               <div className="fin-tablewrap">
                 <table className="fin-table hh-table">
                   <thead>
-                    <tr><th>What</th><th>How often</th><th className="num">Each time</th>
-                        <th className="num">A month</th><th>Last paid</th></tr>
+                    <tr><th>Who</th><th className="num">This month</th>
+                        <th className="num">Times</th><th>Share of what was decided</th></tr>
                   </thead>
                   <tbody>
-                    {ex.recurring.map((r) => (
-                      <tr key={r.id}>
-                        <td>
-                          <span className="ic-who">
-                            <Disc name={r.categoryName || r.name} size="sm" /><b>{r.name}</b>
+                    {ex.variableParties.map((p) => (
+                      <tr key={p.name}>
+                        <td><span className="ic-who"><Disc name={p.name} size="sm" /><b>{p.name}</b></span></td>
+                        <td className="num fin-fig fe-out">{money.round(p.total ?? p.amount)}</td>
+                        <td className="num">{p.count ?? <span className="fin-dash">—</span>}</td>
+                        <td className="hh-barcell">
+                          <span className="hh-bar">
+                            <i style={{ width: `${s.variable ? ((p.total ?? p.amount) / s.variable) * 100 : 0}%` }} />
                           </span>
-                        </td>
-                        <td>{r.frequency}</td>
-                        <td className="num fin-fig fe-out">{money.exact(r.amount)}</td>
-                        <td className="num fin-fig">{money.round(r.monthlyEquivalent)}</td>
-                        <td className="fc-date">
-                          {dayLabel(r.lastPaid) ?? <span className="fin-dash">never recorded</span>}
+                          <em>{s.variable ? pct((p.total ?? p.amount) / s.variable) : 0}%</em>
                         </td>
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot>
-                    <tr><td>Total</td><td /><td />
-                        <td className="num fin-fig">{money.round(s.subscriptionsMonthly)}</td><td /></tr>
-                  </tfoot>
                 </table>
               </div>
             )}
-          </Panel>
-          <Panel title="Falling due soon"
-                 sub={ex.bills.total ? `${money.round(ex.bills.total)} agreed to leave` : undefined}>
-            {[...ex.bills.overdue, ...ex.bills.upcoming].length === 0 ? (
-              <p className="fc-none">Nothing is agreed to leave in the next six weeks.</p>
-            ) : (
-              <ul className="hm-bills">
-                {[...ex.bills.overdue, ...ex.bills.upcoming].map((x, i) => (
-                  <li key={`${x.commitmentId}-${x.date}-${i}`}>
-                    <Disc name={x.categoryName || x.name} />
-                    <span className="hm-bill-who">
-                      <b>{x.name}</b><em>{dayLabel(x.date)}</em>
-                    </span>
-                    <span className="fin-fig hm-bill-amt">{money.round(x.amount)}</span>
-                    <span className={`hm-when${x.days < 0 ? " late" : x.days <= 3 ? " soon" : ""}`}>
-                      {x.days < 0 ? `${Math.abs(x.days)} days late`
-                        : x.days === 0 ? "today" : `${x.days} days left`}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <p className="fc-note">
+              This is the part of the month that moves when you decide it should.
+              The rest needs an agreement changed, not a decision made. What
+              recurs under an agreement is on Bills.
+            </p>
           </Panel>
         </>
       )}
 
-      {tab === "variable" && (
-        <Panel title="Spending nothing had agreed"
-               sub={`${money.round(s.variable)} this month, across ${ex.variableParties?.length ?? 0}`}>
-          {!ex.variableParties?.length ? (
-            <p className="fc-none">
-              Everything recorded this month was under a standing agreement.
-            </p>
-          ) : (
-            <div className="fin-tablewrap">
-              <table className="fin-table hh-table">
-                <thead>
-                  <tr><th>Who</th><th className="num">This month</th>
-                      <th className="num">Times</th><th>Share of what was decided</th></tr>
-                </thead>
-                <tbody>
-                  {ex.variableParties.map((p) => (
-                    <tr key={p.name}>
-                      <td><span className="ic-who"><Disc name={p.name} size="sm" /><b>{p.name}</b></span></td>
-                      <td className="num fin-fig fe-out">{money.round(p.total ?? p.amount)}</td>
-                      <td className="num">{p.count ?? <span className="fin-dash">—</span>}</td>
-                      <td className="hh-barcell">
-                        <span className="hh-bar">
-                          <i style={{ width: `${s.variable ? ((p.total ?? p.amount) / s.variable) * 100 : 0}%` }} />
-                        </span>
-                        <em>{s.variable ? pct((p.total ?? p.amount) / s.variable) : 0}%</em>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          <p className="fc-note">
-            This is the part of the month that moves when you decide it should.
-            The rest needs an agreement changed, not a decision made.
-          </p>
-        </Panel>
-      )}
-
-      {tab === "trends" && (
+      {section === "trends" && (
         <>
           <Panel title="Thirteen months" sub="Total, and the two halves it divides into">
             <SplitLines series={ex.series.map((m) => ({ ...m, subs: s.subscriptionsMonthly }))}
                         money={money} current={period} />
+            <p className="fc-note">
+              The subscription line is a rate, not what each month recorded — it
+              is what your standing subscriptions cost per month as they stand
+              today.
+            </p>
           </Panel>
           <Panel title="The same figures, exactly">
             <div className="fin-tablewrap">

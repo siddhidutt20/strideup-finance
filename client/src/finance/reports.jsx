@@ -142,11 +142,11 @@ const ICON = {
   note: <><circle cx="10" cy="10" r="7.2" /><path d="M10 13.5V9.5" /><path d="M10 6.8v.2" /></>,
 };
 
-const TABS = [["spending", "Spending"], ["income", "Income"], ["savings", "Savings"],
-              ["trends", "Trends"], ["monthly", "Monthly report"]];
+const TABS = [["trends", "Trends"], ["savings", "Savings"],
+              ["insights", "Insights"], ["monthly", "Every month"]];
 
 export function ReportsView({ rp, money, period, months, onMonths, onPeriod }) {
-  const [tab, setTab] = useState("spending");
+  const [tab, setTab] = useState("trends");
   const nothing = !rp.spending.total && !rp.income.total;
 
   return (
@@ -174,49 +174,6 @@ export function ReportsView({ rp, money, period, months, onMonths, onPeriod }) {
             month with entries in it, or add some, and the charts fill in.
           </p>
         </Panel>
-      )}
-
-      {tab === "spending" && (
-        <div className="rp-row">
-          <Panel title="Spending, month by month"
-                 sub={rp.spending.average != null
-                   ? `${money.round(rp.spending.average)} a month on average before this one`
-                   : undefined}>
-            <Bars series={rp.series} keys={["expenses"]} colours={["#4a3aa7"]}
-                  labels={["Spending"]} money={money} current={period} />
-          </Panel>
-          <Panel title={`Where it went · ${monthLabel(period, true)}`}
-                 sub={`${money.round(rp.spending.total)} out`}>
-            <Donut rows={rp.spending.byCategory} money={money} total={rp.spending.total} />
-          </Panel>
-        </div>
-      )}
-
-      {tab === "income" && (
-        <div className="rp-row">
-          <Panel title="Income against spending"
-                 sub={`The last ${rp.series.length} months`}>
-            <Bars series={rp.series} keys={["revenue", "expenses"]}
-                  colours={["#1baf7a", "#D43081"]} labels={["Income", "Spending"]}
-                  money={money} current={period} />
-          </Panel>
-          <Panel title={`Income · ${monthLabel(period, true)}`}>
-            <div className="rp-fig">
-              <strong className="fin-fig fe-in">{money.round(rp.income.total)}</strong>
-              {rp.income.change == null ? (
-                <em>no month before this to compare with</em>
-              ) : (
-                <span className={`ic-pill ${rp.income.change >= 0 ? "up" : "down"}`}>
-                  {rp.income.change >= 0 ? "▲ +" : "▼ −"}
-                  {Math.abs(pct(rp.income.change))}% from last month
-                </span>
-              )}
-              {rp.income.average != null && (
-                <em>{money.round(rp.income.average)} a month on average before this one</em>
-              )}
-            </div>
-          </Panel>
-        </div>
       )}
 
       {tab === "savings" && (
@@ -333,7 +290,8 @@ export function ReportsView({ rp, money, period, months, onMonths, onPeriod }) {
         </div>
       )}
 
-      <div className="rp-row">
+      {tab === "insights" && (
+        <div className="rp-row">
         <Panel title="What the figures say"
                sub="Arithmetic on your own entries — not a model call">
           {rp.insights.length === 0 ? (
@@ -383,6 +341,7 @@ export function ReportsView({ rp, money, period, months, onMonths, onPeriod }) {
           </p>
         </Panel>
       </div>
+      )}
     </div>
   );
 }

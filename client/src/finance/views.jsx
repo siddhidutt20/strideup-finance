@@ -691,7 +691,7 @@ export function ToolsView({ period, entity, entityList, byEntity, leftover, onDo
 // other two: download here, upload there, and only then remove. Nothing needs
 // a terminal or a database password, and nothing is deleted until the books
 // are demonstrably somewhere else.
-function MoveBooks({ entityList, entity, leftover = [], onDone }) {
+export function MoveBooks({ entityList, entity, leftover = [], onDone }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const [removing, setRemoving] = useState(null);

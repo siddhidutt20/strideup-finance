@@ -191,9 +191,9 @@ function Calculator({ money, onCreate }) {
   );
 }
 
-const TABS = [["goals", "Goals"], ["debt", "Debt"], ["calc", "Goal calculator"]];
+const TABS = [["goals", "Goals"], ["calc", "What would it take"]];
 
-export function GoalsView({ go, we, money, entity, currency, onChanged, onGo }) {
+export function GoalsView({ go, money, entity, currency, onChanged, onGo }) {
   const [tab, setTab] = useState("goals");
   const [filter, setFilter] = useState("all");
   const [editing, setEditing] = useState(null);
@@ -205,11 +205,6 @@ export function GoalsView({ go, we, money, entity, currency, onChanged, onGo }) 
     [go.items, filter]
   );
   const kinds = [...new Set(go.items.map((g) => g.kind))];
-  const debt = we?.debt;
-  // How much of what was borrowed has been paid off can only be said where a
-  // starting figure exists. It does not, so this says what is owed instead of
-  // inventing a percentage.
-  const paidMonthly = debt?.monthlyPayment ?? 0;
 
   return (
     <div className="go">
@@ -349,103 +344,6 @@ export function GoalsView({ go, we, money, entity, currency, onChanged, onGo }) 
                 </em>
               </span>
               <button className="fin-link" onClick={() => onGo("budget")}>Open Budget →</button>
-            </div>
-          )}
-        </>
-      )}
-
-      {tab === "debt" && (
-        <>
-          <div className="go-summary">
-            <article><strong className="fin-fig fe-out">{money.round(debt?.total ?? 0)}</strong>
-              <em>owed in total</em></article>
-            <article><strong className="fin-fig">{money.round(paidMonthly)}</strong>
-              <em>going out on it each month</em></article>
-            <article>
-              <strong className="fin-fig">
-                {paidMonthly > 0 && debt?.total
-                  ? `${Math.ceil(debt.total / paidMonthly)} mo`
-                  : "—"}
-              </strong>
-              <em>
-                {paidMonthly > 0 && debt?.total
-                  ? "at that rate, ignoring interest"
-                  : "no monthly payment recorded"}
-              </em>
-            </article>
-          </div>
-
-          <Panel title="What you owe"
-                 sub="Recorded on the Wealth page, read here"
-                 action={<button className="fin-link" onClick={() => onGo("wealth")}>
-                   Open Wealth →
-                 </button>}>
-            {!debt?.items?.length ? (
-              <p className="fc-none">
-                Nothing is recorded as a liability. Add one on the Wealth page and
-                it appears here.
-              </p>
-            ) : (
-              <div className="fin-tablewrap">
-                <table className="fin-table we-table">
-                  <thead>
-                    <tr><th>Name</th><th className="num">Outstanding</th><th className="num">Rate</th>
-                        <th className="num">A month</th><th>Share of what you owe</th></tr>
-                  </thead>
-                  <tbody>
-                    {debt.items.map((d) => (
-                      <tr key={d.id}>
-                        <td>
-                          <span className="ic-who"><Disc name={d.name} size="sm" /><b>{d.name}</b></span>
-                        </td>
-                        <td className="num fin-fig fe-out">{money.round(d.value)}</td>
-                        <td className="num">{d.ratePct == null ? <span className="fin-dash">—</span> : `${d.ratePct}%`}</td>
-                        <td className="num fin-fig">
-                          {d.monthlyPayment == null ? <span className="fin-dash">—</span>
-                            : money.round(d.monthlyPayment)}
-                        </td>
-                        <td className="hh-barcell">
-                          <span className="hh-bar">
-                            <i className="over" style={{ width: `${debt.total ? (d.value / debt.total) * 100 : 0}%` }} />
-                          </span>
-                          <em>{debt.total ? pct(d.value / debt.total) : 0}%</em>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            <p className="fc-note">
-              "Months to clear" divides what is owed by what goes out each month.
-              It ignores interest, so it is the best case and not a forecast —
-              a real payoff date needs the rate and the compounding, which
-              differ per agreement.
-            </p>
-          </Panel>
-
-          {debt?.items?.some((d) => d.ratePct != null) && (
-            <div className="hh-note">
-              <span className="hh-note-icon" aria-hidden="true">
-                <svg viewBox="0 0 20 20" width="17" height="17" fill="none" stroke="currentColor"
-                     strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M8 16.5h4" /><path d="M7 13a5 5 0 1 1 6 0c-.6.5-1 1.1-1 1.8h-4c0-.7-.4-1.3-1-1.8Z" />
-                </svg>
-              </span>
-              <span className="hh-note-body">
-                <b>
-                  {[...debt.items].filter((d) => d.ratePct != null)
-                    .sort((a, b) => b.ratePct - a.ratePct)[0].name} carries your
-                  highest rate at{" "}
-                  {[...debt.items].filter((d) => d.ratePct != null)
-                    .sort((a, b) => b.ratePct - a.ratePct)[0].ratePct}%.
-                </b>
-                <em>
-                  Anything paid above the minimum costs least when it goes at the
-                  highest rate first. That is arithmetic, not advice about your
-                  situation.
-                </em>
-              </span>
             </div>
           )}
         </>

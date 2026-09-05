@@ -1829,3 +1829,23 @@ export const EXPENSES_CSS = `
   .ex-sum{gap:9px}
 }
 `;
+
+// ── Money, and the scope switch it took from the Ledger ───────
+export const MERGE_CSS = `
+.mo{display:flex;flex-direction:column;gap:16px}
+.mo .fin-panel{margin:0}
+.mo .ex,.mo .ic,.mo .tx{gap:16px}
+.tx-scope{margin-left:2px}
+.tx-scope button{font-size:12.5px;padding:7px 12px}
+.ex-row-s{display:grid;grid-template-columns:minmax(0,6.2fr) minmax(0,3.8fr);
+  gap:14px;align-items:stretch}
+.ex-row-s>*{height:100%}
+.ex-alloc{align-items:flex-start}
+.ex-legend li{grid-template-columns:auto 1fr auto auto auto}
+.ex-legend li.dim{opacity:.45}
+.ex-legend s{text-decoration:none;font-size:11.5px;font-weight:600;min-width:46px;
+  text-align:right;color:var(--fin-faint)}
+@media(max-width:1100px){.ex-row-s{grid-template-columns:minmax(0,1fr)}}
+.ex-detectrow{justify-content:space-between;gap:10px}
+.ex-detectrow .fin-btn{flex:none}
+`;
