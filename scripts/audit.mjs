@@ -549,5 +549,44 @@ for (const ent of ENTS) {
   console.log(`  ${named?"ok  ":"FAIL"} ${"figures in sentences carry their currency".padEnd(52)} ${money.length} line(s)`);
 }
 
+// ── Foreign currency ─────────────────────────────────────────
+// The bug this guards against: a rate lookup fails, the amount is stored at
+// face value, and 15,000 dirhams are counted as 15,000 dollars. Nothing on
+// any page shows it — the sum is simply wrong. So check the ledger directly:
+// a foreign amount whose converted figure equals its face value either had no
+// conversion, or sat at a rate of exactly 1.0000, and neither is plausible.
+{
+  console.log("\n══ foreign currency ══");
+  const base = (await g("/finance/overview")).baseCurrency;
+  const all = (await g("/finance/entries?limit=500")).entries ?? [];
+  const foreign = all.filter((e) => e.currency && e.currency !== base);
+  const unconverted = foreign.filter(
+    (e) => Number(e.base_amount_minor) === Number(e.amount_minor)
+  );
+  const clean = unconverted.length === 0;
+  if (clean) pass++; else fail++;
+  console.log(
+    `  ${clean ? "ok  " : "FAIL"} ` +
+    `${"no foreign amount is counted at face value".padEnd(52)} ` +
+    `${unconverted.length} of ${foreign.length} foreign`
+  );
+  for (const e of unconverted.slice(0, 5)) {
+    console.log(`         ${e.entry_date}  ${e.currency} ${M(e.amount_minor)}  ` +
+                `counted as ${base} ${M(e.base_amount_minor)}  — ${e.description}`);
+  }
+
+  // A currency the reader can pick but the rate source cannot price is the
+  // same bug waiting to happen, so prove the pegged ones resolve offline.
+  const pegs = { AED: 3.6725, SAR: 3.75, QAR: 3.64, BHD: 0.376, OMR: 0.3845 };
+  if (base === "USD") {
+    for (const [code, peg] of Object.entries(pegs)) {
+      const e = foreign.find((x) => x.currency === code);
+      if (!e) continue;
+      near(`${code} converts at its peg`,
+           Math.round(Number(e.amount_minor) / peg), Number(e.base_amount_minor), 2);
+    }
+  }
+}
+
 console.log(`\n  ${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);

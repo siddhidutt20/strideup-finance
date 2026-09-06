@@ -11,8 +11,55 @@ import { config } from "../config.js";
 // recorded, in its own currency, and flagged for a look. Losing the document
 // entirely would be a worse outcome than an unconverted one you can see.
 
+// ── Currencies a feed will not quote ─────────────────────────
+// The reference feed is ECB data, which covers about thirty floating
+// currencies and nothing pegged to the dollar. Ask it for AED and it has no
+// answer, the lookup fails, and the amount is counted at face value — which is
+// how 15,000 dirhams became 15,000 dollars.
+//
+// A peg is not a market price to be looked up; it is a number a central bank
+// sets and holds. 3.6725 dirhams to the dollar has been the UAE rate since
+// 1997. Reading it from a table is more accurate than any daily quote, not
+// less, and it works when the network does not.
+const PEGGED_TO_USD = {
+  AED: 3.6725,  // UAE Central Bank, fixed 1997
+  SAR: 3.75,    // Saudi Central Bank, fixed 1986
+  QAR: 3.64,    // Qatar Central Bank, fixed 2001
+  BHD: 0.376,   // Central Bank of Bahrain, fixed 2001
+  OMR: 0.3845,  // Central Bank of Oman, fixed 1986
+};
+
+// Both sides priced from the table, so no network is involved at all.
+function pegRate(from, to) {
+  const f = PEGGED_TO_USD[from];
+  const t = PEGGED_TO_USD[to];
+  if (f && t) return t / f;          // dirhams to riyals
+  if (f && to === "USD") return 1 / f;
+  if (t && from === "USD") return t;
+  return null;                        // one leg still needs the feed
+}
+
+export function isPegged(code) {
+  return Object.prototype.hasOwnProperty.call(PEGGED_TO_USD, code);
+}
+
 export async function getRate(from, to, date) {
   if (!from || !to || from === to) return 1;
+
+  const pegged = pegRate(from, to);
+  if (pegged) return pegged;
+
+  // One pegged leg, one floating: price the peg from the table and the rest
+  // from the feed. Neither branch can recurse — by here at most one side is
+  // pegged, and the leg passed on is between two currencies that are not.
+  if (PEGGED_TO_USD[from]) {
+    const onward = await getRate("USD", to, date);
+    return onward === null ? null : onward / PEGGED_TO_USD[from];
+  }
+  if (PEGGED_TO_USD[to]) {
+    const incoming = await getRate(from, "USD", date);
+    return incoming === null ? null : incoming * PEGGED_TO_USD[to];
+  }
 
   const cached = await get(
     "SELECT rate FROM fin_fx_rates WHERE rate_date = ? AND base = ? AND quote = ?",

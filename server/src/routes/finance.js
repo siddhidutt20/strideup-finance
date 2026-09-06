@@ -588,6 +588,20 @@ financeRouter.post(
     const entity = b.entity || DEFAULT_ENTITY;
     const { period } = await resolvePeriod(b.entryDate, entity);
     const fx = await convertToBase(minor, currency, b.entryDate);
+    // A conversion that failed leaves the amount at face value. Someone typing
+    // into a form is standing right here and can fix it, so say so rather than
+    // filing 15,000 dirhams as 15,000 dollars and calling it approved.
+    if (fx.note) {
+      return res.status(422).json({
+        error:
+          `Could not convert ${currency} to ${config.finance.baseCurrency} right now, ` +
+          `so this was not saved — recording it would have counted ` +
+          `${currency} ${b.amount.toLocaleString()} as the same number of ` +
+          `${config.finance.baseCurrency}. Try again in a moment, or enter it ` +
+          `in ${config.finance.baseCurrency}.`,
+        currency,
+      });
+    }
 
     const rs = await run(
       `INSERT INTO fin_entries
@@ -833,6 +847,16 @@ financeRouter.post(
     // estimate in base terms until it is actually paid, and saying so is
     // better than pretending a future rate is known.
     const fx = await convertToBase(minor, currency, isoDate(new Date()));
+    if (fx.note) {
+      return res.status(422).json({
+        error:
+          `Could not convert ${currency} to ${config.finance.baseCurrency} right now, ` +
+          `so this was not saved. Every month this agreement runs would have ` +
+          `counted at face value. Try again in a moment, or enter it in ` +
+          `${config.finance.baseCurrency}.`,
+        currency,
+      });
+    }
 
     const rs = await run(
       `INSERT INTO fin_commitments
@@ -1130,18 +1154,23 @@ financeRouter.post(
       if (amount != null) minor = toMinor(amount, k.currency);
       const { period: entryPeriod } = await resolvePeriod(when, k.entity);
       const fx = await convertToBase(minor, k.currency, when);
+      // The money did move, so the entry is made either way — but if the rate
+      // was unreachable it goes in flagged, not approved. Refusing here would
+      // mean refusing to record a payment that has already happened.
       const rs = await run(
         `INSERT INTO fin_entries
            (entry_date, direction, amount_minor, currency, fx_rate, base_amount_minor,
             counterparty_id, category_id, description, dedup_key, confidence,
-            review_status, period, entity)
-         VALUES (?,?,?,?,?,?,?,?,?,?,1,'approved',?,?)
+            review_status, review_reason, period, entity)
+         VALUES (?,?,?,?,?,?,?,?,?,?,1,?,?,?,?)
          ON CONFLICT (dedup_key) DO NOTHING
          RETURNING id`,
         [
           when, k.direction, minor, k.currency, fx.fxRate, fx.baseAmountMinor,
           k.counterparty_id, k.category_id, k.description,
-          `commitment:${id}:${dueDate}`, entryPeriod, k.entity,
+          `commitment:${id}:${dueDate}`,
+          fx.note ? "needs_review" : "approved", fx.note,
+          entryPeriod, k.entity,
         ]
       );
       entryId = lastId(rs);
@@ -1447,15 +1476,17 @@ financeRouter.post(
       `INSERT INTO fin_entries
          (entry_date, direction, amount_minor, currency, fx_rate, base_amount_minor,
           counterparty_id, category_id, description, dedup_key, confidence,
-          review_status, period, entity)
-       VALUES (?, 'in', ?,?,?,?,?,?,?,?,1,'approved',?,?)
+          review_status, review_reason, period, entity)
+       VALUES (?, 'in', ?,?,?,?,?,?,?,?,1,?,?,?,?)
        ON CONFLICT (dedup_key) DO NOTHING`,
       [
         when, minor, inv.currency, fx.fxRate, fx.baseAmountMinor,
         inv.customer ? await findOrCreateCounterparty(inv.customer, "customer") : null,
         parsed.data.categoryId ?? null,
         `${inv.customer || "Invoice"} — ${inv.external_id}`,
-        `invoice:${id}:${when}:${minor}`, period, inv.entity,
+        `invoice:${id}:${when}:${minor}`,
+        fx.note ? "needs_review" : "approved", fx.note,
+        period, inv.entity,
       ]
     );
     await run(
@@ -1830,6 +1861,20 @@ async function writeValue(id, asOf, minor, baseMinor) {
   );
 }
 
+// A figure that could not be converted is not a figure. Holdings and goals
+// carry no review flag — nothing would ever show the reader that a number in
+// their net worth is a foreign amount wearing a dollar sign — so these refuse
+// instead of storing it and hoping someone notices.
+function refuseUnconverted(res, currency, what) {
+  return res.status(422).json({
+    error:
+      `Could not convert ${currency} to ${config.finance.baseCurrency} right now, ` +
+      `so ${what} was not saved — the amount would have counted at face value. ` +
+      `Try again in a moment, or enter it in ${config.finance.baseCurrency}.`,
+    currency,
+  });
+}
+
 financeRouter.post(
   "/holdings",
   ah(async (req, res) => {
@@ -1846,6 +1891,7 @@ financeRouter.post(
     const fx = await convertToBase(minor, currency, b.asOf);
     const costMinor = b.cost == null ? null : toMinor(b.cost, currency);
     const costFx = costMinor == null ? null : await convertToBase(costMinor, currency, b.asOf);
+    if (fx.note || costFx?.note) return refuseUnconverted(res, currency, "this holding");
     const r = await run(
       `INSERT INTO fin_holdings
          (entity, side, name, kind, currency, value_minor, base_value_minor,
@@ -1882,6 +1928,7 @@ financeRouter.patch(
       ? (existing.cost_minor == null ? null : Number(existing.cost_minor))
       : (b.cost == null ? null : toMinor(b.cost, currency));
     const costFx = costMinor == null ? null : await convertToBase(costMinor, currency, asOf);
+    if (fx.note || costFx?.note) return refuseUnconverted(res, currency, "this change");
     await run(
       `UPDATE fin_holdings
           SET side = ?, name = ?, kind = ?, currency = ?, value_minor = ?,
@@ -1959,6 +2006,7 @@ financeRouter.post(
     const saved = toMinor(b.saved ?? 0, currency);
     const tFx = await convertToBase(target, currency, when);
     const sFx = await convertToBase(saved, currency, when);
+    if (tFx.note || sFx.note) return refuseUnconverted(res, currency, "this goal");
     const r = await run(
       `INSERT INTO fin_goals
          (entity, name, kind, currency, target_minor, base_target_minor,
@@ -1989,6 +2037,7 @@ financeRouter.patch(
     const saved = b.saved == null ? Number(existing.saved_minor) : toMinor(b.saved, currency);
     const tFx = await convertToBase(target, currency, when);
     const sFx = await convertToBase(saved, currency, when);
+    if (tFx.note || sFx.note) return refuseUnconverted(res, currency, "this goal");
     await run(
       `UPDATE fin_goals
           SET name = ?, kind = ?, currency = ?, target_minor = ?, base_target_minor = ?,
