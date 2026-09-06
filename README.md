@@ -79,6 +79,14 @@ tax logic, no audit trail a tax authority would accept on its own. The ledger is
 shaped so entries can be pushed into Xero or QuickBooks when an accountant needs
 proper books. The full design is in [`docs/finance-automation-design.md`](docs/finance-automation-design.md).
 
+## Want your own copy?
+
+There is no sign-up page, and a second account on somebody else's deployment
+would not give you your own books — it would give you theirs. Take a copy
+instead: your own database, your own login, your own URL, about twenty minutes.
+[`docs/your-own-copy.md`](docs/your-own-copy.md) is the whole thing, start to
+finish, no terminal needed.
+
 ## Security
 
 One account owns this app and **there is no registration route** — nobody can
