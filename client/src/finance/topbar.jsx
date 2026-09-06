@@ -145,12 +145,10 @@ export function AccountMenu({ owner, onLogout, onProfile }) {
             <span><b>{name}</b><em>{owner?.email}</em></span>
           </p>
           <button onClick={() => { setOpen(false); onProfile(); }}>
-            <b>Your profile</b>
-            <em>Your picture and what you are called</em>
+            <b>My profile</b>
           </button>
           <button onClick={onLogout}>
             <b>Log out</b>
-            <em>End this session</em>
           </button>
         </div>
       )}

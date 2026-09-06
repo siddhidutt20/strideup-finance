@@ -118,10 +118,10 @@ export function ProfileSheet({ owner, onClose, onSaved }) {
   const changed = pending || removing || (name.trim() && name.trim() !== owner?.name);
 
   return (
-    <div className="fin-modal" role="dialog" aria-label="Your profile">
+    <div className="fin-modal" role="dialog" aria-label="My profile">
       <div className="fin-sheet pf-sheet">
         <header className="fin-sheethead">
-          <h2>Your profile</h2>
+          <h2>My profile</h2>
           <button className="fin-x" onClick={onClose} aria-label="Close">×</button>
         </header>
         <form className="fin-form" onSubmit={save}>

@@ -591,7 +591,7 @@ export default function FinanceDashboard({ owner, onLogout, onOwner,
               <em>{owner.email}</em>
             </span>
             <button className="fin-sideedit" onClick={() => setProfiling(true)}
-                    title="Your profile" aria-label="Your profile">
+                    title="My profile" aria-label="My profile">
               <svg viewBox="0 0 20 20" width="14" height="14" fill="none"
                    stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"
                    strokeLinejoin="round" aria-hidden="true">

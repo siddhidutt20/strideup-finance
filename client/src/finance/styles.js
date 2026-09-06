@@ -75,7 +75,7 @@ export const FIN_CSS = `
 .fin-side nav button.on .fin-badge{background:rgba(255,255,255,.28)}
 .fin-sideuser{margin-top:auto;display:flex;align-items:center;gap:9px;padding:10px;
   border-radius:12px;background:var(--fin-sunk);border:1px solid var(--fin-hair)}
-.fin-avatar{width:30px;height:30px;flex:none;border-radius:9px;display:grid;place-items:center;
+.fin-avatar{width:30px;height:30px;flex:none;border-radius:50%;display:grid;place-items:center;
   background:linear-gradient(135deg,var(--fin-accent),var(--fin-in));color:#fff;
   font-weight:700;font-size:13px}
 .fin-sidewho{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.25}
