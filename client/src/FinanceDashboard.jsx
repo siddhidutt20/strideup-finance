@@ -49,9 +49,11 @@ const VIEWS = [
 ];
 const NEEDS_STATEMENTS = new Set(["revenue", "expenses", "cashflow"]);
 
-// Household pages that carry their own Export and Add. The generic header row
-// would only repeat them a few pixels away.
-const SELF_SERVED = new Set(["money"]);
+// Household pages that do not want the generic header row. Money carries its
+// own Export, Upload and Add; Home is a summary that offers both in its own
+// footer, and the row was wide enough to wrap onto a line of its own — 55px
+// of header spent repeating a button that is two clicks away either way.
+const SELF_SERVED = new Set(["money", "overview"]);
 
 // What a household's pages call themselves. Two lines and a sentence: the
 // second line is the one that carries the colour, so the sentence reads as
@@ -628,9 +630,10 @@ export default function FinanceDashboard({ owner, onLogout, onOwner,
             {!isHome && personalOnly && PERSONAL_HEADS[view] ? (
               <>
                 <p className="fin-eyebrow">{PERSONAL_HEADS[view][0]}</p>
+                {/* One line. The break was hard-coded, so even a short
+                    headline took two lines and 85px of a 199px header. */}
                 <h1 className="fin-twoline">
-                  {PERSONAL_HEADS[view][1]}<br />
-                  <i>{PERSONAL_HEADS[view][2]}</i>
+                  {PERSONAL_HEADS[view][1]} <i>{PERSONAL_HEADS[view][2]}</i>
                 </h1>
                 <p>{PERSONAL_HEADS[view][3]}</p>
               </>

@@ -1231,7 +1231,18 @@ export const HOME_CSS = `
 .tb-alerts{width:280px}
 
 /* The greeting. The name carries the colour, so the sentence reads as one. */
-.fin-viewhead.fin-greet{align-items:flex-start}
+.fin-viewhead.fin-greet{align-items:flex-start;padding:26px 0 16px}
+/* One line, so the size has to be the size that fits one. The longest of
+   these is "Understand today, make better tomorrow." and the tightest place
+   it has to sit is beside the month picker on a 1200px screen. Below 1000px
+   the sidebar goes horizontal and the whole width is available again, which
+   is why the floor can be comfortable. */
+.fin-viewhead.fin-greet h1{font-size:clamp(23px,2.25vw,33px);line-height:1.16;
+  margin:0 0 5px}
+/* The motto is decoration. Once there is no room for it beside the greeting
+   it wraps onto a row of its own and costs 50px of header to say nothing —
+   so it goes while it is still a choice rather than a consequence. */
+@media(max-width:1320px){.fin-motto{display:none}}
 .fin-eyebrow{margin:0 0 4px!important;font-size:11px;font-weight:650;letter-spacing:.14em;
   text-transform:uppercase;color:var(--fin-faint)}
 .fin-greet h1 i{font-style:italic;color:var(--fin-accent)}
@@ -1403,7 +1414,7 @@ export const HOME_CSS = `
 @media(max-width:900px){
   .hm-row-a,.hm-row-b{grid-template-columns:minmax(0,1fr)}
   .hm-row-a>*:nth-child(3),.hm-row-b>*:nth-child(3){grid-column:auto}
-  .fin-motto{display:none}
+  /* moved: see the rule below — it has to go before it wraps, not at 900px */
   .fin-topbar{flex-wrap:wrap}
   .tb-search{order:3;flex-basis:100%}
 }
@@ -1496,7 +1507,7 @@ export const MONEY_CSS = `
 .tx-clear:disabled{opacity:.4;cursor:default}
 .tx-add{margin-left:auto;display:inline-flex;gap:8px}
 .fin-twoline i{font-style:italic;color:var(--fin-accent)}
-.fin-viewhead.fin-greet h1{line-height:1.06}
+
 .tx-table td{vertical-align:middle}
 .tx-date{white-space:nowrap}
 .tx-busy{opacity:.5;transition:opacity .15s}
