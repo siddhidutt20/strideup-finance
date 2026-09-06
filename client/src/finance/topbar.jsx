@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
+import { Avatar } from "./profile.jsx";
 
 // ── The bar above everything ─────────────────────────────────
 // Three things a household app is asked for constantly and should not have to
@@ -121,7 +122,7 @@ export function Alerts({ alerts, onGo }) {
   );
 }
 
-export function AccountMenu({ owner, onLogout }) {
+export function AccountMenu({ owner, onLogout, onProfile }) {
   const [open, setOpen] = useState(false);
   const box = useRef(null);
   useEffect(() => {
@@ -133,13 +134,20 @@ export function AccountMenu({ owner, onLogout }) {
   return (
     <div className="tb-who" ref={box}>
       <button onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-        <span className="fin-avatar" aria-hidden="true">{name.charAt(0).toUpperCase()}</span>
+        <Avatar owner={owner} size={30} />
         <b>{name.split(/\s+/)[0]}</b>
         <i className="tb-caret" aria-hidden="true">▾</i>
       </button>
       {open && (
         <div className="tb-menu">
-          <p className="tb-hint tb-me"><b>{name}</b><em>{owner?.email}</em></p>
+          <p className="tb-hint tb-me">
+            <Avatar owner={owner} size={38} />
+            <span><b>{name}</b><em>{owner?.email}</em></span>
+          </p>
+          <button onClick={() => { setOpen(false); onProfile(); }}>
+            <b>Your profile</b>
+            <em>Your picture and what you are called</em>
+          </button>
           <button onClick={onLogout}>
             <b>Log out</b>
             <em>End this session</em>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api.js";
-import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS, FUTURE_CSS, CASHFLOW_AHEAD_CSS, CF_NONE_CSS, VENDORS_CSS, CASH_CSS, CONTRACTS_GROUP_CSS, SIDE_CSS, CASH_BAND_CSS, NARROW_FIX_CSS, INVOICE_CSS, RECORD_CSS, OVERVIEW_CSS, PL_CSS, BOOKS_CSS, HOUSEHOLD_CSS, HOME_CSS, MONEY_CSS, LONG_CSS, EXPENSES_CSS, MERGE_CSS } from "./finance/styles.js";
+import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS, FUTURE_CSS, CASHFLOW_AHEAD_CSS, CF_NONE_CSS, VENDORS_CSS, CASH_CSS, CONTRACTS_GROUP_CSS, SIDE_CSS, CASH_BAND_CSS, NARROW_FIX_CSS, INVOICE_CSS, RECORD_CSS, OVERVIEW_CSS, PL_CSS, BOOKS_CSS, HOUSEHOLD_CSS, HOME_CSS, MONEY_CSS, LONG_CSS, EXPENSES_CSS, MERGE_CSS, PROFILE_CSS } from "./finance/styles.js";
 import {
   fmtAmount, monthLabel, readFile, shiftMonth, thisMonth, useMoney, ZERO_DECIMAL,
   ENTITY_LABEL, entityChoices, viewsFor, moneyInLabel, loadEntity, saveEntity,
@@ -22,6 +22,7 @@ import { GoalsView } from "./finance/goals.jsx";
 import { ReportsView } from "./finance/reports.jsx";
 import { HomeView, greeting } from "./finance/home.jsx";
 import { Search, Alerts, AccountMenu } from "./finance/topbar.jsx";
+import { Avatar, ProfileSheet } from "./finance/profile.jsx";
 import { PayInvoice, InvoiceList } from "./finance/invoice.jsx";
 import { NewRecord } from "./finance/record.jsx";
 import { DueSoon } from "./finance/spend.jsx";
@@ -78,7 +79,7 @@ const HORIZON_MONTHS = 18;
 const RECORD_VIEWS = { overview: "out", revenue: "in", expenses: "out",
                        ledger: "out", vendors: "out" };
 
-export default function FinanceDashboard({ owner, onLogout,
+export default function FinanceDashboard({ owner, onLogout, onOwner,
                                           brand = { name: "StrideUp Finance", wordmark: true } }) {
   const [view, setView] = useState("overview");
   const [period, setPeriod] = useState(thisMonth());
@@ -128,6 +129,7 @@ export default function FinanceDashboard({ owner, onLogout,
   const [adding, setAdding] = useState(false);
   const setEntity = (v) => { saveEntity(v); setEntityState(v); };
   const [busy, setBusy] = useState(false);
+  const [profiling, setProfiling] = useState(false);
   const bumpTx = useCallback(() => setTxKey((k) => k + 1), []);
 
   const money = useMoney(data?.baseCurrency || "USD");
@@ -510,7 +512,7 @@ export default function FinanceDashboard({ owner, onLogout,
         {/* Joined in JS, not as three JSX children: a <style> element with
             several text children does not reliably end up with all of them in
             the DOM, and the symptom is a stylesheet that silently truncates. */}
-        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS + PL_CSS + BOOKS_CSS + HOUSEHOLD_CSS + HOME_CSS + MONEY_CSS + LONG_CSS + EXPENSES_CSS + MERGE_CSS}</style>
+        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS + PL_CSS + BOOKS_CSS + HOUSEHOLD_CSS + HOME_CSS + MONEY_CSS + LONG_CSS + EXPENSES_CSS + MERGE_CSS + PROFILE_CSS}</style>
         <div className="fin-boot"><div className="fin-spinner" /></div>
       </div>
     );
@@ -550,7 +552,7 @@ export default function FinanceDashboard({ owner, onLogout,
 
   return (
     <div className="fin-app">
-      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS + PL_CSS + BOOKS_CSS + HOUSEHOLD_CSS + HOME_CSS + MONEY_CSS + LONG_CSS + EXPENSES_CSS + MERGE_CSS}</style>
+      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS + PL_CSS + BOOKS_CSS + HOUSEHOLD_CSS + HOME_CSS + MONEY_CSS + LONG_CSS + EXPENSES_CSS + MERGE_CSS + PROFILE_CSS}</style>
 
       <aside className="fin-side" aria-label="Sections">
         <div className="fin-sidebrand">
@@ -581,13 +583,19 @@ export default function FinanceDashboard({ owner, onLogout,
             it is a second thing to keep in step with the first. */}
         {owner && !personalOnly && (
           <div className="fin-sideuser">
-            <span className="fin-avatar" aria-hidden="true">
-              {String(owner.name || "?").trim().charAt(0).toUpperCase()}
-            </span>
+            <Avatar owner={owner} size={30} />
             <span className="fin-sidewho">
               <b>{owner.name}</b>
               <em>{owner.email}</em>
             </span>
+            <button className="fin-sideedit" onClick={() => setProfiling(true)}
+                    title="Your profile" aria-label="Your profile">
+              <svg viewBox="0 0 20 20" width="14" height="14" fill="none"
+                   stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"
+                   strokeLinejoin="round" aria-hidden="true">
+                <path d="M13.2 3.6a1.9 1.9 0 0 1 2.7 2.7L7.4 14.8l-3.6.9.9-3.6Z" />
+              </svg>
+            </button>
           </div>
         )}
         {owner && !personalOnly && (
@@ -611,7 +619,8 @@ export default function FinanceDashboard({ owner, onLogout,
           <div className="fin-topbar">
             <Search entity={entity} onOpen={(r) => { setPeriod(r.period); setView("ledger"); }} />
             <Alerts alerts={home?.byEntity?.[entity]?.alerts} onGo={setView} />
-            <AccountMenu owner={owner} onLogout={onLogout} />
+            <AccountMenu owner={owner} onLogout={onLogout}
+                         onProfile={() => setProfiling(true)} />
           </div>
         )}
         <header className={`fin-viewhead${isHome || (personalOnly && PERSONAL_HEADS[view]) ? " fin-greet" : ""}`}>
@@ -693,6 +702,12 @@ export default function FinanceDashboard({ owner, onLogout,
 
       {/* The extraction feed follows the dialog out, but stays visible after it
           closes — a document being read is worth watching finish. */}
+      {profiling && (
+        <ProfileSheet owner={owner}
+                      onClose={() => setProfiling(false)}
+                      onSaved={(o) => { setProfiling(false); onOwner?.(o); }} />
+      )}
+
       {feed.length > 0 && !uploading && (
         <UploadFeed feed={feed} money={money} onReplace={replaceFile} onDismiss={dismiss} />
       )}

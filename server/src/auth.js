@@ -40,7 +40,14 @@ export async function requireOwner(req, res, next) {
     } catch {
       return res.status(401).json({ error: "Not authenticated" });
     }
-    const owner = await get("SELECT id, email, name FROM owners WHERE id = ?", [payload.sub]);
+    const owner = await get(
+      // avatar_updated_at, not the picture itself: this runs on every request,
+      // and carrying a base64 image through it would be a cost paid always for
+      // a thing needed almost never. It is enough to know there is one, and
+      // when it changed, so the browser can be told to fetch it again.
+      "SELECT id, email, name, avatar_updated_at FROM owners WHERE id = ?",
+      [payload.sub]
+    );
     if (!owner) return res.status(401).json({ error: "Not authenticated" });
     req.owner = owner;
     next();

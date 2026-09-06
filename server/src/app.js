@@ -47,6 +47,9 @@ export function createApp() {
   const booksJson = express.json({ limit: "64mb" });
   app.use((req, res, next) => {
     if (req.path === "/api/finance/books/import") return booksJson(req, res, next);
+    // A profile picture is an upload too, even though it is not a document.
+    // At 64kb a photograph does not fit and the failure looks like a bug.
+    if (req.path === "/api/auth/profile") return largeJson(req, res, next);
     return req.path.startsWith("/api/finance")
       ? largeJson(req, res, next) : smallJson(req, res, next);
   });

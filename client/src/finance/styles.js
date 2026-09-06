@@ -276,7 +276,21 @@ export const FIN_CSS = `
 @media(max-width:720px){.fin-form{grid-template-columns:1fr 1fr}}
 .fin-form label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:600;
   color:var(--fin-muted)}
-.fin-form label.wide{grid-column:1/-1}
+/* "wide" used to mean a full-width label, so every non-label that asked for
+   it — an action row, an error, a picture and its buttons — silently sat in
+   one third of the form and wrapped inside it. It means full width now,
+   whatever the element is. */
+.fin-form .wide{grid-column:1/-1}
+.fin-form .fin-formacts,
+.fin-form .fin-form-actions,
+.fin-form .fin-error,
+.fin-form .fin-help,
+.fin-form .fc-none{grid-column:1/-1}
+/* The commitment form's footer had no rule of its own at all, so its submit
+   button sat in a third of a column with no layout. */
+.fin-form-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:2px}
+.fin-form-actions .fin-btn{margin-left:auto;order:2}
+.fin-form-actions .fin-ok,.fin-form-actions .fin-error{order:1;font-size:13px;margin:0}
 .fin-form label span em{font-style:normal;font-weight:400;color:var(--fin-faint)}
 .fin-form input,.fin-form select{font:inherit;font-size:14px;padding:9px 11px;border-radius:9px;
   border:1px solid var(--fin-line);background:var(--fin-surface);color:var(--fin-ink);width:100%}
@@ -1848,4 +1862,32 @@ export const MERGE_CSS = `
 @media(max-width:1100px){.ex-row-s{grid-template-columns:minmax(0,1fr)}}
 .ex-detectrow{justify-content:space-between;gap:10px}
 .ex-detectrow .fin-btn{flex:none}
+`;
+
+// ── Your picture, and the profile behind it ──────────────────
+export const PROFILE_CSS = `
+.fin-avatar-img{object-fit:cover;padding:0;background:var(--fin-sunk)}
+.tb-me{display:flex;align-items:center;gap:11px;padding:11px}
+.tb-me span{display:flex;flex-direction:column;min-width:0}
+.fin-sideedit{flex:none;width:26px;height:26px;display:grid;place-items:center;
+  border:0;background:none;border-radius:8px;color:var(--fin-faint);cursor:pointer}
+.fin-sideedit:hover{color:var(--fin-accent);background:#F1ECFB}
+.fin-sideedit:focus-visible{outline:2px solid var(--fin-accent);outline-offset:1px}
+
+.pf-sheet{max-width:560px}
+.pf-pic{display:flex;align-items:center;gap:20px;flex-wrap:wrap;
+  padding:4px 0 6px;border-bottom:1px solid var(--fin-hair);margin-bottom:4px}
+.pf-preview{flex:none;width:96px;height:96px;border-radius:50%;object-fit:cover;
+  background:var(--fin-sunk);border:1px solid var(--fin-line)}
+.pf-letter{display:grid;place-items:center;font-family:var(--fin-display);
+  font-weight:650;font-size:38px;color:#fff;border:0;
+  background:linear-gradient(135deg,var(--fin-accent),var(--fin-in))}
+.pf-picacts{flex:1;min-width:200px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.pf-picacts .fin-hint{flex-basis:100%;margin-top:2px}
+.pf-sheet input[readonly]{background:var(--fin-sunk);color:var(--fin-muted)}
+@media(max-width:520px){
+  .pf-pic{gap:14px}
+  .pf-preview{width:72px;height:72px}
+  .pf-letter{font-size:30px}
+}
 `;

@@ -57,6 +57,21 @@ const SCHEMA = [
    )`,
 ];
 
+// Added after the fact, so they are separate and individually skippable — a
+// fresh database already has everything below and each one is a no-op there.
+const OWNER_MIGRATIONS = [
+  // A picture, stored the same way documents are: base64 in a text column,
+  // served back as bytes. Small enough that a table of its own would be
+  // ceremony — there is one owner.
+  `ALTER TABLE owners ADD COLUMN IF NOT EXISTS avatar_mime text`,
+  `ALTER TABLE owners ADD COLUMN IF NOT EXISTS avatar_data text`,
+  `ALTER TABLE owners ADD COLUMN IF NOT EXISTS avatar_updated_at timestamptz`,
+  // Set the first time the owner edits their own name. Until then the seed
+  // owns the name; afterwards it does not, or every redeploy would quietly
+  // undo what you typed.
+  `ALTER TABLE owners ADD COLUMN IF NOT EXISTS name_set_at timestamptz`,
+];
+
 let readyPromise;
 export function ensureReady() {
   if (!readyPromise) readyPromise = initialise();
@@ -69,7 +84,7 @@ async function initialise() {
   for (const stmt of FIN_SCHEMA) await q(stmt, []);
   // Migrations are independent and idempotent: a fresh database already has
   // everything they add, so each one is expected to be a no-op there.
-  for (const stmt of FIN_MIGRATIONS) {
+  for (const stmt of [...OWNER_MIGRATIONS, ...FIN_MIGRATIONS]) {
     try {
       await q(stmt, []);
     } catch (err) {
@@ -88,11 +103,20 @@ export async function seedOwner() {
     return;
   }
   const hash = bcrypt.hashSync(config.owner.password, 12);
-  const existing = await get("SELECT id FROM owners WHERE email = ?", [config.owner.email]);
+  const existing = await get(
+    "SELECT id, name_set_at FROM owners WHERE email = ?", [config.owner.email]
+  );
   if (existing) {
-    await run("UPDATE owners SET password_hash = ?, name = ? WHERE id = ?", [
-      hash, config.owner.name, existing.id,
-    ]);
+    // Resetting the password on every boot is the documented way back in when
+    // it is forgotten. Resetting the name is not: once you have set your own,
+    // OWNER_NAME stops speaking for you, or a redeploy would rename you back.
+    if (existing.name_set_at) {
+      await run("UPDATE owners SET password_hash = ? WHERE id = ?", [hash, existing.id]);
+    } else {
+      await run("UPDATE owners SET password_hash = ?, name = ? WHERE id = ?", [
+        hash, config.owner.name, existing.id,
+      ]);
+    }
     return;
   }
   await run("INSERT INTO owners (email, name, password_hash) VALUES (?, ?, ?)", [

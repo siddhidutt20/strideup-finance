@@ -63,7 +63,7 @@ export default function App() {
   return (
     <div className="sf-shell">
       <style>{SHELL_CSS}</style>
-      <FinanceDashboard owner={owner} onLogout={logout} brand={brand} />
+      <FinanceDashboard owner={owner} onLogout={logout} onOwner={setOwner} brand={brand} />
     </div>
   );
 }
