@@ -220,9 +220,14 @@ export const FIN_CSS = `
   letter-spacing:-.012em;margin:0}
 .fin-panel-head>div>span{display:block;font-size:12.5px;color:var(--fin-faint);margin-top:2px}
 .fin-none{color:var(--fin-muted);font-size:13.5px;margin:4px 0}
-.fin-link{color:var(--fin-accent);font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap}
-.fin-link:hover{text-decoration:underline}
-.fin-link.asbtn{background:none;border:none;font-family:inherit;cursor:pointer;padding:0}
+.fin-link{color:var(--fin-accent);font-size:13px;font-weight:600;text-decoration:none;
+  white-space:nowrap;font-family:inherit;line-height:inherit;background:none;border:0;
+  padding:4px 7px;margin:-4px -7px;border-radius:8px;cursor:pointer;
+  transition:background .12s,color .12s}
+.fin-link:hover{background:#F1ECFB;color:#4c1d95}
+.fin-link:focus-visible{outline:2px solid var(--fin-accent);outline-offset:1px}
+.fin-link:disabled{opacity:.4;cursor:default;background:none}
+.fin-link.asbtn{padding:0;margin:0}
 .fin-scope{display:inline-flex;align-items:center;gap:4px}
 .fin-scope button{border:1px solid var(--fin-line);background:#fff;font-family:inherit;
   font-size:12px;font-weight:600;color:var(--fin-muted);padding:5px 10px;border-radius:8px;cursor:pointer}
@@ -1453,6 +1458,13 @@ export const MONEY_CSS = `
 .hm-disc.d-5{background:#E9F6FB;color:#0a6f8c}
 .hm-disc.d-6{background:#FFF6E0;color:#8a6a15}
 .hm-disc.d-7{background:#F1F3F6;color:#4b5563}
+/* Money in and money out. These two classes are applied in dozens of places
+   and had no colour rule anywhere — every amount, on every page built on
+   them, was rendering in plain ink, so arriving and leaving looked alike.
+   Darker than the chart hues on purpose: #0FA3C7 and #D43081 are tuned for
+   fills next to each other, not for small text on white. */
+.fe-in{color:#0A7E96}
+.fe-out{color:var(--fin-neg)}
 .fe-good{color:#0f7551}
 
 /* A name with its mark, used in every table on these four pages. */
@@ -1531,11 +1543,25 @@ export const MONEY_CSS = `
 /* ── Budget ── */
 .hh-overview{display:flex;align-items:center;gap:30px;flex-wrap:wrap;padding:4px 0}
 .hh-overview .hh-ring{width:130px;height:130px;flex:none}
-.hh-ovfig{display:flex;flex-direction:column;gap:2px}
-.hh-ovfig .fin-fig{font-family:var(--fin-display);font-weight:600;letter-spacing:-.025em;
-  font-size:clamp(24px,2.6vw,32px);line-height:1.1}
-.hh-ovfig em{font-style:normal;font-size:12.5px;color:var(--fin-muted)}
-.hh-ovsplit{width:1px;align-self:stretch;background:var(--fin-line);margin:4px 0}
+.hh-ringwrap{flex:none;display:flex;flex-direction:column;align-items:center;gap:4px}
+.hh-ringwrap em{font-style:normal;font-size:11.5px;color:var(--fin-muted);text-align:center}
+/* Each figure says what it is before it says how much, so the three read as
+   three answers rather than three numbers with captions underneath. */
+.hh-ovstats{flex:1;min-width:0;display:flex;align-items:stretch;gap:26px;flex-wrap:wrap}
+.hh-ovstats article{display:flex;flex-direction:column;gap:2px;min-width:120px}
+.hh-ovstats em{font-style:normal;font-size:11px;font-weight:650;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--fin-faint)}
+.hh-ovstats .fin-fig{font-family:var(--fin-display);font-weight:600;letter-spacing:-.025em;
+  font-size:clamp(23px,2.4vw,30px);line-height:1.15}
+.hh-ovstats span{font-size:12.5px;color:var(--fin-muted)}
+/* The rule belongs here, not between spent and remaining: those two are the
+   same figure from both ends, and what you kept is a different question. */
+.hh-ovapart{padding-left:26px;border-left:1px solid var(--fin-line)}
+@media(max-width:720px){
+  .hh-ovstats{gap:18px}
+  .hh-ovapart{padding-left:0;border-left:0;padding-top:16px;
+    border-top:1px solid var(--fin-line);flex-basis:100%}
+}
 .hh-bar{display:block;height:8px;border-radius:5px;background:var(--fin-sunk);
   overflow:hidden;min-width:90px}
 .hh-bar i{display:block;height:100%;border-radius:5px;background:#1baf7a}
@@ -1894,7 +1920,6 @@ export const PROFILE_CSS = `
   font-weight:650;font-size:38px;color:#fff;border:0;
   background:linear-gradient(135deg,var(--fin-accent),var(--fin-in))}
 .pf-picacts{flex:1;min-width:200px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.pf-picacts .fin-hint{flex-basis:100%;margin-top:2px}
 .pf-sheet input[readonly]{background:var(--fin-sunk);color:var(--fin-muted)}
 @media(max-width:520px){
   .pf-pic{gap:14px}

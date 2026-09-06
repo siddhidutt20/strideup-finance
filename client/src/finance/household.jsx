@@ -85,23 +85,38 @@ export function BudgetView({ hh, money, period, onEditBudget, onGo }) {
           </p>
         ) : (
           <div className="hh-overview">
-            <UsedRing used={b.usedPct} over={b.remaining < 0} />
-            <div className="hh-ovfig">
-              <strong className="fin-fig">{money.round(b.spent)}</strong>
-              <em>of {money.round(b.total)} spent</em>
+            <div className="hh-ringwrap">
+              <UsedRing used={b.usedPct} over={b.remaining < 0} />
+              <em>of the plan used</em>
             </div>
-            <div className="hh-ovsplit" aria-hidden="true" />
-            <div className="hh-ovfig">
-              <strong className={`fin-fig${b.remaining < 0 ? " fe-out" : " fe-good"}`}>
-                {money.round(Math.abs(b.remaining))}
-              </strong>
-              <em>{b.remaining < 0 ? "over the plan" : "remaining"}</em>
-            </div>
-            <div className="hh-ovfig">
-              <strong className={`fin-fig${s.saved < 0 ? " fe-out" : ""}`}>
-                {money.round(s.saved)}
-              </strong>
-              <em>{s.rate == null ? "nothing came in yet" : `kept — ${pct(s.rate)}% of what came in`}</em>
+            <div className="hh-ovstats">
+              <article>
+                <em>Spent</em>
+                <strong className="fin-fig">{money.round(b.spent)}</strong>
+                <span>of {money.round(b.total)} planned</span>
+              </article>
+              <article>
+                <em>{b.remaining < 0 ? "Over the plan" : "Left to spend"}</em>
+                <strong className={`fin-fig${b.remaining < 0 ? " fe-out" : " fe-good"}`}>
+                  {money.round(Math.abs(b.remaining))}
+                </strong>
+                <span>
+                  {b.remaining < 0
+                    ? "more than planned"
+                    : `${100 - (pct(b.usedPct) ?? 0)}% of the plan still there`}
+                </span>
+              </article>
+              <article className="hh-ovapart">
+                <em>Kept this month</em>
+                <strong className={`fin-fig${s.saved < 0 ? " fe-out" : ""}`}>
+                  {money.round(s.saved)}
+                </strong>
+                <span>
+                  {s.rate == null
+                    ? "nothing came in yet"
+                    : `${pct(s.rate)}% of what came in`}
+                </span>
+              </article>
             </div>
           </div>
         )}

@@ -136,7 +136,7 @@ export function ProfileSheet({ owner, onClose, onSaved }) {
             <div className="pf-picacts">
               <button type="button" className="fin-btn ghost"
                       onClick={() => file.current?.click()}>
-                {shown ? "Choose a different picture" : "Choose a picture"}
+                {shown ? "Change profile picture" : "Add profile picture"}
               </button>
               {shown && (
                 <button type="button" className="fin-btn ghost danger"
@@ -145,30 +145,16 @@ export function ProfileSheet({ owner, onClose, onSaved }) {
                 </button>
               )}
               <input ref={file} type="file" accept="image/*" hidden onChange={pick} />
-              <p className="fin-hint">
-                Squared and shrunk to {SIDE}px in your browser before it is
-                saved, so what is stored is the size of the picture on screen.
-                It is only ever shown to you.
-              </p>
             </div>
           </div>
 
           <label className="wide"><span>What you would like to be called</span>
             <input value={name} onChange={(e) => setName(e.target.value)}
                    maxLength={80} required />
-            <em className="fin-hint">
-              Shown in the corner and on the greeting. Once you set this, the
-              name in the deployment's settings stops overriding it.
-            </em>
           </label>
 
           <label className="wide"><span>Signing in with</span>
             <input value={owner?.email ?? ""} readOnly />
-            <em className="fin-hint">
-              Changing this, or your password, is done in the deployment's
-              settings — not here. An app that could change its own way in is
-              an app that can lock you out of it.
-            </em>
           </label>
 
           {msg && <p className="fin-error wide">{msg}</p>}
