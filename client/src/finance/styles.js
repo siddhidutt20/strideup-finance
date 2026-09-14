@@ -202,7 +202,7 @@ export const FIN_CSS = `
 .fin-entlabel{font-family:var(--fin-display);font-weight:600;font-size:15px;
   letter-spacing:.02em;text-transform:uppercase;color:var(--fin-faint);
   margin:22px 0 10px;padding-bottom:7px;border-bottom:1px solid var(--fin-line)}
-.fin-sidebyside{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+.fin-sidebyside{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:stretch}
 @media(max-width:960px){.fin-sidebyside{grid-template-columns:1fr}}
 .fin-sidebyside .st-wrap{max-width:none}
 .fe-ent{display:inline-block;font-size:10px;font-weight:600;letter-spacing:.06em;
@@ -214,6 +214,26 @@ export const FIN_CSS = `
 .fin-panel{background:var(--fin-surface);border:1px solid var(--fin-line);border-radius:14px;
   padding:20px 22px;margin-bottom:14px;scroll-margin-top:64px;
   container-type:inline-size;container-name:fin-panel}
+/* Only panels inside a stretching band become columns — they are the ones
+   that may be handed more height than their content needs, and the column is
+   what lets them spread it. A blanket rule here turned .ex-glance and its kind
+   on their side: those set display:flex themselves but never set a direction,
+   so they inherited the column and their rows stacked.
+   Inside a band the grid's gap does the spacing too; the panel's own bottom
+   margin was being added on top of it, and to the row's height. */
+:is(.ov-band,.ov-band3,.ov-stack,.vm-stack,.fin-twocol,.fin-sidebyside,
+    .pl-band,.pl-band3,.ch-band,.ch-band2)>.fin-panel{margin-bottom:0}
+/* Every panel is a column, so one handed more height than its content needs
+   can spread it. Listing the containers instead was fragile — there are a
+   dozen row classes across the two portals and the household ones were
+   missed. The exceptions are the panels that set display themselves without
+   setting a direction: they would inherit the column and lay out sideways. */
+.fin-panel:not(.ex-glance,.hm-standing,.hm-plan,.fin-tools,.we-tile){
+  display:flex;flex-direction:column}
+/* An empty state sits in the middle of the room it has, so the card reads as
+   deliberately quiet rather than as content that failed to load. */
+.fin-panel>.fc-none{flex:1;display:grid;place-content:center;justify-items:start;
+  min-height:44px}
 .fin-panel-head{display:flex;align-items:baseline;justify-content:space-between;gap:14px;
   margin-bottom:16px}
 .fin-panel-head h2{font-family:var(--fin-display);font-weight:600;font-size:19px;
@@ -242,6 +262,11 @@ export const FIN_CSS = `
 .fin-legend span{display:inline-flex;align-items:center;gap:6px}
 .fin-legend i,.fin-tip i{width:9px;height:9px;border-radius:2.5px;display:inline-block}
 .fin-svg{width:100%;height:auto;display:block;overflow:visible}
+/* Zero flex-basis with a floor: the wrapper contributes only its min-height to
+   the panel's natural size, then takes whatever the stretched row gives it. */
+.fin-chart{display:flex;flex-direction:column;flex:1;min-height:0}
+.fin-chartfill{flex:1 1 0;min-height:170px;display:block}
+.fin-svg-fill{height:100%}
 .fin-grid-line{stroke:var(--fin-hair);stroke-width:1}
 .fin-axis{stroke:var(--fin-line);stroke-width:1}
 .fin-legend i.fin-key-ahead{background:var(--fin-muted);opacity:.35;
@@ -417,7 +442,7 @@ export const STATEMENT_CSS = `
 // weight carry the difference, so the distinction survives greyscale, print
 // and every kind of colour vision.
 export const FORECAST_CSS = `
-.fin-twocol{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;align-items:start}
+.fin-twocol{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;align-items:stretch}
 
 /* KPI cards */
 .fc-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin:0 0 18px}
@@ -937,9 +962,9 @@ export const CASH_BAND_CSS = `
 /* The reference packs the chart, the summary and the alerts into one band
    rather than stacking a full-width chart above two half-width panels. */
 .ch-band{display:grid;grid-template-columns:minmax(0,1.85fr) minmax(0,1.05fr) minmax(0,1fr);
-  gap:16px;align-items:start}
+  gap:16px;align-items:stretch}
 .ch-band2{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:16px;
-  align-items:start}
+  align-items:stretch}
 @media(max-width:1280px){
   .ch-band{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
   .ch-band > :first-child{grid-column:1 / -1}
@@ -1039,11 +1064,11 @@ export const OVERVIEW_CSS = `
 @media(max-width:820px){.ov-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:460px){.ov-kpis{grid-template-columns:minmax(0,1fr)}}
 .ov-band{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(0,1fr);gap:16px;
-  align-items:start}
+  align-items:stretch}
 .ov-stack{display:grid;gap:16px;align-content:start}
 /* Two panels, not three: Outstanding moved up beside the chart, and the donut
    gets room for its legend instead of a third of the row. */
-.ov-band3{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px;align-items:start}
+.ov-band3{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px;align-items:stretch}
 @media(max-width:900px){.ov-band,.ov-band3{grid-template-columns:minmax(0,1fr)}}
 /* In a third-width panel the donut and its legend side by side leave no room
    for a category name, and every label truncated to one letter is a legend
@@ -1102,8 +1127,8 @@ export const PL_CSS = `
 /* The statement is the page's centre of gravity, so it gets the wide column
    and the trend sits beside it rather than under it. */
 .pl-band{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:16px;
-  align-items:start}
-.pl-band3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:start}
+  align-items:stretch}
+.pl-band3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:stretch}
 @media(max-width:1300px){.pl-band3{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:1100px){.pl-band{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:820px){.pl-band3{grid-template-columns:minmax(0,1fr)}}

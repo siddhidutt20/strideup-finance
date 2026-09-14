@@ -329,6 +329,9 @@ export function ExpensesView({ ex, money, period, entity, currency,
                    action={<button className="fin-link" onClick={() => onGo("reports")}>
                      See all →
                    </button>}>
+              {ex.insights.length === 0 ? (
+                <p className="fc-none">Nothing stands out this month.</p>
+              ) : (
               <ul className="hm-insights">
                 {ex.insights.map((x, i) => (
                   <li key={i}>
@@ -342,6 +345,7 @@ export function ExpensesView({ ex, money, period, entity, currency,
                   </li>
                 ))}
               </ul>
+              )}
             </Panel>
           </div>
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fmtAmount, monthLabel } from "./format.js";
 
 // `narrow` keeps a statement to a readable column rather than stranding it in
@@ -97,7 +97,34 @@ export function TrendChart({ series, money, current, only }) {
   const [hover, setHover] = useState(null);
   const keys = only ? [only] : ["revenue", "expenses"];
   const max = Math.max(1, ...series.flatMap((m) => keys.map((k) => m[k])));
-  const W = 760, H = 190, PAD_B = 26, PAD_T = 10;
+
+  // The chart draws in real pixels rather than a fixed 760×190 box. A panel
+  // beside a taller neighbour stretches to match it, and a chart locked to one
+  // aspect ratio left the difference as blank card — which is what a quiet
+  // month looked like. Measuring means the bars use the height instead.
+  //
+  // The wrapper is flex:1 on a zero basis with a min-height, so its own size
+  // never feeds back into the panel's natural height: the row is sized by the
+  // other column, the chart takes what is left, and there is no loop.
+  const box = useRef(null);
+  const [size, setSize] = useState({ w: 760, h: 190 });
+  useEffect(() => {
+    const el = box.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(([e]) => {
+      const { width, height } = e.contentRect;
+      if (width > 0 && height > 0) {
+        setSize((was) =>
+          Math.abs(was.w - width) < 1 && Math.abs(was.h - height) < 1
+            ? was
+            : { w: Math.round(width), h: Math.round(Math.min(460, Math.max(170, height))) });
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const W = size.w, H = size.h, PAD_B = 26, PAD_T = 10;
   const slot = W / Math.max(series.length, 1);
   const bw = only
     ? Math.min(30, Math.max(8, slot * 0.42))
@@ -121,7 +148,8 @@ export function TrendChart({ series, money, current, only }) {
           {anyAhead && <span><i className="fin-key-ahead" />Committed, not yet recorded</span>}
         </div>
       )}
-      <svg viewBox={`0 0 ${W} ${H}`} className="fin-svg" role="img"
+      <div className="fin-chartfill" ref={box}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="fin-svg fin-svg-fill" role="img"
            aria-label={only ? `${only} by month` : "Revenue and expenses by month"}>
         {[0.25, 0.5, 0.75, 1].map((t) => (
           <line key={t} x1="0" x2={W}
@@ -153,6 +181,7 @@ export function TrendChart({ series, money, current, only }) {
         })}
         <line x1="0" x2={W} y1={H - PAD_B} y2={H - PAD_B} className="fin-axis" />
       </svg>
+      </div>
       <div className="fin-tip" aria-live="polite">
         {hover ? (
           <>
