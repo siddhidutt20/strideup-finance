@@ -10,6 +10,44 @@ import { monthLabel } from "./format.js";
 
 const pct = (v) => (v == null ? null : Math.round(v * 100));
 
+// ── A figure, as a tile ──────────────────────────────────────
+// The same tinted card the household pages use. The tone carries the meaning
+// — money in reads green, money out reads red, cash reads as the position —
+// so a row of six is scanned rather than read. Pass no tone and it stays the
+// plain card it has always been.
+const STAT_ICONS = {
+  cash: <><rect x="2.5" y="5" width="15" height="11" rx="2.5" /><path d="M13 10.5h2.5" /></>,
+  in: <><path d="M10 3.5v11" /><path d="M5.5 10 10 14.5 14.5 10" /></>,
+  out: <><path d="M10 16.5v-11" /><path d="M5.5 10 10 5.5 14.5 10" /></>,
+  net: <><path d="M3 15.5 7.5 9l3.5 3.5L17 5" /><path d="M17 9.5V5h-4.5" /></>,
+  clock: <><circle cx="10" cy="10" r="7" /><path d="M10 6v4.3l2.7 1.6" /></>,
+  fuel: <><path d="M4 16.5V5.5A1.5 1.5 0 0 1 5.5 4h5A1.5 1.5 0 0 1 12 5.5v11" /><path d="M3 16.5h10" /><path d="M12 8h2.5A1.5 1.5 0 0 1 16 9.5V13a1.3 1.3 0 0 0 2.6 0V7.5L16.5 5" /></>,
+};
+
+export function Stat({ tone, icon, label, value, negative, warn, children }) {
+  const cls = `fc-kpi${icon ? " ico" : ""}${tone ? ` t-${tone}` : ""}${warn ? " warn" : ""}`;
+  const body = (
+    <>
+      <header><span>{label}</span></header>
+      <p className={`fin-fig${negative ? " fe-out" : tone === "in" ? " fe-in" : ""}`}>{value}</p>
+      <footer>{children}</footer>
+    </>
+  );
+  return (
+    <article className={cls}>
+      {icon && (
+        <span className="fc-ico" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor"
+               strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            {STAT_ICONS[icon]}
+          </svg>
+        </span>
+      )}
+      {icon ? <span className="fc-kpi-in">{body}</span> : body}
+    </article>
+  );
+}
+
 function Change({ v, invert }) {
   if (v == null) return <span className="sd-flat">no month before this</span>;
   if (Math.abs(v) < 0.005) return <span className="sd-flat">level with last month</span>;
@@ -94,32 +132,23 @@ function AheadKpis({ pj, period, money }) {
   const prev = monthLabel(prevPeriod(period));
   return (
     <>
-      <article className="fc-kpi">
-        <header><span>Opens at</span></header>
-        <p className="fin-fig">{money.round(pj.opening)}</p>
-        <footer>
-          {pj.runUp === 0
-            ? `${prev}'s closing, carried forward`
-            : `${prev}'s projected closing, carried forward`}
-        </footer>
-      </article>
-      <article className="fc-kpi">
-        <header><span>Committed to arrive</span></header>
-        <p className="fin-fig fe-in">{money.round(pj.committedIn)}</p>
-        <footer>{pj.committedIn ? "agreed under contract" : "nothing agreed to arrive"}</footer>
-      </article>
-      <article className="fc-kpi">
-        <header><span>Committed to go out</span></header>
-        <p className="fin-fig fe-out">{money.round(pj.committedOut)}</p>
-        <footer>{pj.committedOut ? "agreed under contract" : "nothing agreed to go out"}</footer>
-      </article>
-      <article className="fc-kpi">
-        <header><span>Closes at</span></header>
-        <p className={`fin-fig${pj.closing < 0 ? " fe-out" : ""}`}>{money.round(pj.closing)}</p>
-        <footer>
-          {pj.movement >= 0 ? "+" : "−"}{money.round(Math.abs(pj.movement))} on the month
-        </footer>
-      </article>
+      <Stat tone="cash" icon="cash" label="Opens at" value={money.round(pj.opening)}
+            negative={pj.opening < 0}>
+        {pj.runUp === 0
+          ? `${prev}'s closing, carried forward`
+          : `${prev}'s projected closing, carried forward`}
+      </Stat>
+      <Stat tone="in" icon="in" label="Committed to arrive" value={money.round(pj.committedIn)}>
+        {pj.committedIn ? "agreed under contract" : "nothing agreed to arrive"}
+      </Stat>
+      <Stat tone="out" icon="out" label="Committed to go out" value={money.round(pj.committedOut)}
+            negative>
+        {pj.committedOut ? "agreed under contract" : "nothing agreed to go out"}
+      </Stat>
+      <Stat tone="save" icon="net" label="Closes at" value={money.round(pj.closing)}
+            negative={pj.closing < 0}>
+        {pj.movement >= 0 ? "+" : "−"}{money.round(Math.abs(pj.movement))} on the month
+      </Stat>
     </>
   );
 }
@@ -136,47 +165,34 @@ function PastKpis({ ov, period, money }) {
   );
   return (
     <>
-      <article className="fc-kpi">
-        <header><span>Opened at</span></header>
-        <p className={`fin-fig${c.opening < 0 ? " fe-out" : ""}`}>{money.round(c.opening)}</p>
-        <footer>{monthLabel(c.openedFrom)}'s closing, carried forward</footer>
-      </article>
-      <article className="fc-kpi">
-        <header><span>Revenue this month</span></header>
-        <p className="fin-fig fe-in">{money.round(ov.revenue)}</p>
-        <footer>{ov.revenue ? <Change v={ov.revenueChange} />
-                            : <span className="sd-flat">nothing recorded</span>}</footer>
-      </article>
-      <article className="fc-kpi">
-        <header><span>Expenses this month</span></header>
-        <p className="fin-fig fe-out">{money.round(ov.expenses)}</p>
-        <footer>{ov.expenses ? <Change v={ov.expensesChange} invert />
-                             : <span className="sd-flat">nothing recorded</span>}</footer>
-      </article>
-      <article className="fc-kpi">
-        <header><span>Net this month</span></header>
-        <p className={`fin-fig${ov.net < 0 ? " fe-out" : ""}`}>{money.round(ov.net)}</p>
-        <footer>{c.recordedThisMonth
+      <Stat tone="cash" icon="cash" label="Opened at" value={money.round(c.opening)}
+            negative={c.opening < 0}>
+        {monthLabel(c.openedFrom)}'s closing, carried forward
+      </Stat>
+      <Stat tone="in" icon="in" label="Revenue this month" value={money.round(ov.revenue)}>
+        {ov.revenue ? <Change v={ov.revenueChange} />
+                    : <span className="sd-flat">nothing recorded</span>}
+      </Stat>
+      <Stat tone="out" icon="out" label="Expenses this month" value={money.round(ov.expenses)}
+            negative>
+        {ov.expenses ? <Change v={ov.expensesChange} invert />
+                     : <span className="sd-flat">nothing recorded</span>}
+      </Stat>
+      <Stat tone="save" icon="net" label="Net this month" value={money.round(ov.net)}
+            negative={ov.net < 0}>
+        {c.recordedThisMonth
           ? `${c.recordedThisMonth} entr${c.recordedThisMonth === 1 ? "y" : "ies"} recorded`
-          : <span className="sd-flat">nothing recorded</span>}</footer>
-      </article>
-      <article className="fc-kpi">
-        <header><span>Closed at</span></header>
-        <p className={`fin-fig${closing < 0 ? " fe-out" : ""}`}>{money.round(closing)}</p>
-        <footer>
-          {c.movement >= 0 ? "+" : "−"}{money.round(Math.abs(c.movement))} on the month
-        </footer>
-      </article>
-      <article className="fc-kpi">
-        <header><span>Cash today</span></header>
-        <p className={`fin-fig${ov.cash.amount < 0 ? " fe-out" : ""}`}>
-          {money.round(ov.cash.amount)}
-        </p>
-        <footer>
-          as things stand now
-          {monthsSince > 0 && `, ${monthsSince} month${monthsSince === 1 ? "" : "s"} later`}
-        </footer>
-      </article>
+          : <span className="sd-flat">nothing recorded</span>}
+      </Stat>
+      <Stat tone="plan" icon="clock" label="Closed at" value={money.round(closing)}
+            negative={closing < 0}>
+        {c.movement >= 0 ? "+" : "−"}{money.round(Math.abs(c.movement))} on the month
+      </Stat>
+      <Stat icon="fuel" label="Cash today" value={money.round(ov.cash.amount)}
+            negative={ov.cash.amount < 0}>
+        as things stand now
+        {monthsSince > 0 && `, ${monthsSince} month${monthsSince === 1 ? "" : "s"} later`}
+      </Stat>
     </>
   );
 }
@@ -234,58 +250,41 @@ export function OverviewDash({ ov, money, period, onGo }) {
         {pj ? <AheadKpis pj={pj} period={period} money={money} />
          : past ? <PastKpis ov={ov} period={period} money={money} /> : (
         <>
-        <article className="fc-kpi">
-          <header><span>Cash today</span></header>
-          <p className="fin-fig">{money.round(ov.cash.amount)}</p>
-          <footer>
-            {carry
-              ? <>opened at {money.round(carry.opening)}, {carry.movement >= 0 ? "+" : "−"}
-                  {money.round(Math.abs(carry.movement))} this month</>
-              : ov.cash.source === "bank" ? "from your bank feed" : "everything recorded"}
-          </footer>
-        </article>
-        <article className="fc-kpi">
-          <header><span>Revenue this month</span></header>
-          <p className="fin-fig fe-in">{money.round(ov.revenue)}</p>
-          <footer>{quiet ? <span className="sd-flat">nothing recorded yet</span>
-                         : <Change v={ov.revenueChange} />}</footer>
-        </article>
-        <article className="fc-kpi">
-          <header><span>Expenses this month</span></header>
-          <p className="fin-fig fe-out">{money.round(ov.expenses)}</p>
-          <footer>{quiet ? <span className="sd-flat">nothing recorded yet</span>
-                         : <Change v={ov.expensesChange} invert />}</footer>
-        </article>
-        <article className="fc-kpi">
-          <header><span>Net this month</span></header>
-          <p className={`fin-fig${ov.net < 0 ? " fe-out" : ""}`}>{money.round(ov.net)}</p>
-          <footer>{quiet ? <span className="sd-flat">nothing recorded yet</span>
-                         : <Change v={ov.netChange} />}</footer>
-        </article>
+        <Stat tone="cash" icon="cash" label="Cash today" value={money.round(ov.cash.amount)}
+              negative={ov.cash.amount < 0}>
+          {carry
+            ? <>opened at {money.round(carry.opening)}, {carry.movement >= 0 ? "+" : "−"}
+                {money.round(Math.abs(carry.movement))} this month</>
+            : ov.cash.source === "bank" ? "from your bank feed" : "everything recorded"}
+        </Stat>
+        <Stat tone="in" icon="in" label="Revenue this month" value={money.round(ov.revenue)}>
+          {quiet ? <span className="sd-flat">nothing recorded yet</span>
+                 : <Change v={ov.revenueChange} />}
+        </Stat>
+        <Stat tone="out" icon="out" label="Expenses this month" value={money.round(ov.expenses)}
+              negative>
+          {quiet ? <span className="sd-flat">nothing recorded yet</span>
+                 : <Change v={ov.expensesChange} invert />}
+        </Stat>
+        <Stat tone="save" icon="net" label="Net this month" value={money.round(ov.net)}
+              negative={ov.net < 0}>
+          {quiet ? <span className="sd-flat">nothing recorded yet</span>
+                 : <Change v={ov.netChange} />}
+        </Stat>
         </>
         )}
         {!past && <>
-        <article className="fc-kpi">
-          <header><span>Committed, 90 days</span></header>
-          <p className={`fin-fig${ov.expectedIn90 < 0 ? " fe-out" : ""}`}>
-            {money.round(ov.expectedIn90)}
-          </p>
-          <footer>
-            {ov.expectedIn90Expected != null
-              ? `${money.round(ov.expectedIn90Expected)} with the estimate`
-              : "agreed money only"}
-          </footer>
-        </article>
-        <article className={`fc-kpi${r.burning && r.current != null && r.current < 3 ? " warn" : ""}`}>
-          <header><span>Runway</span></header>
-          <p className="fin-fig">
-            {r.burning && r.current != null ? `${r.current.toFixed(1)} mo` : "—"}
-          </p>
-          <footer>
-            {r.burning ? `${money.round(r.monthlyBurn)} a month of net burn`
-                       : "not burning"}
-          </footer>
-        </article>
+        <Stat tone="plan" icon="clock" label="Committed, 90 days"
+              value={money.round(ov.expectedIn90)} negative={ov.expectedIn90 < 0}>
+          {ov.expectedIn90Expected != null
+            ? `${money.round(ov.expectedIn90Expected)} with the estimate`
+            : "agreed money only"}
+        </Stat>
+        <Stat icon="fuel" label="Runway"
+              warn={r.burning && r.current != null && r.current < 3}
+              value={r.burning && r.current != null ? `${r.current.toFixed(1)} mo` : "—"}>
+          {r.burning ? `${money.round(r.monthlyBurn)} a month of net burn` : "not burning"}
+        </Stat>
         </>}
       </div>
 

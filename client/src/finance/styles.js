@@ -430,6 +430,28 @@ export const FORECAST_CSS = `
   letter-spacing:-.022em}
 .fc-kpi footer{font-size:11.5px;color:var(--fin-faint);line-height:1.4}
 .fc-kpi.warn{border-color:#F0D9C8;background:linear-gradient(#FFFBF7,var(--fin-surface))}
+/* The household tiles carry a tint and an icon, so a row of six is scanned
+   rather than read left to right. The company's tiles were the same shape in
+   flat white — same information, none of the signposting. A tile only tints
+   where it is given a tone; an untoned one keeps the plain card it always had,
+   so nothing that is merely a figure starts shouting. */
+.fc-kpi.t-cash{background:#FDF1F7;border-color:#F7DEEB;box-shadow:none}
+.fc-kpi.t-in{background:#EDF9F3;border-color:#D5EFE3;box-shadow:none}
+.fc-kpi.t-out{background:#FEF0F2;border-color:#FADDE2;box-shadow:none}
+.fc-kpi.t-save{background:#FFF8E9;border-color:#F6E7C4;box-shadow:none}
+.fc-kpi.t-plan{background:#F3F0FD;border-color:#E2D9F8;box-shadow:none}
+.fc-kpi.ico{display:flex;align-items:flex-start;gap:12px;padding:16px 17px}
+.fc-kpi.ico>.fc-kpi-in{min-width:0;flex:1}
+.fc-kpi.ico header span{font-size:12.5px;font-weight:550}
+.fc-kpi.ico p{margin:2px 0 4px}
+.fc-ico{flex:none;display:grid;place-items:center;width:38px;height:38px;border-radius:12px;
+  background:#fff;color:var(--fin-accent);box-shadow:0 1px 2px rgba(23,19,38,.06)}
+.fc-kpi.t-in .fc-ico{color:#128a5e}
+.fc-kpi.t-out .fc-ico{color:var(--fin-out)}
+.fc-kpi.t-save .fc-ico{color:#a37711}
+.fc-kpi.t-cash .fc-ico{color:#a8225f}
+@media(max-width:700px){.fc-kpi.ico{padding:14px 15px;gap:10px}
+  .fc-ico{width:32px;height:32px;border-radius:10px}}
 
 /* Scenario switch */
 .fc-scen{display:inline-flex;gap:2px;background:var(--fin-sunk);border:1px solid var(--fin-line);

@@ -73,6 +73,32 @@ const PERSONAL_HEADS = {
           "What came in, what went out, and every row behind both."],
 };
 
+// The same treatment for the company's pages. A heading that says only
+// "Revenue" makes the reader supply the rest; two lines and a sentence say
+// what the page is for before they have read a figure. The household pages
+// have read this way since they were built — there was never a reason the
+// company's should not.
+const BUSINESS_HEADS = {
+  revenue: ["Revenue", "Where it came from,", "and what is still owed.",
+            "Everything earned this month, who it came from, and what has not landed yet."],
+  expenses: ["Expenses", "Where it went,", "and what it bought.",
+             "Every cost this month, grouped so the big ones are obvious."],
+  cashflow: ["Cash flow", "What actually moved,", "in and out.",
+             "Money that genuinely arrived and left — not what was promised."],
+  forecast: ["Forecast", "What is committed,", "and when it lands.",
+             "Only what an agreement already says will happen. Nothing modelled."],
+  vendors: ["Vendors", "Who you pay,", "and on what terms.",
+            "Every party, their contracts, and what has been paid against them."],
+  contracts: ["Payment schedule", "Every agreed payment,", "and the date it is due.",
+              "What each agreement asks for, month by month."],
+  pnl: ["Profit and loss", "The month, read", "as a statement.",
+        "Revenue less costs, in the order an accountant reads them."],
+  ledger: ["Ledger", "Every entry,", "exactly as recorded.",
+           "The rows behind every figure in the app."],
+  tools: ["Import & close", "Bring it in,", "then settle the month.",
+          "Import revenue, and close a month so its figures stop moving."],
+};
+
 // Months ahead the picker will walk to. Future months hold no actuals — the
 // point of visiting one is to see what is already committed to land in it.
 const HORIZON_MONTHS = 18;
@@ -147,6 +173,10 @@ export default function FinanceDashboard({ owner, onLogout, onOwner,
   // wearing a different word. Same ledger, same month, different question.
   const personalOnly = (books ?? []).length === 1 && books[0].id === "personal";
   const isHome = personalOnly && view === "overview";
+  // The overview greets whoever is reading, whichever books are open. Every
+  // other page takes its two lines from the map for those books.
+  const greets = view === "overview";
+  const heads = (personalOnly ? PERSONAL_HEADS : BUSINESS_HEADS)[view];
   // A page this instance does not have must not stay open behind the nav.
   useEffect(() => {
     if (!views.some((v) => v[0] === view)) setView("overview");
@@ -580,70 +610,48 @@ export default function FinanceDashboard({ owner, onLogout, onOwner,
             ))}
           </ul>
         </nav>
-        {/* Who you are and the way out live in the bar above the page where
-            there is one. Two of each, in two corners, is not redundancy —
-            it is a second thing to keep in step with the first. */}
-        {owner && !personalOnly && (
-          <div className="fin-sideuser">
-            <Avatar owner={owner} size={30} />
-            <span className="fin-sidewho">
-              <b>{owner.name}</b>
-              <em>{owner.email}</em>
-            </span>
-            <button className="fin-sideedit" onClick={() => setProfiling(true)}
-                    title="My profile" aria-label="My profile">
-              <svg viewBox="0 0 20 20" width="14" height="14" fill="none"
-                   stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"
-                   strokeLinejoin="round" aria-hidden="true">
-                <path d="M13.2 3.6a1.9 1.9 0 0 1 2.7 2.7L7.4 14.8l-3.6.9.9-3.6Z" />
-              </svg>
-            </button>
-          </div>
-        )}
-        {owner && !personalOnly && (
-          // A bare ↪ with a tooltip is not a control anyone finds. The way out
-          // of an app has to say what it is.
-          <button className="fin-sideout" onClick={onLogout}>
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="none"
-                 stroke="currentColor" strokeWidth="1.9" strokeLinecap="round"
-                 strokeLinejoin="round" aria-hidden="true">
-              <path d="M10 20H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h4" />
-              <path d="M16 16l4-4-4-4" />
-              <path d="M20 12H10" />
-            </svg>
-            Log out
-          </button>
-        )}
+        {/* Who you are and the way out live in the bar above the page. Two
+            of each, in two corners, is not redundancy — it is a second thing
+            to keep in step with the first. */}
       </aside>
 
       <div className="fin">
-        {personalOnly && (
-          <div className="fin-topbar">
-            <Search entity={entity} onOpen={(r) => { setPeriod(r.period); setView("ledger"); }} />
-            <Alerts alerts={home?.byEntity?.[entity]?.alerts} onGo={setView} />
-            <AccountMenu owner={owner} onLogout={onLogout}
-                         onProfile={() => setProfiling(true)} />
-          </div>
-        )}
-        <header className={`fin-viewhead${isHome || (personalOnly && PERSONAL_HEADS[view]) ? " fin-greet" : ""}`}>
+        {/* Search, alerts and the account menu are chrome, not a household
+            feature. The company's books were reading their alerts off a panel
+            halfway down one page and keeping the account in the far corner of
+            the sidebar; one bar serves both. The overview call already carries
+            alerts for the company, so the bell costs no extra fetch. */}
+        <div className="fin-topbar">
+          <Search entity={entity}
+                  onOpen={(r) => { setPeriod(r.period); setView(personalOnly ? "money" : "ledger"); }} />
+          <Alerts alerts={(personalOnly ? home : data)?.byEntity?.[entity]?.alerts}
+                  onGo={setView} />
+          <AccountMenu owner={owner} onLogout={onLogout}
+                       onProfile={() => setProfiling(true)} />
+        </div>
+        <header className={`fin-viewhead${greets || heads ? " fin-greet" : ""}`}>
           <div>
-            {!isHome && personalOnly && PERSONAL_HEADS[view] ? (
+            {!greets && heads ? (
               <>
-                <p className="fin-eyebrow">{PERSONAL_HEADS[view][0]}</p>
+                <p className="fin-eyebrow">{heads[0]}</p>
                 {/* One line. The break was hard-coded, so even a short
                     headline took two lines and 85px of a 199px header. */}
                 <h1 className="fin-twoline">
-                  {PERSONAL_HEADS[view][1]} <i>{PERSONAL_HEADS[view][2]}</i>
+                  {heads[1]} <i>{heads[2]}</i>
                 </h1>
-                <p>{PERSONAL_HEADS[view][3]}</p>
+                <p>{heads[3]}</p>
               </>
-            ) : isHome ? (
+            ) : greets ? (
               <>
                 <p className="fin-eyebrow">Welcome back</p>
                 <h1>
                   {greeting()}, <i>{String(owner?.name || "there").split(/\s+/)[0]}!</i>
                 </h1>
-                <p>Here's your financial snapshot for {monthLabel(period)}.</p>
+                <p>
+                  {personalOnly
+                    ? `Here's your financial snapshot for ${monthLabel(period)}.`
+                    : `Here's how ${(brand.name || "").replace(/\s*Finance$/i, "") || "the business"} is doing in ${monthLabel(period)}.`}
+                </p>
               </>
             ) : (
               <>
