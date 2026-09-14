@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Panel } from "./pieces.jsx";
+import { Panel, STAT_ICONS } from "./pieces.jsx";
 import { api } from "../api.js";
 import { monthLabel, today } from "./format.js";
 import { FREQ_LABEL } from "./forecast.jsx";
@@ -89,17 +89,35 @@ export function ContractsView({ sched, money, onChange }) {
           months appeared nowhere at all. Each side now says the same three
           things, and says which side it means. */}
       <div className="fc-kpis ct-kpis">
-        <article className="fc-kpi">
+        <article className="fc-kpi ico t-in">
+          <span className="fc-ico" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor"
+               strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            {STAT_ICONS.in}
+          </svg>
+        </span>
           <header><span>Arrived this month</span></header>
           <p className="fin-fig fe-in">{money.round(t.paidIn)}</p>
           <footer>from contracts, recorded in the ledger</footer>
         </article>
-        <article className="fc-kpi">
+        <article className="fc-kpi ico t-plan">
+          <span className="fc-ico" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor"
+               strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            {STAT_ICONS.calendar}
+          </svg>
+        </span>
           <header><span>Still to arrive</span></header>
           <p className="fin-fig">{money.round(t.dueIn)}</p>
           <footer>owed to you, date not reached</footer>
         </article>
-        <article className={`fc-kpi${lateIn > 0 ? " warn" : ""}`}>
+        <article className={`fc-kpi ico${lateIn > 0 ? " warn" : ""}`}>
+          <span className="fc-ico" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor"
+               strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            {STAT_ICONS.late}
+          </svg>
+        </span>
           <header><span>Late to arrive</span></header>
           <p className={`fin-fig${lateIn > 0 ? " fe-out" : ""}`}>{money.round(lateIn)}</p>
           <footer>
@@ -107,17 +125,35 @@ export function ContractsView({ sched, money, onChange }) {
             {arrears.in > 0 && ` · ${money.round(arrears.in)} from earlier months`}
           </footer>
         </article>
-        <article className="fc-kpi">
+        <article className="fc-kpi ico t-out">
+          <span className="fc-ico" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor"
+               strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            {STAT_ICONS.out}
+          </svg>
+        </span>
           <header><span>Paid out this month</span></header>
           <p className="fin-fig fe-out">{money.round(t.paidOut)}</p>
           <footer>settled against a contract</footer>
         </article>
-        <article className="fc-kpi">
+        <article className="fc-kpi ico t-plan">
+          <span className="fc-ico" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor"
+               strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            {STAT_ICONS.calendar}
+          </svg>
+        </span>
           <header><span>Still to pay</span></header>
           <p className="fin-fig">{money.round(t.dueOut)}</p>
           <footer>you owe it, date not reached</footer>
         </article>
-        <article className={`fc-kpi${lateOut > 0 ? " warn" : ""}`}>
+        <article className={`fc-kpi ico${lateOut > 0 ? " warn" : ""}`}>
+          <span className="fc-ico" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor"
+               strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            {STAT_ICONS.late}
+          </svg>
+        </span>
           <header><span>Late to pay</span></header>
           <p className={`fin-fig${lateOut > 0 ? " fe-out" : ""}`}>{money.round(lateOut)}</p>
           <footer>

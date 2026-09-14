@@ -20,6 +20,51 @@ export function Panel({ id, title, sub, action, narrow, children }) {
   );
 }
 
+// ── A figure, as a tile ──────────────────────────────────────
+// The same tinted card the household pages use. The tone carries the meaning
+// — money in reads green, money out reads red, cash reads as the position —
+// so a row of six is scanned rather than read. Pass no tone and it stays the
+// plain card it has always been.
+export const STAT_ICONS = {
+  cash: <><rect x="2.5" y="5" width="15" height="11" rx="2.5" /><path d="M13 10.5h2.5" /></>,
+  in: <><path d="M10 3.5v11" /><path d="M5.5 10 10 14.5 14.5 10" /></>,
+  out: <><path d="M10 16.5v-11" /><path d="M5.5 10 10 5.5 14.5 10" /></>,
+  net: <><path d="M3 15.5 7.5 9l3.5 3.5L17 5" /><path d="M17 9.5V5h-4.5" /></>,
+  clock: <><circle cx="10" cy="10" r="7" /><path d="M10 6v4.3l2.7 1.6" /></>,
+  fuel: <><path d="M4 16.5V5.5A1.5 1.5 0 0 1 5.5 4h5A1.5 1.5 0 0 1 12 5.5v11" /><path d="M3 16.5h10" /><path d="M12 8h2.5A1.5 1.5 0 0 1 16 9.5V13a1.3 1.3 0 0 0 2.6 0V7.5L16.5 5" /></>,
+  invoice: <><path d="M5 2.5h10v15l-2.5-1.7-2.5 1.7-2.5-1.7L5 17.5Z" /><path d="M8 6.5h4" /><path d="M8 10h4" /></>,
+  late: <><circle cx="10" cy="10" r="7" /><path d="M10 6v4.5" /><path d="M10 13.6v.1" /></>,
+  people: <><circle cx="7.5" cy="7" r="2.6" /><path d="M2.8 16c0-2.6 2.1-4.3 4.7-4.3s4.7 1.7 4.7 4.3" /><path d="M13.5 5.2a2.6 2.6 0 0 1 0 5" /><path d="M14.2 11.9c2 .4 3.3 1.9 3.3 4.1" /></>,
+  calendar: <><rect x="3" y="4.5" width="14" height="12.5" rx="2.2" /><path d="M3 8.5h14" /><path d="M7 2.8v3" /><path d="M13 2.8v3" /></>,
+  percent: <><path d="M5 15 15 5" /><circle cx="6.6" cy="6.6" r="1.9" /><circle cx="13.4" cy="13.4" r="1.9" /></>,
+  lock: <><rect x="4" y="8.5" width="12" height="8.5" rx="2.2" /><path d="M7 8.5V6.4a3 3 0 0 1 6 0v2.1" /></>,
+  fixed: <><path d="M3.5 10h13" /><path d="M6.5 6.5h7" /><path d="M6.5 13.5h7" /></>,
+};
+
+export function Stat({ tone, icon, label, value, negative, warn, children }) {
+  const cls = `fc-kpi${icon ? " ico" : ""}${tone ? ` t-${tone}` : ""}${warn ? " warn" : ""}`;
+  const body = (
+    <>
+      <header><span>{label}</span></header>
+      <p className={`fin-fig${negative ? " fe-out" : tone === "in" ? " fe-in" : ""}`}>{value}</p>
+      <footer>{children}</footer>
+    </>
+  );
+  return (
+    <article className={cls}>
+      {icon && (
+        <span className="fc-ico" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor"
+               strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            {STAT_ICONS[icon]}
+          </svg>
+        </span>
+      )}
+      {body}
+    </article>
+  );
+}
+
 export function Kpi({ label, value, delta, hint, tone, emphasis, invertDelta }) {
   const good = delta == null ? null : invertDelta ? delta <= 0 : delta >= 0;
   return (

@@ -1,4 +1,4 @@
-import { Panel, Receivables, MultiLine } from "./pieces.jsx";
+import { Panel, Receivables, MultiLine, Stat } from "./pieces.jsx";
 import { SpendByCategory } from "./spend.jsx";
 import { monthLabel, today } from "./format.js";
 
@@ -33,13 +33,18 @@ function Delta({ change, invert, bare }) {
   );
 }
 
-function Kpi({ label, value, foot, tone, warn }) {
+// An adapter over the shared tile, so this page keeps the prop names its
+// fifteen call sites already use. The old `tone` was the figure's colour class
+// — "fe-in", "fe-out" — which is also the tint the tile wants, so it maps
+// straight across rather than being spelled twice at every call.
+const TINT = { "fe-in": "in", "fe-out": "out" };
+
+function Kpi({ label, value, foot, tone, warn, icon }) {
   return (
-    <article className={`fc-kpi${warn ? " warn" : ""}`}>
-      <header><span>{label}</span></header>
-      <p className={`fin-fig${tone ? ` ${tone}` : ""}`}>{value}</p>
-      <footer>{foot}</footer>
-    </article>
+    <Stat label={label} value={value} icon={icon} warn={warn}
+          tone={TINT[tone] ?? tone ?? null} negative={tone === "fe-out"}>
+      {foot}
+    </Stat>
   );
 }
 
@@ -52,17 +57,17 @@ function Expenses({ sd, money, period }) {
   return (
     <>
       <div className="fc-kpis sd-kpis">
-        <Kpi label="Expenses recorded" tone="fe-out" value={money.round(sd.thisMonth)}
+        <Kpi label="Expenses recorded" tone="fe-out" icon="out" value={money.round(sd.thisMonth)}
              foot={<Delta change={sd.change} invert />} />
-        <Kpi label="Fixed, under agreement" value={money.round(sd.recurringMonthly)}
+        <Kpi label="Fixed, under agreement" tone="plan" icon="fixed" value={money.round(sd.recurringMonthly)}
              foot="a month, recurring on signed terms" />
-        <Kpi label="Variable this month" value={money.round(sd.variable)}
+        <Kpi label="Variable this month" icon="percent" value={money.round(sd.variable)}
              foot={sd.thisMonth
                ? `${pct(1 - (sd.fixedShare ?? 0))}% of what was recorded`
                : "nothing recorded this month"} />
-        <Kpi label="Due out, 30 days" value={money.round(sd.expected.d30)}
+        <Kpi label="Due out, 30 days" icon="calendar" value={money.round(sd.expected.d30)}
              foot="committed, not yet paid" />
-        <Kpi label="Late to pay" warn={sd.overdueTotal > 0}
+        <Kpi label="Late to pay" icon="late" warn={sd.overdueTotal > 0}
              tone={sd.overdueTotal > 0 ? "fe-out" : null}
              value={money.round(sd.overdueTotal)}
              foot={`${bills.length} past ${bills.length === 1 ? "its" : "their"} date`} />
@@ -202,19 +207,19 @@ function Revenue({ sd, money, period, inLabel = "Revenue" }) {
   return (
     <>
       <div className="fc-kpis sd-kpis">
-        <Kpi label={`${inLabel} recorded`} tone="fe-in" value={money.round(sd.thisMonth)}
+        <Kpi label={`${inLabel} recorded`} tone="fe-in" icon="in" value={money.round(sd.thisMonth)}
              foot={<Delta change={sd.change} />} />
-        <Kpi label="Invoiced this month" value={money.round(st.invoicedTotal ?? 0)}
+        <Kpi label="Invoiced this month" tone="cash" icon="invoice" value={money.round(st.invoicedTotal ?? 0)}
              foot={st.issued
                ? `${st.issued} invoice${st.issued === 1 ? "" : "s"} raised`
                : "no invoices raised"} />
-        <Kpi label="Outstanding" value={money.round(ar?.total ?? 0)}
+        <Kpi label="Outstanding" icon="clock" value={money.round(ar?.total ?? 0)}
              foot="issued and not yet settled" />
-        <Kpi label="Overdue" warn={(ar?.overdue ?? 0) > 0}
+        <Kpi label="Overdue" icon="late" warn={(ar?.overdue ?? 0) > 0}
              tone={(ar?.overdue ?? 0) > 0 ? "fe-out" : null}
              value={money.round(ar?.overdue ?? 0)}
              foot={`${(ar?.invoices ?? []).filter((i) => i.daysOverdue > 0).length} past their date`} />
-        <Kpi label="Expected in, 30 days" value={money.round(sd.expected.d30)}
+        <Kpi label="Expected in, 30 days" tone="plan" icon="calendar" value={money.round(sd.expected.d30)}
              foot="under contract, not yet arrived" />
       </div>
 
@@ -236,23 +241,23 @@ function Revenue({ sd, money, period, inLabel = "Revenue" }) {
       </Panel>
 
       <div className="fc-kpis sd-stats">
-        <Kpi label="Invoices issued" value={st.issued ?? 0}
+        <Kpi label="Invoices issued" icon="invoice" value={st.issued ?? 0}
              foot={st.issuedBefore != null
                ? `${st.issuedBefore} the month before`
                : "—"} />
-        <Kpi label="Average invoice" value={money.round(st.averageValue ?? 0)}
+        <Kpi label="Average invoice" icon="cash" value={money.round(st.averageValue ?? 0)}
              foot={st.issued ? `across ${st.issued} raised` : "none raised"} />
-        <Kpi label="Collection rate"
+        <Kpi label="Collection rate" icon="percent"
              value={st.collectionRate == null ? "—" : `${pct(st.collectionRate)}%`}
              foot={st.collectionRate == null
                ? "nothing invoiced this month"
                : "of this month's invoices, settled"} />
-        <Kpi label="Days to collect"
+        <Kpi label="Days to collect" icon="clock"
              value={st.daysToCollect == null ? "—" : `${st.daysToCollect}`}
              foot={st.daysToCollect == null
                ? "no invoice settled yet"
                : `mean over ${st.daysToCollectFrom} settled`} />
-        <Kpi label="Under contract" value={money.round(sd.recurringMonthly)}
+        <Kpi label="Under contract" icon="lock" value={money.round(sd.recurringMonthly)}
              foot="a month, recurring on signed terms" />
       </div>
 

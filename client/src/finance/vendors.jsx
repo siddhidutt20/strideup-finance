@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Panel } from "./pieces.jsx";
+import { Panel, STAT_ICONS } from "./pieces.jsx";
 import { segment as seg } from "./spend.jsx";
 import { api } from "../api.js";
 import { monthLabel, ENTITY_LABEL, SPEND_GROUPS } from "./format.js";
@@ -288,17 +288,35 @@ export function VendorsView({ vm, money, entity, categories, onUpload, onRecord,
   return (
     <>
       <div className="fc-kpis vm-kpis">
-        <article className="fc-kpi">
+        <article className="fc-kpi ico">
+          <span className="fc-ico" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor"
+               strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            {STAT_ICONS.people}
+          </svg>
+        </span>
           <header><span>Parties</span></header>
           <p className="fin-fig">{t.vendors}</p>
           <footer>{t.contracts} agreement{t.contracts === 1 ? "" : "s"} on file</footer>
         </article>
-        <article className="fc-kpi">
+        <article className="fc-kpi ico t-plan">
+          <span className="fc-ico" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor"
+               strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            {STAT_ICONS.calendar}
+          </svg>
+        </span>
           <header><span>Due soon</span></header>
           <p className="fin-fig">{t.dueCount}</p>
           <footer>{money.round(t.dueAmount)} in the next {vm.horizonDays} days</footer>
         </article>
-        <article className={`fc-kpi${t.overdueCount > 0 ? " warn" : ""}`}>
+        <article className={`fc-kpi ico${t.overdueCount > 0 ? " warn" : ""}`}>
+          <span className="fc-ico" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor"
+               strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            {STAT_ICONS.late}
+          </svg>
+        </span>
           <header><span>Overdue</span></header>
           <p className={`fin-fig${t.overdueCount > 0 ? " fe-out" : ""}`}>{t.overdueCount}</p>
           <footer>
@@ -307,17 +325,35 @@ export function VendorsView({ vm, money, entity, categories, onUpload, onRecord,
               : "nothing past its date"}
           </footer>
         </article>
-        <article className={`fc-kpi${vm.expiring.length > 0 ? " warn" : ""}`}>
+        <article className={`fc-kpi ico${vm.expiring.length > 0 ? " warn" : ""}`}>
+          <span className="fc-ico" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor"
+               strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            {STAT_ICONS.clock}
+          </svg>
+        </span>
           <header><span>Ending soon</span></header>
           <p className="fin-fig">{vm.expiring.length}</p>
           <footer>agreements ending within 90 days</footer>
         </article>
-        <article className="fc-kpi">
+        <article className="fc-kpi ico t-out">
+          <span className="fc-ico" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor"
+               strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            {STAT_ICONS.out}
+          </svg>
+        </span>
           <header><span>Paid out this year</span></header>
           <p className="fin-fig fe-out">{money.round(t.paidOutYear)}</p>
           <footer>since {vm.yearStart}</footer>
         </article>
-        <article className="fc-kpi">
+        <article className="fc-kpi ico t-in">
+          <span className="fc-ico" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor"
+               strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            {STAT_ICONS.in}
+          </svg>
+        </span>
           <header><span>Received this year</span></header>
           <p className="fin-fig fe-in">{money.round(t.paidInYear)}</p>
           <footer>since {vm.yearStart}</footer>

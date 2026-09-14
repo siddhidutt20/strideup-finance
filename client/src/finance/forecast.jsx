@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Panel } from "./pieces.jsx";
+import { Panel, STAT_ICONS } from "./pieces.jsx";
 import { api } from "../api.js";
 import { monthLabel, today, CURRENCIES, ENTITY_LABEL, SPEND_GROUPS } from "./format.js";
 
@@ -540,17 +540,35 @@ export function ForecastView({ fc, commitments, money, categories, entity, onCha
         </div>
       )}
       <div className="fc-kpis">
-        <article className="fc-kpi">
+        <article className="fc-kpi ico t-cash">
+          <span className="fc-ico" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor"
+               strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            {STAT_ICONS.cash}
+          </svg>
+        </span>
           <header><span>Position today</span></header>
           <p className="fin-fig">{money.exact(fc.opening)}</p>
           <footer>{fc.openingSource === "bank" ? "from your bank feed" : "everything recorded so far"}</footer>
         </article>
-        <article className="fc-kpi">
+        <article className="fc-kpi ico t-in">
+          <span className="fc-ico" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor"
+               strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            {STAT_ICONS.in}
+          </svg>
+        </span>
           <header><span>Committed in</span></header>
           <p className="fin-fig fe-in">{money.round(totalIn)}</p>
           <footer>agreed, over {fc.months.length - 1} months</footer>
         </article>
-        <article className="fc-kpi">
+        <article className="fc-kpi ico t-out">
+          <span className="fc-ico" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor"
+               strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            {STAT_ICONS.out}
+          </svg>
+        </span>
           <header><span>Committed out</span></header>
           <p className="fin-fig fe-out">{money.round(totalOut)}</p>
           <footer>agreed, over {fc.months.length - 1} months</footer>

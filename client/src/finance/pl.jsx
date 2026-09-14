@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { api } from "../api.js";
-import { Panel, ComboChart, MultiLine } from "./pieces.jsx";
+import { Panel, ComboChart, MultiLine, STAT_ICONS } from "./pieces.jsx";
 import { SpendByCategory } from "./spend.jsx";
 import { monthLabel, majorOf, SPEND_GROUPS } from "./format.js";
 
@@ -68,16 +68,6 @@ function MarginRow({ label, m }) {
 }
 
 const SPANS = [["month", "Month"], ["quarter", "Quarter"], ["ytd", "YTD"]];
-
-function Kpi({ label, value, foot }) {
-  return (
-    <article className="fc-kpi">
-      <header><span>{label}</span></header>
-      <p className="fin-fig">{value}</p>
-      <footer>{foot}</footer>
-    </article>
-  );
-}
 
 function Change({ now, before, unit = "%", points }) {
   if (before == null || now == null) return <span className="sd-flat">no period to compare</span>;
@@ -155,19 +145,37 @@ export function PlView({ pl, money, period, span, compare, onSpan, onCompare, ca
       </div>
 
       <div className="fc-kpis pl-kpis">
-        <article className="fc-kpi">
+        <article className="fc-kpi ico t-in">
+          <span className="fc-ico" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor"
+               strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            {STAT_ICONS.in}
+          </svg>
+        </span>
           <header><span>Revenue</span></header>
           <p className="fin-fig fe-in">{money.round(st.revenue.actual)}</p>
           <footer><Change now={st.revenue.actual} before={prev.revenue.actual} /></footer>
           <Spark series={spark("revenue")} colour="#2a78d6" />
         </article>
-        <article className="fc-kpi">
+        <article className="fc-kpi ico t-save">
+          <span className="fc-ico" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor"
+               strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            {STAT_ICONS.net}
+          </svg>
+        </span>
           <header><span>Gross profit</span></header>
           <p className="fin-fig">{money.round(st.grossProfit.actual)}</p>
           <footer><Change now={st.grossProfit.actual} before={prev.grossProfit.actual} /></footer>
           <Spark series={spark("grossProfit")} colour="#1baf7a" />
         </article>
-        <article className="fc-kpi">
+        <article className="fc-kpi ico">
+          <span className="fc-ico" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor"
+               strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            {STAT_ICONS.percent}
+          </svg>
+        </span>
           <header><span>Gross margin</span></header>
           <p className="fin-fig">
             {st.grossMargin.actual == null ? "—" : `${pct(st.grossMargin.actual)}%`}
@@ -175,7 +183,13 @@ export function PlView({ pl, money, period, span, compare, onSpan, onCompare, ca
           <footer><Change now={st.grossMargin.actual} before={prev.grossMargin.actual} points /></footer>
           <Spark series={spark("grossMargin")} colour="#1baf7a" />
         </article>
-        <article className="fc-kpi">
+        <article className="fc-kpi ico t-save">
+          <span className="fc-ico" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor"
+               strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            {STAT_ICONS.net}
+          </svg>
+        </span>
           <header><span>Operating profit</span></header>
           <p className={`fin-fig${st.operatingProfit.actual < 0 ? " fe-out" : ""}`}>
             {money.round(st.operatingProfit.actual)}
@@ -183,7 +197,13 @@ export function PlView({ pl, money, period, span, compare, onSpan, onCompare, ca
           <footer><Change now={st.operatingProfit.actual} before={prev.operatingProfit.actual} /></footer>
           <Spark series={spark("operatingProfit")} colour="#eda100" />
         </article>
-        <article className="fc-kpi">
+        <article className="fc-kpi ico t-save">
+          <span className="fc-ico" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor"
+               strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            {STAT_ICONS.net}
+          </svg>
+        </span>
           <header><span>Net profit</span></header>
           <p className={`fin-fig${st.netProfit.actual < 0 ? " fe-out" : ""}`}>
             {money.round(st.netProfit.actual)}
@@ -191,7 +211,13 @@ export function PlView({ pl, money, period, span, compare, onSpan, onCompare, ca
           <footer><Change now={st.netProfit.actual} before={prev.netProfit.actual} /></footer>
           <Spark series={spark("netProfit")} colour="#008300" />
         </article>
-        <article className="fc-kpi">
+        <article className="fc-kpi ico">
+          <span className="fc-ico" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor"
+               strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            {STAT_ICONS.percent}
+          </svg>
+        </span>
           <header><span>Net margin</span></header>
           <p className={`fin-fig${(st.netMargin.actual ?? 0) < 0 ? " fe-out" : ""}`}>
             {st.netMargin.actual == null ? "—" : `${pct(st.netMargin.actual)}%`}

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Panel } from "./pieces.jsx";
+import { Panel, STAT_ICONS } from "./pieces.jsx";
 import { segment as seg } from "./spend.jsx";
 import { monthLabel } from "./format.js";
 
@@ -320,38 +320,74 @@ export function CashView({ ch, money, period, onGo }) {
   return (
     <>
       <div className="fc-kpis ch-kpis">
-        <article className="fc-kpi">
+        <article className="fc-kpi ico t-cash">
+          <span className="fc-ico" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor"
+               strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            {STAT_ICONS.cash}
+          </svg>
+        </span>
           <header><span>Cash today</span></header>
           <p className="fin-fig">{money.exact(ch.cash.amount)}</p>
           <footer>{ch.cash.source === "bank" ? "from your bank feed" : "everything recorded so far"}</footer>
           <Spark series={trend.map((m) => m.revenue - m.expenses)} tone="in" />
         </article>
-        <article className="fc-kpi">
+        <article className="fc-kpi ico t-plan">
+          <span className="fc-ico" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor"
+               strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            {STAT_ICONS.calendar}
+          </svg>
+        </span>
           <header><span>Projected, 30 days</span></header>
           <p className={`fin-fig${ch.projected30 < 0 ? " fe-out" : ""}`}>{money.round(ch.projected30)}</p>
           <footer>on {ch.forecast.months[1]?.period ?? "next month"}</footer>
           <Spark series={ch.forecast.months.map((m) => m.closing)} tone="accent" />
         </article>
-        <article className="fc-kpi">
+        <article className="fc-kpi ico t-save">
+          <span className="fc-ico" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor"
+               strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            {STAT_ICONS.net}
+          </svg>
+        </span>
           <header><span>Net, 30 days</span></header>
           <p className={`fin-fig${ch.committed30 < 0 ? " fe-out" : " fe-in"}`}>
             {ch.committed30 >= 0 ? "+" : "−"}{money.round(Math.abs(ch.committed30))}
           </p>
           <footer>committed to move, either way</footer>
         </article>
-        <article className="fc-kpi">
+        <article className="fc-kpi ico t-in">
+          <span className="fc-ico" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor"
+               strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            {STAT_ICONS.in}
+          </svg>
+        </span>
           <header><span>Total in, {ch.months} months</span></header>
           <p className="fin-fig fe-in">{money.round(ch.inflow)}</p>
           <footer>committed and estimated</footer>
           <Spark series={trend.map((m) => m.revenue)} tone="in" />
         </article>
-        <article className="fc-kpi">
+        <article className="fc-kpi ico t-out">
+          <span className="fc-ico" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor"
+               strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            {STAT_ICONS.out}
+          </svg>
+        </span>
           <header><span>Total out, {ch.months} months</span></header>
           <p className="fin-fig fe-out">{money.round(ch.outflow)}</p>
           <footer>committed and estimated</footer>
           <Spark series={trend.map((m) => m.expenses)} tone="out" />
         </article>
-        <article className={`fc-kpi${r.burning && r.current != null && r.current < 3 ? " warn" : ""}`}>
+        <article className={`fc-kpi ico${r.burning && r.current != null && r.current < 3 ? " warn" : ""}`}>
+          <span className="fc-ico" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor"
+               strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            {STAT_ICONS.fuel}
+          </svg>
+        </span>
           <header><span>Runway</span></header>
           <p className="fin-fig">{r.burning ? runwayText(r, r.current) : "—"}</p>
           <footer>

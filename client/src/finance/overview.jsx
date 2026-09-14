@@ -1,4 +1,4 @@
-import { Panel, TrendChart, Receivables } from "./pieces.jsx";
+import { Panel, TrendChart, Receivables, Stat } from "./pieces.jsx";
 import { SpendByCategory } from "./spend.jsx";
 import { monthLabel } from "./format.js";
 
@@ -9,44 +9,6 @@ import { monthLabel } from "./format.js";
 // show you a different number for the same thing.
 
 const pct = (v) => (v == null ? null : Math.round(v * 100));
-
-// ── A figure, as a tile ──────────────────────────────────────
-// The same tinted card the household pages use. The tone carries the meaning
-// — money in reads green, money out reads red, cash reads as the position —
-// so a row of six is scanned rather than read. Pass no tone and it stays the
-// plain card it has always been.
-const STAT_ICONS = {
-  cash: <><rect x="2.5" y="5" width="15" height="11" rx="2.5" /><path d="M13 10.5h2.5" /></>,
-  in: <><path d="M10 3.5v11" /><path d="M5.5 10 10 14.5 14.5 10" /></>,
-  out: <><path d="M10 16.5v-11" /><path d="M5.5 10 10 5.5 14.5 10" /></>,
-  net: <><path d="M3 15.5 7.5 9l3.5 3.5L17 5" /><path d="M17 9.5V5h-4.5" /></>,
-  clock: <><circle cx="10" cy="10" r="7" /><path d="M10 6v4.3l2.7 1.6" /></>,
-  fuel: <><path d="M4 16.5V5.5A1.5 1.5 0 0 1 5.5 4h5A1.5 1.5 0 0 1 12 5.5v11" /><path d="M3 16.5h10" /><path d="M12 8h2.5A1.5 1.5 0 0 1 16 9.5V13a1.3 1.3 0 0 0 2.6 0V7.5L16.5 5" /></>,
-};
-
-export function Stat({ tone, icon, label, value, negative, warn, children }) {
-  const cls = `fc-kpi${icon ? " ico" : ""}${tone ? ` t-${tone}` : ""}${warn ? " warn" : ""}`;
-  const body = (
-    <>
-      <header><span>{label}</span></header>
-      <p className={`fin-fig${negative ? " fe-out" : tone === "in" ? " fe-in" : ""}`}>{value}</p>
-      <footer>{children}</footer>
-    </>
-  );
-  return (
-    <article className={cls}>
-      {icon && (
-        <span className="fc-ico" aria-hidden="true">
-          <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor"
-               strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-            {STAT_ICONS[icon]}
-          </svg>
-        </span>
-      )}
-      {icon ? <span className="fc-kpi-in">{body}</span> : body}
-    </article>
-  );
-}
 
 function Change({ v, invert }) {
   if (v == null) return <span className="sd-flat">no month before this</span>;
@@ -290,36 +252,54 @@ export function OverviewDash({ ov, money, period, onGo }) {
 
       <div className="ov-band">
         <Panel title="Revenue and expenses by month"
+               action={<button className="fin-link" onClick={() => onGo("pnl")}>
+                         Full statement →
+                       </button>}
                sub={pj
                  ? `Seven months to ${monthLabel(period)} — recorded, then committed`
                  : `Seven months to ${monthLabel(period)}, as recorded`}>
           <TrendChart series={trend} money={money} current={period} />
         </Panel>
-        <Panel title="Needs attention" sub="Conditions that are true right now">
-          <Alerts alerts={ov.alerts} onGo={onGo} />
-        </Panel>
+        {/* The two short panels stack into the chart's column rather than each
+            claiming a full-width row of its own. Before this, "Needs attention"
+            sat alone beside a chart three times its height and the page carried
+            a rectangle of nothing underneath it. */}
+        <div className="ov-stack">
+          <Panel title="Needs attention" sub="Conditions that are true right now">
+            <Alerts alerts={ov.alerts} onGo={onGo} />
+          </Panel>
+          <Panel title="Outstanding"
+                 action={<button className="fin-link" onClick={() => onGo("revenue")}>
+                           View all →
+                         </button>}
+                 sub={past ? "Invoices raised and not yet settled, as of today"
+                           : "Invoices raised and not yet settled"}>
+            <div className="ov-quad">
+              <div><span>Total</span><b className="fin-fig">{money.round(ov.receivables.total)}</b></div>
+              <div><span>Overdue</span>
+                <b className={`fin-fig${ov.receivables.overdue > 0 ? " fe-out" : ""}`}>
+                  {money.round(ov.receivables.overdue)}
+                </b></div>
+            </div>
+            <Ageing ar={ov.receivables} money={money} />
+          </Panel>
+        </div>
       </div>
 
       <div className="ov-band3">
         <Panel title={pj ? "Where the money is going" : "Where the money went"}
+               action={<button className="fin-link" onClick={() => onGo("expenses")}>
+                         See details →
+                       </button>}
                sub={`${pj ? "Committed" : "Expenses"} · ${monthLabel(period)}`}>
           <SpendByCategory rows={pj ? pj.byCategory : ov.expensesByCategory} money={money}
                            period={period}
                            total={pj ? pj.categoryTotal : ov.expenseTotal} />
         </Panel>
-        <Panel title="Outstanding"
-               sub={past ? "Invoices raised and not yet settled, as of today"
-                         : "Invoices raised and not yet settled"}>
-          <div className="ov-quad">
-            <div><span>Total</span><b className="fin-fig">{money.round(ov.receivables.total)}</b></div>
-            <div><span>Overdue</span>
-              <b className={`fin-fig${ov.receivables.overdue > 0 ? " fe-out" : ""}`}>
-                {money.round(ov.receivables.overdue)}
-              </b></div>
-          </div>
-          <Ageing ar={ov.receivables} money={money} />
-        </Panel>
-        <Panel title="Monthly burn" sub={`Averaged over ${ov.burn.recentMonths} complete months`}>
+        <Panel title="Monthly burn" sub={`Averaged over ${ov.burn.recentMonths} complete months`}
+               action={<button className="fin-link" onClick={() => onGo("cashflow")}>
+                         Cash flow →
+                       </button>}>
           <div className="ov-quad">
             <div><span>Under agreement</span>
               <b className="fin-fig">{money.round(ov.burn.fixedMonthly)}</b></div>
@@ -336,6 +316,9 @@ export function OverviewDash({ ov, money, period, onGo }) {
       </div>
 
       <Panel title={pj ? `Falling due in ${monthLabel(period)}` : "Coming up"}
+             action={<button className="fin-link" onClick={() => onGo("contracts")}>
+                       Payment schedule →
+                     </button>}
              sub={pj
                ? `${money.round(pj.committedOut)} out · ${money.round(pj.committedIn)} in, all under agreement`
                : `${money.round(ov.upcomingTotal)} owed now or falling due in 30 days`}>

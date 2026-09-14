@@ -428,7 +428,7 @@ export const FORECAST_CSS = `
   letter-spacing:.01em}
 .fc-kpi p{margin:7px 0 5px;font-size:25px;line-height:1.1;font-weight:600;
   letter-spacing:-.022em}
-.fc-kpi footer{font-size:11.5px;color:var(--fin-faint);line-height:1.4}
+.fc-kpi footer{font-size:11.5px;color:var(--fin-faint);line-height:1.38;text-wrap:pretty}
 .fc-kpi.warn{border-color:#F0D9C8;background:linear-gradient(#FFFBF7,var(--fin-surface))}
 /* The household tiles carry a tint and an icon, so a row of six is scanned
    rather than read left to right. The company's tiles were the same shape in
@@ -440,9 +440,21 @@ export const FORECAST_CSS = `
 .fc-kpi.t-out{background:#FEF0F2;border-color:#FADDE2;box-shadow:none}
 .fc-kpi.t-save{background:#FFF8E9;border-color:#F6E7C4;box-shadow:none}
 .fc-kpi.t-plan{background:#F3F0FD;border-color:#E2D9F8;box-shadow:none}
-.fc-kpi.ico{display:flex;align-items:flex-start;gap:12px;padding:16px 17px}
-.fc-kpi.ico>.fc-kpi-in{min-width:0;flex:1}
+/* Grid rather than flex, so the icon is a plain sibling of header/p/footer
+   and no tile needs an extra wrapper element around its body. */
+.fc-kpi.ico{display:grid;grid-template-columns:38px minmax(0,1fr);
+  column-gap:12px;align-content:start;padding:16px 17px}
+/* Every child but the icon sits in the second column — some tiles carry a
+   sparkline after the footer, and naming header/p/footer would have dropped
+   it into the icon's lane. */
+.fc-kpi.ico>*{grid-column:2;min-width:0}
+.fc-kpi.ico>.fc-ico{grid-row:1/-1;grid-column:1;align-self:start}
 .fc-kpi.ico header span{font-size:12.5px;font-weight:550}
+/* A row of tiles is read as a row of figures, so the figures have to sit on
+   one line. Reserve two lines for every label: one tile whose label wraps
+   ("Fixed, under agreement") would otherwise push its own figure down and
+   break the row for all of them. */
+.fc-kpi.ico>header{min-height:2.7em;align-items:flex-start}
 .fc-kpi.ico p{margin:2px 0 4px}
 .fc-ico{flex:none;display:grid;place-items:center;width:38px;height:38px;border-radius:12px;
   background:#fff;color:var(--fin-accent);box-shadow:0 1px 2px rgba(23,19,38,.06)}
@@ -450,7 +462,7 @@ export const FORECAST_CSS = `
 .fc-kpi.t-out .fc-ico{color:var(--fin-out)}
 .fc-kpi.t-save .fc-ico{color:#a37711}
 .fc-kpi.t-cash .fc-ico{color:#a8225f}
-@media(max-width:700px){.fc-kpi.ico{padding:14px 15px;gap:10px}
+@media(max-width:700px){.fc-kpi.ico{padding:14px 15px;column-gap:10px;grid-template-columns:32px minmax(0,1fr)}
   .fc-ico{width:32px;height:32px;border-radius:10px}}
 
 /* Scenario switch */
@@ -879,7 +891,7 @@ export const SIDE_CSS = `
    rows step down the same way, so the page keeps one rhythm at every width. */
 .sd-kpis,.sd-stats{grid-template-columns:repeat(5,minmax(0,1fr))}
 .sd-stats{margin:0 0 18px}
-@media(max-width:1320px){.sd-kpis,.sd-stats{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:1460px){.sd-kpis,.sd-stats{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:820px){.sd-kpis,.sd-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:460px){.sd-kpis,.sd-stats{grid-template-columns:minmax(0,1fr)}}
 
@@ -1028,14 +1040,14 @@ export const OVERVIEW_CSS = `
 @media(max-width:460px){.ov-kpis{grid-template-columns:minmax(0,1fr)}}
 .ov-band{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(0,1fr);gap:16px;
   align-items:start}
-.ov-band3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:start}
-@media(max-width:1200px){.ov-band3{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.ov-stack{display:grid;gap:16px;align-content:start}
+/* Two panels, not three: Outstanding moved up beside the chart, and the donut
+   gets room for its legend instead of a third of the row. */
+.ov-band3{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px;align-items:start}
 @media(max-width:900px){.ov-band,.ov-band3{grid-template-columns:minmax(0,1fr)}}
 /* In a third-width panel the donut and its legend side by side leave no room
    for a category name, and every label truncated to one letter is a legend
    that identifies nothing. Stacked, the names get the full width. */
-.ov-band3 .sp-wrap{grid-template-columns:minmax(0,1fr)}
-.ov-band3 .sp-donut{justify-self:center}
 .ov-band3 .sp-name{overflow:visible;white-space:normal}
 .ov-quad{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
 .ov-quad div{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
@@ -1080,7 +1092,7 @@ export const PL_CSS = `
 .pl-controls .fin-btn{margin-left:auto}
 @media(max-width:560px){.pl-controls .fin-btn{margin-left:0;width:100%;text-align:center}}
 .pl-kpis{grid-template-columns:repeat(6,minmax(0,1fr))}
-@media(max-width:1400px){.pl-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:1500px){.pl-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:820px){.pl-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:460px){.pl-kpis{grid-template-columns:minmax(0,1fr)}}
 .pl-kpis .fc-kpi{position:relative;overflow:hidden}
