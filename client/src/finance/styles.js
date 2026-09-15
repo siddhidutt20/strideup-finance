@@ -1277,10 +1277,42 @@ export const HOME_CSS = `
 .tb-results span{grid-row:1/3;align-self:center;font-family:var(--fin-display);
   font-weight:650;font-size:16px}
 .tb-hint{margin:0;padding:9px 11px;font-size:12.5px;color:var(--fin-muted)}
+/* The bell asks rather than counts, so its rows carry a name, an amount and
+   the button that answers. They are list items, not the menu's own buttons —
+   the grid rule above is for "go somewhere", and this row does not go
+   anywhere, it records. */
+.tb-alerts{min-width:352px;max-width:392px;padding:8px}
+.tb-head{margin:2px 4px 8px;font-size:12px;font-weight:600;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--fin-faint)}
+.tb-asks{list-style:none;margin:0 0 4px;padding:0;display:flex;flex-direction:column;gap:6px}
+.tb-ask{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:11px;
+  background:var(--fin-sunk);border:1px solid var(--fin-hair)}
+.tb-ask.late{background:#FEF3F2;border-color:#FADDE2}
+.tb-ask-what{min-width:0;flex:1;display:flex;flex-direction:column;gap:1px}
+.tb-ask-what b{font-size:13px;font-weight:600;color:var(--fin-ink);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tb-ask-what em{font-style:normal;font-size:11.5px;color:var(--fin-faint);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tb-ask-amt{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:5px}
+.tb-ask-amt>b{font-family:var(--fin-display);font-weight:650;font-size:14px;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+/* The menu's own button rule strips background and border, because every other
+   button in here is a "go somewhere" row. This one is an action, so it has to
+   put the pill back — naming only the padding would leave it looking like text. */
+.tb-ask .fin-btn.sm{background:var(--fin-accent);color:#fff;border:0;font-weight:600;
+  padding:5px 10px;font-size:11.5px;border-radius:8px;white-space:nowrap;cursor:pointer}
+.tb-ask .fin-btn.sm:hover{background:#4c1d95}
+.tb-ask .fin-btn.sm:disabled{opacity:.55;cursor:default;background:var(--fin-accent)}
+.tb-err{margin:4px 4px 2px;font-size:12px;color:var(--fin-neg)}
+@media(max-width:560px){.tb-alerts{min-width:0;width:min(88vw,352px)}}
 .tb-me{border-bottom:1px solid var(--fin-hair);margin-bottom:4px}
 .tb-me b{display:block;font-size:13px;color:var(--fin-ink)}
 .tb-me em{font-style:normal;font-size:11.5px;color:var(--fin-faint)}
 .tb-bell{position:relative}
+.tb-count{position:absolute;top:4px;right:3px;min-width:16px;height:16px;padding:0 4px;
+  border-radius:999px;background:var(--fin-out);color:#fff;font-size:10.5px;font-weight:700;
+  font-style:normal;line-height:16px;text-align:center;
+  box-shadow:0 0 0 2px var(--fin-surface)}
 .tb-bell>button,.tb-who>button{display:flex;align-items:center;gap:8px;height:42px;
   border:1px solid var(--fin-line);background:var(--fin-surface);border-radius:999px;
   color:var(--fin-muted);cursor:pointer;font-family:inherit;padding:0 12px}

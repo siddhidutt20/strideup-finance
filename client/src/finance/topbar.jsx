@@ -76,15 +76,67 @@ export function Search({ entity, onOpen }) {
 
 // The bell counts things that want a decision — bills past their date and
 // rows nobody has confirmed — not a feed of everything that happened.
-export function Alerts({ alerts, onGo }) {
+// ── The bell ─────────────────────────────────────────────────
+// On the day a payment falls due, this asks — by name, with the amount — and
+// takes the answer where it is read. Before, it carried two counts and sent
+// the reader off to find the row themselves, which is the trip this exists to
+// save.
+//
+// Recording posts to the same route the Bills and Income pages use, keyed on
+// the (commitment, due date) pair. Pressing Record twice records one payment.
+function Ask({ item, money, busy, onRecord }) {
+  const late = item.status === "overdue";
+  const when = item.daysAway === 0
+    ? "due today"
+    : `${Math.abs(item.daysAway)} day${Math.abs(item.daysAway) === 1 ? "" : "s"} late`;
+  return (
+    <li className={`tb-ask${late ? " late" : ""}`}>
+      <span className="tb-ask-what">
+        <b>{item.counterparty || item.description}</b>
+        <em>
+          {item.counterparty ? `${item.description} · ` : ""}{when}
+        </em>
+      </span>
+      <span className="tb-ask-amt">
+        <b className={item.direction === "in" ? "fe-in" : "fe-out"}>
+          {money ? money.round(item.amount) : item.amount}
+        </b>
+        <button className="fin-btn sm" disabled={busy}
+                onClick={() => onRecord(item)}>
+          {item.direction === "in" ? "Record receipt" : "Record payment"}
+        </button>
+      </span>
+    </li>
+  );
+}
+
+export function Alerts({ alerts, money, onGo, onRecord }) {
   const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(null);
+  const [err, setErr] = useState("");
   const box = useRef(null);
   useEffect(() => {
     const away = (e) => { if (box.current && !box.current.contains(e.target)) setOpen(false); };
     document.addEventListener("mousedown", away);
     return () => document.removeEventListener("mousedown", away);
   }, []);
+
+  const asking = alerts?.asking ?? [];
   const n = alerts?.total ?? 0;
+
+  async function record(item) {
+    setErr("");
+    setBusy(`${item.commitmentId}:${item.date}`);
+    try {
+      await api.markPaid(item.commitmentId, { dueDate: item.date });
+      await onRecord?.();
+    } catch (e) {
+      setErr(e.message || "Could not record that.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <div className="tb-bell" ref={box}>
       <button onClick={() => setOpen((v) => !v)} aria-expanded={open}
@@ -94,25 +146,41 @@ export function Alerts({ alerts, onGo }) {
           <path d="M10 2.8a4.6 4.6 0 0 1 4.6 4.6c0 4 1.4 5.4 1.4 5.4H4s1.4-1.4 1.4-5.4A4.6 4.6 0 0 1 10 2.8Z" />
           <path d="M8.4 15.6a1.8 1.8 0 0 0 3.2 0" />
         </svg>
-        {n > 0 && <i className="tb-dot" />}
+        {n > 0 && <i className="tb-count">{n > 99 ? "99+" : n}</i>}
       </button>
       {open && (
         <div className="tb-menu tb-alerts">
           {n === 0 ? (
-            <p className="tb-hint">Nothing is late and nothing is waiting to be checked.</p>
+            <p className="tb-hint">
+              Nothing has reached its date and nothing is waiting to be checked.
+              {alerts?.soon ? ` ${alerts.soon} coming up in the next two weeks.` : ""}
+            </p>
           ) : (
             <>
-              {alerts.overdue > 0 && (
-                <button onClick={() => { setOpen(false); onGo("bills"); }}>
-                  <b>{alerts.overdue} bill{alerts.overdue === 1 ? "" : "s"} past their date</b>
-                  <em>Open Bills</em>
-                </button>
+              {asking.length > 0 && (
+                <>
+                  <p className="tb-head">
+                    Did {asking.length === 1 ? "this" : "these"} happen?
+                  </p>
+                  <ul className="tb-asks">
+                    {asking.map((it) => (
+                      <Ask key={`${it.commitmentId}:${it.date}`} item={it} money={money}
+                           busy={busy === `${it.commitmentId}:${it.date}`} onRecord={record} />
+                    ))}
+                  </ul>
+                  {err && <p className="tb-err">{err}</p>}
+                </>
               )}
-              {alerts.needsReview > 0 && (
+              {alerts?.needsReview > 0 && (
                 <button onClick={() => { setOpen(false); onGo("ledger"); }}>
                   <b>{alerts.needsReview} entr{alerts.needsReview === 1 ? "y" : "ies"} to check</b>
                   <em>Read from a document, not yet confirmed</em>
                 </button>
+              )}
+              {alerts?.soon > 0 && (
+                <p className="tb-hint">
+                  {alerts.soon} more falls due in the next two weeks.
+                </p>
               )}
             </>
           )}

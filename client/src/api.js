@@ -59,6 +59,8 @@ export const api = {
   markPaid: (id, b) => request("POST", `/finance/commitments/${id}/payments`, b),
   unmarkPaid: (id, dueDate) =>
     request("DELETE", `/finance/commitments/${id}/payments/${dueDate}`),
+  finReminders: (entity) =>
+    request("GET", `/finance/reminders${entity ? `?entity=${entity}` : ""}`),
   finDue: (entity, days = 30) =>
     request("GET", `/finance/due?entity=${entity}&days=${days}`),
   addCommitment: (b) => request("POST", "/finance/commitments", b),

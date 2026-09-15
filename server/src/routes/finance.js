@@ -1065,6 +1065,45 @@ financeRouter.get(
   })
 );
 
+// ── What is waiting to be answered ───────────────────────────
+// The bell used to carry two counts and send the reader off to find the row
+// themselves. This is the same question asked properly: on the day a payment
+// falls due, say so, name it, and let it be recorded from where it is read.
+//
+// "Asking" is only what has actually reached its date — due today or already
+// past it. Anything further out is a number, not a question, so it stays a
+// count. Recording is the existing POST /commitments/:id/payments, which is
+// keyed on the (commitment, due date) pair, so answering the same prompt twice
+// still records one payment.
+financeRouter.get(
+  "/reminders",
+  ah(async (req, res) => {
+    const { choice, list } = resolveEntities(req.query.entity);
+    const byEntity = {};
+    for (const ent of list) {
+      const due = await dueSoon(ent, 14);
+      const all = [...due.incoming, ...due.payable];
+      // Overdue first, then today, then the rest — the order they want answering.
+      const asking = all
+        .filter((u) => u.daysAway <= 0)
+        .sort((a, b) => a.date.localeCompare(b.date));
+      const needsReview = await reviewCount(ent);
+      byEntity[ent] = {
+        label: ENTITY_LABEL[ent],
+        asking,
+        soon: all.filter((u) => u.daysAway > 0).length,
+        needsReview,
+        total: asking.length + needsReview,
+      };
+    }
+    res.json({
+      entity: choice, entities: list, byEntity,
+      today: isoDate(new Date()),
+      baseCurrency: config.finance.baseCurrency,
+    });
+  })
+);
+
 // ── Contracts and their payment status ───────────────────────
 financeRouter.get(
   "/schedule",

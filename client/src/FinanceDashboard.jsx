@@ -135,6 +135,10 @@ export default function FinanceDashboard({ owner, onLogout, onOwner,
   const [pl, setPl] = useState(null);
   const [household, setHousehold] = useState(null);
   const [home, setHome] = useState(null);
+  // What the bell is asking. Its own call rather than a slice of a dashboard:
+  // the bell sits on every page, and recording from it has to refresh the bell
+  // whether or not the page behind it happens to hold the same figures.
+  const [reminders, setReminders] = useState(null);
   const [income, setIncome] = useState(null);
   const [spend, setSpend] = useState(null);
   const [we, setWe] = useState(null);
@@ -305,6 +309,17 @@ export default function FinanceDashboard({ owner, onLogout, onOwner,
     if (!["budget", "bills"].includes(view)) return;
     loadHousehold();
   }, [view, loadHousehold]);
+
+  const loadReminders = useCallback(async () => {
+    try {
+      setReminders(await api.finReminders(entity));
+    } catch {
+      // A bell that cannot load is not worth an error across the page; it
+      // simply shows nothing until the next attempt.
+    }
+  }, [entity]);
+
+  useEffect(() => { loadReminders(); }, [loadReminders]);
 
   // The home page is one call: everything on it comes back together, so no
   // panel is ever showing one month's figures beside another's.
@@ -624,8 +639,8 @@ export default function FinanceDashboard({ owner, onLogout, onOwner,
         <div className="fin-topbar">
           <Search entity={entity}
                   onOpen={(r) => { setPeriod(r.period); setView(personalOnly ? "money" : "ledger"); }} />
-          <Alerts alerts={(personalOnly ? home : data)?.byEntity?.[entity]?.alerts}
-                  onGo={setView} />
+          <Alerts alerts={reminders?.byEntity?.[entity]} money={money} onGo={setView}
+                  onRecord={async () => { await Promise.all([loadReminders(), load(period)]); }} />
           <AccountMenu owner={owner} onLogout={onLogout}
                        onProfile={() => setProfiling(true)} />
         </div>
