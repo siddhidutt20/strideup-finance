@@ -1791,6 +1791,108 @@ export async function overviewDashboard(entity, today = new Date(), period = nul
   };
 }
 
+// ── What the next few months look like, for a household ──────
+// The projection itself is the same one the company's books use: start from
+// what is recorded today, add only what an agreement already says will move,
+// and keep any estimate of the rest on its own line. What differs is the
+// question being asked. A company asks how long the money lasts. A household
+// asks what repeats, what it leaves each month, and when something stops.
+//
+// So this adds three things the company's page has no use for: the standing
+// agreements as a list of things rather than a list of dates, the ones that
+// end inside the window, and the loan payments recorded against a debt that
+// no agreement covers.
+
+// A quarterly bill is not a quarterly problem — it is a monthly one, three
+// months at a time. Stating the monthly equivalent lets a weekly, monthly,
+// quarterly and annual agreement be compared in one column.
+function perMonthOf(k) {
+  const amount = Number(k.base_amount_minor);
+  if (k.frequency === "weekly") return Math.round((amount * 52) / 12);
+  if (k.frequency === "once") return 0;
+  return Math.round(amount / (FREQUENCY_MONTHS[k.frequency] ?? 1));
+}
+
+export async function householdOutlook(entity, months = 6, today = new Date()) {
+  const fc = await forecast(entity, months, today);
+  const commitments = await activeCommitments(entity);
+  const asOf = isoDate(today);
+  const thisPeriod = monthStart(today);
+  const lastPeriod = addMonths(thisPeriod, months);
+  // The last day the window covers, so an end date can be compared against it.
+  const horizonEnd = `${lastPeriod.slice(0, 7)}-${String(
+    lastDayOf(Number(lastPeriod.slice(0, 4)), Number(lastPeriod.slice(5, 7)) - 1)
+  ).padStart(2, "0")}`;
+
+  const shape = (k) => ({
+    id: Number(k.id),
+    direction: k.direction,
+    description: k.description,
+    counterparty: k.counterparty,
+    categoryName: k.category_name,
+    amount: Number(k.base_amount_minor),
+    currency: k.currency,
+    frequency: k.frequency,
+    perMonth: perMonthOf(k),
+    startDate: isoDate(k.start_date),
+    endDate: k.end_date ? isoDate(k.end_date) : null,
+  });
+
+  // One row per agreement, not per occurrence. A one-off is not a pattern and
+  // has no place in a list headed "what repeats".
+  const recurring = commitments
+    .filter((k) => k.frequency !== "once")
+    .map(shape)
+    .sort((a, b) => b.perMonth - a.perMonth);
+
+  const repeatingOut = recurring.filter((r) => r.direction === "out");
+  const repeatingIn = recurring.filter((r) => r.direction === "in");
+  const sum = (xs) => xs.reduce((t, r) => t + r.perMonth, 0);
+
+  // The month an agreement stops is the month its money comes back, which is
+  // the most useful thing a forecast can tell a household. Anything already
+  // finished is not news.
+  const ending = recurring
+    .filter((r) => r.endDate && r.endDate >= asOf && r.endDate <= horizonEnd)
+    .sort((a, b) => a.endDate.localeCompare(b.endDate));
+
+  // A monthly payment written on a debt is a plan; fin_commitments is the
+  // schedule, and only the schedule drives the projection. Reporting these
+  // separately is the honest way to show the gap without guessing that a loan
+  // and a bill of the same size are the same obligation and counting it twice.
+  const w = await wealth(entity, today);
+  const loanPayments = w.liabilities
+    .filter((d) => d.monthlyPayment && d.monthlyPayment > 0)
+    .map((d) => ({
+      id: d.id, name: d.name, kind: d.kind,
+      monthlyPayment: d.monthlyPayment,
+      ratePct: d.ratePct,
+      balance: d.value,
+    }))
+    .sort((a, b) => b.monthlyPayment - a.monthlyPayment);
+
+  return {
+    ...fc,
+    months: fc.months,
+    recurring,
+    repeating: {
+      out: repeatingOut,
+      in: repeatingIn,
+      outPerMonth: sum(repeatingOut),
+      inPerMonth: sum(repeatingIn),
+      netPerMonth: sum(repeatingIn) - sum(repeatingOut),
+    },
+    ending,
+    endingFrees: ending
+      .filter((r) => r.direction === "out")
+      .reduce((t, r) => t + r.perMonth, 0),
+    loanPayments,
+    loanPaymentTotal: loanPayments.reduce((t, d) => t + d.monthlyPayment, 0),
+    horizonEnd,
+    lastPeriod,
+  };
+}
+
 // ── Budgets, and actual against them ─────────────────────────
 // A budget is a plan. It is never summed into a position, never counted as
 // money, and never fills a gap in the ledger — it exists only so a month can

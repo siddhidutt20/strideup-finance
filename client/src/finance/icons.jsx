@@ -34,6 +34,10 @@ export const ICONS = {
                    <path d="M16 13H7" /><path d="M9.5 10.5 7 13l2.5 2.5" /></>),
   forecast: wrap(<><path d="M2.5 15.5h15" /><path d="M4 12.5 8 8l3 2.5 5-6" />
                    <circle cx="8" cy="8" r="1.1" /><circle cx="11" cy="10.5" r="1.1" /></>),
+  // The household page draws the same projection under a different heading,
+  // so it carries the same mark.
+  outlook: wrap(<><path d="M2.5 15.5h15" /><path d="M4 12.5 8 8l3 2.5 5-6" />
+                  <circle cx="8" cy="8" r="1.1" /><circle cx="11" cy="10.5" r="1.1" /></>),
   vendors: wrap(<><circle cx="7" cy="6.5" r="2.6" /><circle cx="14.5" cy="7.5" r="2" />
                   <path d="M2.5 16.5c0-2.5 2-4.2 4.5-4.2s4.5 1.7 4.5 4.2" />
                   <path d="M13 12.6c2.3-.2 4.5 1.2 4.5 3.9" /></>),

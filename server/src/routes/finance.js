@@ -14,6 +14,7 @@ import {
   monthStart, addMonths, periodSummary, categoryBreakdown, trend, cashPosition,
   burnAndRunway, receivables, capitalPosition, reviewCount,
   profitAndLoss, cashflow, byCounterparty, forecast, activeCommitments, dueSoon,
+  householdOutlook,
   contractSchedule, occurrencesIn, occKey, statusOf, outstandingOn, commitmentsForMonth, paymentMap, committedRunUp,
   vendorManagement, contractLibrary, cashDashboard, sideDetail, overviewDashboard,
   budgetsFor, plStatement, plTrend, topVariances, plInsights, groupSpend,
@@ -1060,6 +1061,26 @@ financeRouter.get(
     }
     res.json({
       entity: choice, entities: list, days, byEntity,
+      baseCurrency: config.finance.baseCurrency,
+    });
+  })
+);
+
+// ── What the next few months look like ───────────────────────
+// The household reading of the same projection the company's Forecast page
+// draws. Months ahead is capped because a standing agreement twelve months out
+// is a fact about the agreement, not a fact about the money.
+financeRouter.get(
+  "/outlook",
+  ah(async (req, res) => {
+    const { choice, list } = resolveEntities(req.query.entity);
+    const months = Math.min(24, Math.max(1, Number(req.query.months) || 6));
+    const byEntity = {};
+    for (const ent of list) {
+      byEntity[ent] = { label: ENTITY_LABEL[ent], ...(await householdOutlook(ent, months)) };
+    }
+    res.json({
+      entity: choice, entities: list, months, byEntity,
       baseCurrency: config.finance.baseCurrency,
     });
   })

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api.js";
-import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS, FUTURE_CSS, CASHFLOW_AHEAD_CSS, CF_NONE_CSS, VENDORS_CSS, CASH_CSS, CONTRACTS_GROUP_CSS, SIDE_CSS, CASH_BAND_CSS, NARROW_FIX_CSS, INVOICE_CSS, RECORD_CSS, OVERVIEW_CSS, PL_CSS, BOOKS_CSS, HOUSEHOLD_CSS, HOME_CSS, MONEY_CSS, LONG_CSS, EXPENSES_CSS, MERGE_CSS, PROFILE_CSS } from "./finance/styles.js";
+import { FIN_CSS, STATEMENT_CSS, FORECAST_CSS, CONTRACTS_CSS, CONTRACTS_EXTRA_CSS, LEDGER_EDIT_CSS, FUTURE_CSS, CASHFLOW_AHEAD_CSS, CF_NONE_CSS, VENDORS_CSS, CASH_CSS, CONTRACTS_GROUP_CSS, SIDE_CSS, CASH_BAND_CSS, NARROW_FIX_CSS, INVOICE_CSS, RECORD_CSS, OVERVIEW_CSS, PL_CSS, BOOKS_CSS, HOUSEHOLD_CSS, HOME_CSS, MONEY_CSS, LONG_CSS, EXPENSES_CSS, MERGE_CSS, PROFILE_CSS, OUTLOOK_CSS } from "./finance/styles.js";
 import {
   fmtAmount, monthLabel, readFile, shiftMonth, thisMonth, useMoney, ZERO_DECIMAL,
   ENTITY_LABEL, entityChoices, viewsFor, moneyInLabel, loadEntity, saveEntity,
@@ -20,6 +20,7 @@ import { MoneyView } from "./finance/money.jsx";
 import { WealthView } from "./finance/wealth.jsx";
 import { GoalsView } from "./finance/goals.jsx";
 import { ReportsView } from "./finance/reports.jsx";
+import { OutlookView } from "./finance/outlook.jsx";
 import { HomeView, greeting } from "./finance/home.jsx";
 import { Search, Alerts, AccountMenu } from "./finance/topbar.jsx";
 import { Avatar, ProfileSheet } from "./finance/profile.jsx";
@@ -28,6 +29,17 @@ import { NewRecord } from "./finance/record.jsx";
 import { DueSoon } from "./finance/spend.jsx";
 import { Panel, CapitalList } from "./finance/pieces.jsx";
 import { ICONS } from "./finance/icons.jsx";
+
+// Every stylesheet the app ships, joined once. This was spelled out twice —
+// at the boot state and at the page — so a new one had to be added in both
+// places or it silently did not apply, which is exactly what happened to the
+// Forecast page's.
+const ALL_CSS = FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS +
+  CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS +
+  CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS +
+  CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS +
+  PL_CSS + BOOKS_CSS + HOUSEHOLD_CSS + HOME_CSS + MONEY_CSS + LONG_CSS +
+  EXPENSES_CSS + MERGE_CSS + PROFILE_CSS + OUTLOOK_CSS;
 
 // ── StrideUp finances ────────────────────────────────────────
 // One section per question. Overview answers "how is the month going" at a
@@ -67,6 +79,8 @@ const PERSONAL_HEADS = {
           "Set goals, track your progress, and see what each one asks of a month."],
   reports: ["Reports & insights", "Understand today,", "make better tomorrow.",
             "Your own months, read together."],
+  outlook: ["Forecast", "What is agreed,", "and where it leaves you.",
+            "Every standing bill and subscription, carried forward month by month."],
   bills: ["Bills & subscriptions", "Never miss a payment,", "stay in control.",
           "Every bill and subscription, all in one place."],
   money: ["Money", "Everything that moved,", "in one place.",
@@ -139,6 +153,7 @@ export default function FinanceDashboard({ owner, onLogout, onOwner,
   // the bell sits on every page, and recording from it has to refresh the bell
   // whether or not the page behind it happens to hold the same figures.
   const [reminders, setReminders] = useState(null);
+  const [outlook, setOutlook] = useState(null);
   const [income, setIncome] = useState(null);
   const [spend, setSpend] = useState(null);
   const [we, setWe] = useState(null);
@@ -309,6 +324,21 @@ export default function FinanceDashboard({ owner, onLogout, onOwner,
     if (!["budget", "bills"].includes(view)) return;
     loadHousehold();
   }, [view, loadHousehold]);
+
+  // Six months ahead: far enough to see a subscription end, close enough that
+  // every figure in it is still an agreement rather than a guess.
+  const loadOutlook = useCallback(async () => {
+    try {
+      setOutlook(await api.finOutlook(entity, 6));
+    } catch (err) {
+      setError(err.message || "Could not work out the months ahead.");
+    }
+  }, [entity]);
+
+  useEffect(() => {
+    if (view !== "outlook") return;
+    loadOutlook();
+  }, [view, loadOutlook]);
 
   const loadReminders = useCallback(async () => {
     try {
@@ -559,7 +589,7 @@ export default function FinanceDashboard({ owner, onLogout, onOwner,
         {/* Joined in JS, not as three JSX children: a <style> element with
             several text children does not reliably end up with all of them in
             the DOM, and the symptom is a stylesheet that silently truncates. */}
-        <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS + PL_CSS + BOOKS_CSS + HOUSEHOLD_CSS + HOME_CSS + MONEY_CSS + LONG_CSS + EXPENSES_CSS + MERGE_CSS + PROFILE_CSS}</style>
+        <style>{ALL_CSS}</style>
         <div className="fin-boot"><div className="fin-spinner" /></div>
       </div>
     );
@@ -599,7 +629,7 @@ export default function FinanceDashboard({ owner, onLogout, onOwner,
 
   return (
     <div className="fin-app">
-      <style>{FIN_CSS + STATEMENT_CSS + FORECAST_CSS + CONTRACTS_CSS + CONTRACTS_EXTRA_CSS + LEDGER_EDIT_CSS + FUTURE_CSS + CASHFLOW_AHEAD_CSS + CF_NONE_CSS + VENDORS_CSS + CASH_CSS + CONTRACTS_GROUP_CSS + SIDE_CSS + CASH_BAND_CSS + NARROW_FIX_CSS + INVOICE_CSS + RECORD_CSS + OVERVIEW_CSS + PL_CSS + BOOKS_CSS + HOUSEHOLD_CSS + HOME_CSS + MONEY_CSS + LONG_CSS + EXPENSES_CSS + MERGE_CSS + PROFILE_CSS}</style>
+      <style>{ALL_CSS}</style>
 
       <aside className="fin-side" aria-label="Sections">
         <div className="fin-sidebrand">
@@ -813,6 +843,16 @@ export default function FinanceDashboard({ owner, onLogout, onOwner,
                          onChanged={() => { loadGoals(); loadWealth(); }} />
             ))
           ) : <div className="fin-boot"><div className="fin-spinner" /></div>)}
+          {view === "outlook" && (outlook ? (
+            (outlook.entities ?? [entity]).map((ent) => (
+              <EntityBlock key={`ol-${ent}`} show={(outlook.entities ?? []).length > 1}
+                           entity={ent} label={outlook.byEntity[ent]?.label}>
+                <OutlookView ol={outlook.byEntity[ent]} money={money} period={period}
+                             onGo={setView} />
+              </EntityBlock>
+            ))
+          ) : <div className="fin-boot"><div className="fin-spinner" /></div>)}
+
           {view === "reports" && (rp && rp.period === period ? (
             (rp.entities ?? [entity]).map((ent) => (
               <ReportsView key={`rp-${ent}`} rp={rp.byEntity[ent]} money={money}

@@ -588,5 +588,53 @@ for (const ent of ENTS) {
   }
 }
 
+// ── The months ahead ─────────────────────────────────────────
+// A projection is only worth reading if it is arithmetic. Every figure on the
+// Forecast page is derived, so each one is checked against the parts it came
+// from: the running balance has to chain, each month has to balance, and the
+// two summary figures have to equal the lists they summarise.
+for (const ent of ENTS) {
+  const ol = (await g(`/finance/outlook?months=6&entity=${ent}`)).byEntity[ent];
+  if (!ol) continue;
+  console.log(`\n══ months ahead · ${ent} ══`);
+  const ms = ol.months ?? [];
+
+  // Each month opens where the last one closed.
+  let chained = 0;
+  for (let i = 1; i < ms.length; i++) {
+    if (Math.abs(ms[i].opening - ms[i - 1].closing) <= 1) chained++;
+  }
+  check("every month opens where the last one closed", chained, Math.max(0, ms.length - 1));
+
+  // And closes at opening plus what moved.
+  const off = ms.filter(
+    (m) => Math.abs(m.closing - (m.opening + m.committedIn - m.committedOut)) > 1
+  );
+  check("every month closes at opening plus what moved", off.length, 0);
+
+  const r = ol.repeating;
+  check("what repeats: in less out is the net", r.inPerMonth - r.outPerMonth, r.netPerMonth);
+  check("what repeats: the outgoings add to their total",
+        r.out.reduce((t, x) => t + x.perMonth, 0), r.outPerMonth);
+  check("what repeats: the incomings add to their total",
+        r.in.reduce((t, x) => t + x.perMonth, 0), r.inPerMonth);
+
+  // Money that comes back is only the outgoings that stop.
+  check("what stops frees exactly what it was costing",
+        ol.ending.filter((x) => x.direction === "out")
+                 .reduce((t, x) => t + x.perMonth, 0), ol.endingFrees);
+
+  // Every agreement listed as ending really does end inside the window.
+  const outside = ol.ending.filter((x) => !x.endDate || x.endDate > ol.horizonEnd);
+  check("nothing is listed as ending outside the window", outside.length, 0);
+
+  // A loan payment is never folded into the projection — that is the whole
+  // reason it is reported on its own.
+  const loansInProjection = (r.out ?? []).filter((x) =>
+    (ol.loanPayments ?? []).some((d) => d.name === x.description &&
+                                        d.monthlyPayment === x.perMonth));
+  check("no loan payment is counted twice", loansInProjection.length, 0);
+}
+
 console.log(`\n  ${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);

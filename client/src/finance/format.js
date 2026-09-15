@@ -102,6 +102,7 @@ export function viewsFor(views, books) {
     ["wealth", "Wealth", "Wealth", "What you own and what you owe"],
     ["goals", "Goals", "Goals", "What you are saving toward"],
     ["reports", "Reports", "Reports", "The months read together, ending"],
+    ["outlook", "Forecast", "Forecast", "What is already agreed, from"],
   ];
 }
 

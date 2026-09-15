@@ -1065,7 +1065,11 @@ export const OVERVIEW_CSS = `
 @media(max-width:460px){.ov-kpis{grid-template-columns:minmax(0,1fr)}}
 .ov-band{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(0,1fr);gap:16px;
   align-items:stretch}
-.ov-stack{display:grid;gap:16px;align-content:start}
+/* The panels in a stack share whatever height the row gives them, however many
+   there are. align-content:start left the leftover at the bottom of the
+   column — the same hole the bands had, one level down, and it took widening
+   the sweep to see it. */
+.ov-stack,.vm-stack{display:grid;gap:16px;align-content:stretch}
 /* Two panels, not three: Outstanding moved up beside the chart, and the donut
    gets room for its legend instead of a third of the row. */
 .ov-band3{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px;align-items:stretch}
@@ -1993,6 +1997,29 @@ export const MERGE_CSS = `
 `;
 
 // ── Your picture, and the profile behind it ──────────────────
+export const OUTLOOK_CSS = `
+.ol-kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media(max-width:1180px){.ol-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.ol-kpis{grid-template-columns:minmax(0,1fr)}}
+.ol-list,.ol-ends{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.ol-list li,.ol-ends li{display:flex;align-items:center;gap:12px;padding:10px 0;
+  border-bottom:1px solid var(--fin-hair)}
+.ol-list li:last-child,.ol-ends li:last-child{border-bottom:0;padding-bottom:0}
+.ol-what,.ol-ends li>span:first-child{min-width:0;flex:1;display:flex;flex-direction:column;gap:1px}
+.ol-what b,.ol-ends li>span:first-child b{font-size:13.5px;font-weight:600;color:var(--fin-ink);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ol-what em,.ol-ends li>span:first-child em{font-style:normal;font-size:11.5px;
+  color:var(--fin-faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ol-amt{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:1px}
+.ol-amt>b{font-family:var(--fin-display);font-weight:650;font-size:14.5px;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.ol-amt>em{font-style:normal;font-size:11px;color:var(--fin-faint);white-space:nowrap}
+.ol-ends li>b{flex:none;font-family:var(--fin-display);font-weight:650;font-size:14.5px;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.ol-ends li>b i{font-style:normal;font-size:11px;font-weight:600;opacity:.7;margin-left:1px}
+.ol-part{font-style:normal;font-size:11px;color:var(--fin-faint)}
+`;
+
 export const PROFILE_CSS = `
 .fin-avatar-img{object-fit:cover;padding:0;background:var(--fin-sunk)}
 .tb-me{display:flex;align-items:center;gap:11px;padding:11px}

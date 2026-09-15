@@ -59,6 +59,8 @@ export const api = {
   markPaid: (id, b) => request("POST", `/finance/commitments/${id}/payments`, b),
   unmarkPaid: (id, dueDate) =>
     request("DELETE", `/finance/commitments/${id}/payments/${dueDate}`),
+  finOutlook: (entity, months = 6) =>
+    request("GET", `/finance/outlook?months=${months}${entity ? `&entity=${entity}` : ""}`),
   finReminders: (entity) =>
     request("GET", `/finance/reminders${entity ? `?entity=${entity}` : ""}`),
   finDue: (entity, days = 30) =>
