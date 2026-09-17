@@ -22,7 +22,38 @@ for a, b in [("poppins-400-latin.woff2", "Poppins-Regular.ttf"),
     f.flavor = None
     f.save(os.path.join(FONTDIR, b))
 
-OUT = os.path.join(REPO, "docs", "myfinance-setup.pdf")
+# Two editions of the same guide. The packages are pre-configured, so the
+# reader never has to choose between the household and the business app — which
+# means each guide loses a whole step rather than carrying a fork.
+EDITION = (sys.argv[1] if len(sys.argv) > 1 else "household").lower()
+if EDITION not in ("household", "business"):
+    raise SystemExit("usage: build-setup-pdf.py [household|business]")
+
+ED = {
+  "household": dict(
+    app="myFinance", accent="#5B21B6",
+    out="myfinance-setup.pdf",
+    zipname="myfinance-household.zip", folder="myfinance-household",
+    what="A website only you can sign into, that tracks what comes in, what goes out, "
+         "what you own and owe, what you have agreed to pay, and what the next six "
+         "months look like.",
+    tabs="Home, Money, Budget, Bills, Wealth, Goals, Reports and Forecast",
+    forwhom="your own money",
+  ),
+  "business": dict(
+    app="StrideUp Finance", accent="#A8225F",
+    out="strideup-setup.pdf",
+    zipname="strideup-business.zip", folder="strideup-business",
+    what="A website only you can sign into, that tracks revenue, expenses, cash, "
+         "outstanding invoices, what is committed to vendors, your profit and loss, "
+         "and how long the money lasts.",
+    tabs="Overview, Revenue, Expenses, Cash flow, Forecast, Vendors, Payment schedule, "
+         "P&amp;L and Ledger",
+    forwhom="a company",
+  ),
+}[EDITION]
+
+OUT = os.path.join(REPO, "docs", ED["out"])
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
@@ -166,16 +197,16 @@ A = st.append
 
 # ═══ PAGE 1 ═══
 A(Paragraph("SET-UP GUIDE", eyebrow))
-A(Paragraph('Your own <font color="#5B21B6">myFinance</font> portal', h1))
-A(Paragraph("A private finance app of your own — your database, your login, your web "
-            "address. Claude does the technical part. You do six clicks.", lead))
+A(Paragraph(f'Your own <font color="{ED["accent"]}">{ED["app"]}</font> portal', h1))
+A(Paragraph(f"A private finance app for {ED['forwhom']} — your database, your login, "
+            "your web address. Claude does the technical part. You do six clicks.", lead))
 A(Rule(pad=8))
 
 A(Paragraph("What you end up with", h2))
-A(Paragraph("A website only you can sign into, that tracks what comes in, what goes out, "
-            "what you own and owe, what you have agreed to pay, and what the next six "
-            "months look like. It works on a phone. Nobody else can see it — not even "
+A(Paragraph(f"{ED['what']} It works on a phone. Nobody else can see it — not even "
             "the person who gave you this.", body))
+A(Spacer(1, 3))
+A(Paragraph(f"The tabs down the left are {ED['tabs']}.", small))
 
 A(Paragraph("Before you start", h2))
 A(Paragraph("Three free accounts. Sign up for each now and the rest takes about twenty "
@@ -233,17 +264,17 @@ A(Paragraph("The six steps", h2))
 A(Spacer(1, 3))
 
 A(step(1, "Save the package somewhere you can find it", [
-  Paragraph("You were sent a file called <b>strideup-finance-source.zip</b>. Put it on "
-            "your Desktop and unzip it (double-click on a Mac; right-click &gt; "
-            "Extract All on Windows). You will get a folder called "
-            "<b>strideup-finance</b>. Leave it there.", body),
+  Paragraph(f"You were sent a file called <b>{ED['zipname']}</b>. Put it on your "
+            "Desktop and unzip it (double-click on a Mac; right-click &gt; Extract All "
+            f"on Windows). You will get a folder called <b>{ED['folder']}</b>. Leave it "
+            "there.", body),
 ]))
 
 A(step(2, "Open Claude Code and point it at that folder", [
   Paragraph("Claude Code is the version of Claude that can read and write files. Two "
             "ways to get it:", body),
   Paragraph("<b>The app</b> — download Claude Code for Mac or Windows, open it, and "
-            "choose the <b>strideup-finance</b> folder you just unzipped.", bullet, bulletText="•"),
+            f"choose the <b>{ED['folder']}</b> folder you just unzipped.", bullet, bulletText="•"),
   Paragraph("<b>In a browser</b> — go to <b>claude.ai/code</b>. This one works from a "
             "GitHub repository rather than a folder, so ask Claude to do step 3 first "
             "and it will set the repository up for you.", bullet, bulletText="•"),
@@ -267,17 +298,15 @@ A(step(3, "Paste this message to Claude", [
     "     under my account.",
     "  2. Generate a strong SESSION_SECRET and tell me the",
     "     exact settings I need to paste into Vercel.",
-    "  3. Set it up for one person, personal use only.",
-    "  4. Ask me what to call the app and which currency to",
+    "  3. Ask me what to call the app and which currency to",
     "     use, then set those.",
     "",
     "Stop and wait for me whenever you need me to click",
     "something, and tell me exactly what to click.",
   ]),
   Spacer(1, 4),
-  Paragraph("Claude will ask you a few questions — what to call it, which currency, "
-            "whether you want one set of books or two. Answer in normal words. It will "
-            "then tell you when to move to step 4.", small),
+  Paragraph("Claude will then ask what to call it and which currency to use. Answer in "
+            "normal words. It will tell you when to move on.", small),
 ]))
 
 A(step(4, "Put it on the internet", [
