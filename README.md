@@ -87,6 +87,10 @@ instead: your own database, your own login, your own URL, about twenty minutes.
 [`docs/your-own-copy.md`](docs/your-own-copy.md) is the whole thing, start to
 finish, no terminal needed.
 
+Handing it to a developer instead? [`docs/integration.md`](docs/integration.md)
+is the technical version: the file map, how to run it, the full API, the data
+model, and the three ways to integrate it with something you already have.
+
 ## Security
 
 One account owns this app and **there is no registration route** — nobody can
